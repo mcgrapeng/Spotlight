@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.application.use_cases.ai import AIUseCases
+from app.application.use_cases.ai import AIUseCases, SingleActiveProviderError
 from app.domain.entities.ai import AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
 from app.interface.api.v1.dependencies import ai_uc
@@ -17,9 +17,9 @@ from app.interface.api.v1.schemas import (
 router = APIRouter(tags=["ai"])
 
 
-def _to_entity(p: AIProviderIn) -> AIProviderConfig:
+def _to_entity(p: AIProviderIn, *, id: int | None = None) -> AIProviderConfig:
     return AIProviderConfig(
-        id=None,
+        id=id,
         name=p.name, provider=p.provider, model=p.model,
         api_key=p.api_key, api_base=p.api_base,
         temperature=p.temperature, max_tokens=p.max_tokens,
@@ -46,23 +46,26 @@ def _to_out(p: AIProviderConfig) -> AIProviderOut:
 
 @router.get("/ai/providers", response_model=list[AIProviderOut])
 async def list_providers(uc: AIUseCases = Depends(ai_uc)):
+    """Return ALL providers (enabled + disabled) so the UI can manage them."""
     return [_to_out(p) for p in await uc.list_providers()]
 
 
 @router.post("/ai/providers", response_model=AIProviderOut, status_code=status.HTTP_201_CREATED)
 async def add_provider(payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc)):
-    return _to_out(await uc.upsert_provider(_to_entity(payload)))
+    try:
+        return _to_out(await uc.upsert_provider(_to_entity(payload)))
+    except SingleActiveProviderError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @router.put("/ai/providers/{provider_id}", response_model=AIProviderOut)
 async def update_provider(
     provider_id: int, payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc),
 ):
-    cfg = _to_entity(payload)
-    cfg = AIProviderConfig(
-        id=provider_id, **{k: v for k, v in vars(cfg).items() if k != "id"},
-    )
-    return _to_out(await uc.upsert_provider(cfg))
+    try:
+        return _to_out(await uc.upsert_provider(_to_entity(payload, id=provider_id)))
+    except SingleActiveProviderError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @router.delete("/ai/providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)

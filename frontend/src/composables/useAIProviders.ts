@@ -46,9 +46,20 @@ export function useAIProviders() {
     return p
   }
 
+  async function toggle(p: AIProvider) {
+    const updated = await aiApi.updateProvider(p.id, {
+      name: p.name, provider: p.provider, model: p.model,
+      api_key: '',  // empty — backend keeps the existing key
+      api_base: p.api_base, temperature: p.temperature, max_tokens: p.max_tokens,
+      is_default: p.is_default, enabled: !p.enabled, extra: p.extra,
+    })
+    await load()
+    return updated
+  }
+
   const defaultProvider = computed(() =>
     providers.value.find((p) => p.is_default) ?? providers.value[0] ?? null,
   )
 
-  return { providers, loading, error, defaultProvider, load, add, update, remove, setDefault }
+  return { providers, loading, error, defaultProvider, load, add, update, remove, setDefault, toggle }
 }

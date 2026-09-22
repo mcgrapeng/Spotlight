@@ -1,13 +1,17 @@
 """Adapter: implements K8sRepositoryPort by delegating to the kubernetes SDK + mappers."""
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from typing import Iterator, Optional
 
+from dateutil import parser as dtparser
 from kubernetes import watch
 
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.entities.resources import Cluster, K8sEvent, LogEntry, Namespace, Node, Pod
 from app.domain.value_objects.primitives import LabelSelector, ResourceRef
+from app.domain.services.log_parser import parse_log_line
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.k8s.client.pool import get_pool
 from app.infrastructure.k8s.mapper.mappers import (
@@ -119,18 +123,32 @@ class KubernetesAdapter(K8sRepositoryPort):
         try:
             content = api.read_namespaced_pod_log(**kw)
         except TypeError:
+            # Old kubernetes SDK without since_seconds support
             kw.pop("since_seconds", None)
             content = api.read_namespaced_pod_log(**kw)
+        # Use the timestamp parser so downstream code can sort/filter by ISO time.
+        # Content stripping happens in the use-case layer so we preserve the raw line.
         return [
-            LogEntry(timestamp=line[:30] if line else "", content=line, container=container or "")
+            LogEntry(
+                timestamp=parse_log_line(line, container or "")[0] if line else "",
+                content=line, container=container or "",
+            )
             for line in (content or "").splitlines()
         ]
 
     def stream_logs(
         self, ref: ResourceRef, container: Optional[str], tail_lines: int,
     ) -> Iterator[LogEntry]:
+        """Stream pod logs. Caller MUST iterate in a thread (use `asyncio.to_thread`)
+        because `kubernetes.watch.Watch().stream` is a blocking sync generator.
+
+        Stops cleanly when `stop_event.is_set()` returns True — checked between
+        yields so the consumer can cancel without leaking the HTTP connection.
+        """
         api, _ = self._pool.get(ref.cluster or None)
         w = watch.Watch()
+        # Probe support once (avoids a per-yield AttributeError on old SDKs).
+        supports_stop = hasattr(w, "stop")
         try:
             for line in w.stream(
                 api.read_namespaced_pod_log,
@@ -138,22 +156,25 @@ class KubernetesAdapter(K8sRepositoryPort):
                 container=container, tail_lines=tail_lines,
                 follow=True, _request_timeout=3600,
             ):
-                yield LogEntry(timestamp=line[:30] if line else "", content=line, container=container or "")
+                ts, _ = parse_log_line(line, container or "")
+                yield LogEntry(timestamp=ts, content=line, container=container or "")
         except StopIteration:
             return
+        finally:
+            if supports_stop:
+                try:
+                    w.stop()
+                except Exception:
+                    pass
 
 
 def _since_to_seconds(since: str) -> int:
-    """Coarse 'since' parser. Accepts ISO8601 timestamp or '5m' / '2h' style."""
-    import re
+    """Coarse 'since' parser. Accepts ISO8601 timestamp or short form ('5m' / '2h' / '1d')."""
     m = re.match(r"^(\d+)([smhd])$", since.strip())
     if m:
         n = int(m.group(1))
         unit = m.group(2)
         return {"s": n, "m": n * 60, "h": n * 3600, "d": n * 86400}[unit]
-    # ISO timestamp — fall back to delta vs now (best-effort)
-    from datetime import datetime, timezone
-    from dateutil import parser as dtparser
     try:
         dt = dtparser.isoparse(since)
         if dt.tzinfo is None:

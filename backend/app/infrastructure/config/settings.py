@@ -19,9 +19,21 @@ class Settings(BaseSettings):
     debug: bool = True
     log_level: str = "INFO"
 
+    # K8s / kubeconfig
     kubeconfig_path: str = ""
     k8s_request_timeout: int = 15
 
+    # Teleport tsh (optional). When enabled, the backend can authenticate against a
+    # Teleport proxy at startup so kubeconfig is already populated when the UI opens.
+    # Leave empty to use a host-bound kubeconfig (in-cluster config, or env KUBECONFIG).
+    teleport_proxy: str = ""           # e.g. "gt.internal.zhiman.tech:443"
+    teleport_user: str = ""            # e.g. "zhangpeng"
+    teleport_auth: str = "local"       # local | password | oidc | ...
+    teleport_cluster: str = ""         # e.g. "pvg1s1-cloud"
+    teleport_insecure: bool = False
+    tsh_binary: str = "tsh"
+
+    # Database
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
@@ -43,6 +55,10 @@ class Settings(BaseSettings):
         p = Path("./data")
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    @property
+    def teleport_configured(self) -> bool:
+        return bool(self.teleport_proxy and self.teleport_user)
 
 
 @lru_cache(maxsize=1)

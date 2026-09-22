@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  NTabs, NTabPane, NTag, NSpace, NSpin, NDataTable, NEmpty,
-  NButton, NIcon, useMessage,
-} from 'naive-ui'
-import {
-  ArrowLeft, Star, Sparkles, Clock, Cpu, Network, Box, AlertCircle,
-} from '@vicons/tabler'
-import PodStatusBadge from '@/components/resources/PodStatusBadge.vue'
+import { NTabs, NTabPane, NTag, NEmpty, NDataTable, NIcon, useMessage } from 'naive-ui'
+import { ArrowLeft, Star, Wand, Refresh, AlertCircle } from '@vicons/tabler'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import SectionCard from '@/components/ui/SectionCard.vue'
+import LoadingState from '@/components/ui/LoadingState.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorState from '@/components/ui/ErrorState.vue'
+import StatusPill from '@/components/ui/StatusPill.vue'
 import LogViewer from '@/components/log/LogViewer.vue'
 import LogAnalyzerDrawer from '@/components/ai/LogAnalyzerDrawer.vue'
 import { podsApi, eventsApi, favoritesApi } from '@/api/endpoints'
@@ -25,12 +25,13 @@ const name = ref(route.params.name as string)
 const pod = ref<PodInfo | null>(null)
 const events = ref<EventInfo[]>([])
 const loading = ref(true)
+const errorMsg = ref<string | null>(null)
 const tab = ref<'logs' | 'events'>('logs')
 const lines = ref<LogLine[]>([])
-const analyzerOpen = ref(false)
 
 async function load() {
   loading.value = true
+  errorMsg.value = null
   try {
     const [p, ev] = await Promise.all([
       podsApi.get(cluster.activeCluster, namespace.value, name.value),
@@ -41,6 +42,8 @@ async function load() {
     ])
     pod.value = p
     events.value = ev
+  } catch (e: any) {
+    errorMsg.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
   } finally { loading.value = false }
 }
 
@@ -57,211 +60,175 @@ async function addFavorite() {
     msg.success('已加入收藏')
   } catch { msg.error('收藏失败') }
 }
+
+async function reload() { await load() }
+
+// AI analyzer state — fed by either the toolbar button or a row-level "ask AI"
+const analyzerOpen = ref(false)
+const aiPresetLines = ref<string[]>([])
+const aiPresetQuestion = ref<string>('请分析这些日志的根因、异常点和建议')
+
+function openAnalyzer(payload?: { lines: string[]; question: string }) {
+  if (payload?.lines?.length) {
+    aiPresetLines.value = payload.lines
+    aiPresetQuestion.value = payload.question
+  }
+  analyzerOpen.value = true
+}
 </script>
 
 <template>
-  <div class="page space-y-6">
-    <!-- Page header (breadcrumb-style) -->
-    <header>
-      <button
-        class="flex items-center gap-1.5 text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors mb-3"
-        @click="router.back()"
-      >
-        <NIcon :component="ArrowLeft" :size="13" />
-        <span>返回 Pod 列表</span>
-      </button>
+  <div class="page space-y-5">
+    <PageHeader :title="name" :subtitle="`namespace · ${namespace}`" back>
+      <template #actions>
+        <StatusPill v-if="pod" :phase="pod.phase" />
+        <NTag v-if="pod?.owner_kind" size="small" round :bordered="false" type="info" class="!font-mono">
+          {{ pod.owner_kind }}/{{ pod.owner_name }}
+        </NTag>
+        <button class="btn-secondary" @click="openAnalyzer()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
+            <circle cx="12" cy="14" r="2" />
+          </svg>
+          AI 分析
+        </button>
+        <button class="btn-secondary" @click="addFavorite">
+          <NIcon :component="Star" :size="13" />
+          收藏
+        </button>
+        <button class="btn-ghost" @click="reload" aria-label="刷新">
+          <NIcon :component="Refresh" :size="14" />
+        </button>
+      </template>
+    </PageHeader>
 
-      <div class="flex items-start justify-between gap-4">
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-3 flex-wrap">
-            <h1 class="page-title font-mono !text-[20px] truncate max-w-[640px]">{{ name }}</h1>
-            <PodStatusBadge v-if="pod" :phase="pod.phase" />
-            <NTag v-if="pod?.owner_kind" size="small" round type="info" class="!font-mono">
-              {{ pod.owner_kind }}/{{ pod.owner_name }}
-            </NTag>
-          </div>
-          <p class="page-subtitle font-mono">
-            namespace · {{ namespace }}
-            <template v-if="pod?.created_at">· 创建于 {{ new Date(pod.created_at).toLocaleString('zh-CN') }}</template>
-          </p>
-        </div>
-        <NSpace>
-          <NButton secondary size="small" @click="analyzerOpen = true">
-            <template #icon><NIcon :component="Sparkles" :size="14" /></template>
-            AI 分析
-          </NButton>
-          <NButton secondary size="small" @click="addFavorite">
-            <template #icon><NIcon :component="Star" :size="14" /></template>
-            收藏
-          </NButton>
-        </NSpace>
-      </div>
-    </header>
+    <ErrorState v-if="errorMsg" :message="errorMsg" :on-retry="load" />
+    <LoadingState v-else-if="loading" label="加载 Pod 元数据…" height="320px" />
 
-    <div v-if="loading" class="py-24 flex justify-center"><NSpin size="large" /></div>
     <template v-else-if="pod">
-      <!-- Pod metadata strip (4 KPI cards) -->
-      <section class="grid grid-cols-4 gap-3">
-        <div class="card !shadow-none">
-          <div class="px-4 py-3 flex items-center gap-3">
-            <div class="w-9 h-9 rounded-md bg-zinc-800/60 border border-zinc-700/40 flex items-center justify-center">
-              <NIcon :component="Network" :size="14" class="text-zinc-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="section-title">Node</p>
-              <p class="text-[13px] font-mono text-zinc-100 truncate">{{ pod.node || '—' }}</p>
-            </div>
-          </div>
+      <!-- Critical banner -->
+      <div v-if="pod.message || pod.reason"
+           class="alert-critical" role="alert">
+        <div class="flex items-center justify-center w-10 h-10 rounded-md bg-red-500/15 border border-red-500/30 shrink-0">
+          <NIcon :component="AlertCircle" :size="16" color="#fb7185" />
         </div>
-        <div class="card !shadow-none">
-          <div class="px-4 py-3 flex items-center gap-3">
-            <div class="w-9 h-9 rounded-md bg-zinc-800/60 border border-zinc-700/40 flex items-center justify-center">
-              <NIcon :component="Box" :size="14" class="text-zinc-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="section-title">Pod IP</p>
-              <p class="text-[13px] font-mono text-zinc-100 truncate">{{ pod.pod_ip || '—' }}</p>
-            </div>
-          </div>
+        <div>
+          <p class="text-[11px] uppercase tracking-wider text-red-300 font-semibold">{{ pod.reason || 'Status' }}</p>
+          <p class="text-[13px] text-zinc-100 mt-0.5">{{ pod.message }}</p>
         </div>
-        <div class="card !shadow-none">
-          <div class="px-4 py-3 flex items-center gap-3">
-            <div class="w-9 h-9 rounded-md bg-zinc-800/60 border border-zinc-700/40 flex items-center justify-center">
-              <NIcon :component="Clock" :size="14" class="text-zinc-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="section-title">Age</p>
-              <p class="text-[13px] text-zinc-100 tabular-nums">{{ pod.age || '—' }}</p>
-            </div>
+      </div>
+
+      <!-- Metadata strip -->
+      <section class="card">
+        <dl class="grid grid-cols-2 md:grid-cols-4 divide-x divide-zinc-800/60">
+          <div class="px-5 py-4">
+            <dt class="section-title">Node</dt>
+            <dd class="mt-1.5 text-[13px] font-mono text-zinc-100 truncate">{{ pod.node || '—' }}</dd>
           </div>
-        </div>
-        <div class="card !shadow-none">
-          <div class="px-4 py-3 flex items-center gap-3">
-            <div class="w-9 h-9 rounded-md bg-zinc-800/60 border border-zinc-700/40 flex items-center justify-center"
-                 :class="pod.restart_count > 0 ? '!bg-amber-500/10 !border-amber-500/30' : ''">
-              <NIcon :component="AlertCircle" :size="14"
-                      :color="pod.restart_count > 0 ? '#fbbf24' : '#a1a1aa'" />
-            </div>
-            <div class="min-w-0">
-              <p class="section-title">Restarts</p>
-              <p class="text-[13px] tabular-nums"
-                 :class="pod.restart_count > 0 ? 'text-amber-400 font-medium' : 'text-zinc-300'">
-                {{ pod.restart_count }}
-              </p>
-            </div>
+          <div class="px-5 py-4">
+            <dt class="section-title">Pod IP</dt>
+            <dd class="mt-1.5 text-[13px] font-mono text-zinc-100 truncate">{{ pod.pod_ip || '—' }}</dd>
           </div>
-        </div>
+          <div class="px-5 py-4">
+            <dt class="section-title">Age</dt>
+            <dd class="mt-1.5 text-[13px] text-zinc-100 tabular-nums">{{ pod.age || '—' }}</dd>
+          </div>
+          <div class="px-5 py-4">
+            <dt class="section-title">Restarts</dt>
+            <dd :class="['mt-1.5 text-[13px] tabular-nums', pod.restart_count > 100 ? 'text-red-400 font-semibold' : pod.restart_count > 0 ? 'text-amber-400' : 'text-zinc-100']">
+              {{ pod.restart_count }}
+            </dd>
+          </div>
+        </dl>
       </section>
 
       <!-- Containers -->
-      <section class="card">
-        <div class="card__header">
-          <h3 class="card__title">Containers</h3>
-          <span class="text-[12px] text-zinc-500">{{ pod.containers.length }} 个</span>
-        </div>
-        <div class="card__body">
-          <div class="grid grid-cols-2 gap-2.5">
-            <div v-for="c in pod.containers" :key="c.name"
-                 class="rounded-lg border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-900 transition-colors px-4 py-3 flex items-center gap-3">
-              <div class="w-2 h-2 rounded-full shrink-0"
-                   :class="c.ready ? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,.18)]' : 'bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,.18)]'" />
-              <div class="flex-1 min-w-0">
-                <p class="text-[13px] text-zinc-100 truncate">{{ c.name }}</p>
-                <p class="text-[11px] text-zinc-500 font-mono truncate">{{ c.image }}</p>
-              </div>
-              <NTag size="small" round :type="c.state === 'running' ? 'success' : 'warning'" class="shrink-0">
-                {{ c.state }}{{ c.reason ? ' · ' + c.reason : '' }}
-              </NTag>
-              <span v-if="c.restart_count" class="text-[11px] text-amber-400 tabular-nums shrink-0">{{ c.restart_count }}×</span>
-            </div>
+      <SectionCard title="Containers" :count="pod.containers.length">
+        <div class="divide-y divide-zinc-800/60 -m-4">
+          <div v-for="c in pod.containers" :key="c.name"
+               class="px-4 py-2.5 flex items-center gap-3">
+            <span class="w-1.5 h-1.5 rounded-full shrink-0"
+                  :class="c.ready ? 'bg-emerald-500' : 'bg-amber-500'"
+                  :aria-label="c.ready ? '就绪' : '未就绪'" />
+            <span class="text-[13px] text-zinc-100 font-medium w-44 truncate">{{ c.name }}</span>
+            <code class="text-[11.5px] text-zinc-500 font-mono flex-1 truncate">{{ c.image }}</code>
+            <span class="chip" :class="c.state === 'running' ? 'chip--ok' : 'chip--warn'">
+              {{ c.state }}{{ c.reason ? ' · ' + c.reason : '' }}
+            </span>
+            <span v-if="c.restart_count" class="text-[11.5px] tabular-nums w-8 text-right"
+                  :class="c.restart_count > 5 ? 'text-red-400' : 'text-amber-400'">{{ c.restart_count }}×</span>
+            <span v-else class="w-8" />
           </div>
         </div>
-      </section>
-
-      <!-- Error banner if any -->
-      <div v-if="pod.message || pod.reason"
-           class="rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 flex items-start gap-3">
-        <NIcon :component="AlertCircle" :size="16" color="#fca5a5" class="shrink-0 mt-0.5" />
-        <div>
-          <p class="text-[12.5px] font-semibold text-red-300 mb-0.5">{{ pod.reason || 'Status' }}</p>
-          <p class="text-[12.5px] text-zinc-300">{{ pod.message }}</p>
-        </div>
-      </div>
+      </SectionCard>
 
       <!-- Labels -->
-      <section v-if="Object.keys(pod.labels).length" class="card">
-        <div class="card__header">
-          <h3 class="card__title">Labels</h3>
-          <span class="text-[12px] text-zinc-500">{{ Object.keys(pod.labels).length }} 个</span>
+      <SectionCard v-if="Object.keys(pod.labels).length" title="Labels" :count="Object.keys(pod.labels).length">
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="(v, k) in pod.labels" :key="k"
+                class="chip chip--neutral !font-mono !bg-zinc-900/60 !text-zinc-400 !border-zinc-800">
+            <span class="text-zinc-500">{{ k }}</span><span class="text-zinc-600 mx-1">=</span><span class="text-zinc-200">{{ v }}</span>
+          </span>
         </div>
-        <div class="card__body">
-          <div class="flex flex-wrap gap-1.5">
-            <NTag v-for="(v, k) in pod.labels" :key="k" size="small" round :bordered="false" class="!bg-zinc-800 !font-mono">
-              <span class="text-zinc-500">{{ k }}</span>
-              <span class="text-zinc-600 mx-1">=</span>
-              <span class="text-zinc-200">{{ v }}</span>
-            </NTag>
-          </div>
-        </div>
-      </section>
+      </SectionCard>
 
-      <!-- Tabs: Logs / Events -->
-      <section class="card card__body--flush overflow-hidden">
-        <div class="px-5 pt-3">
+      <!-- Tabs -->
+      <SectionCard flush>
+        <div class="px-4 pt-3">
           <NTabs v-model:value="tab" type="line" animated size="medium">
-            <NTabPane name="logs" tab="实时日志">
+            <NTabPane name="logs" tab="日志">
               <template #tab>
-                <span class="flex items-center gap-1.5">
-                  <span class="status-dot status-dot--running" />
-                  Logs
+                <span class="inline-flex items-center gap-1.5 text-[12.5px]">
+                  <span class="status-dot status-dot--running" aria-hidden="true" />
+                  日志
                 </span>
               </template>
             </NTabPane>
             <NTabPane name="events" tab="Events">
               <template #tab>
-                <span class="flex items-center gap-1.5">Events
-                  <NTag size="tiny" round type="warning" v-if="events.length">{{ events.length }}</NTag>
+                <span class="inline-flex items-center gap-1.5 text-[12.5px]">
+                  Events
+                  <span v-if="events.length" class="chip chip--warn">{{ events.length }}</span>
                 </span>
               </template>
             </NTabPane>
           </NTabs>
         </div>
-
         <div v-show="tab === 'logs'" class="border-t border-zinc-800/60">
-          <LogViewer
-            :namespace="namespace"
-            :name="name"
-            :containers="pod.containers.map((c) => c.name)"
-            style="height: calc(100vh - 580px); min-height: 460px;"
-            @lines="(l: LogLine[]) => lines = l"
-          />
+          <LogViewer :namespace="namespace" :name="name"
+                     :containers="pod.containers.map((c) => c.name)"
+                     class="pod-detail-content"
+                     @lines="(l: LogLine[]) => lines = l"
+                     @ask-ai="openAnalyzer" />
         </div>
-
-        <div v-show="tab === 'events'" class="p-5 border-t border-zinc-800/60">
-          <NEmpty v-if="!events.length" description="无相关事件" />
+        <div v-show="tab === 'events'" class="border-t border-zinc-800/60">
+          <EmptyState v-if="!events.length" title="无相关事件" description="此 Pod 没有产生任何事件" class="py-16" />
           <NDataTable
             v-else
             :columns="[
-              { title: '类型', key: 'type', width: 90, render: (r: EventInfo) => h(NTag, { type: r.type === 'Warning' ? 'warning' : 'info', size: 'small', round: true }, () => r.type) },
-              { title: 'Reason', key: 'reason', width: 200, render: (r: EventInfo) => h('span', { class: 'text-zinc-200' }, r.reason) },
+              { title: '类型', key: 'type', width: 90,
+                render: (r: EventInfo) => h('span', { class: r.type === 'Warning' ? 'chip chip--warn' : 'chip chip--info' }, () => r.type) },
+              { title: 'Reason', key: 'reason', width: 200, render: (r: EventInfo) => h('span', { class: 'text-zinc-200 text-[12.5px]' }, r.reason) },
               { title: 'Message', key: 'message' },
               { title: '次数', key: 'count', width: 70, render: (r: EventInfo) => h('span', { class: 'tabular-nums' }, String(r.count)) },
               { title: '最后出现', key: 'last_seen', width: 180, render: (r: EventInfo) => r.last_seen?.slice(11, 19) || '—' },
             ]"
-            :data="events"
-            size="small"
-            :pagination="{ pageSize: 20 }"
-            :bordered="false"
-          />
+            :data="events" size="small" :pagination="{ pageSize: 20 }" :bordered="false" />
         </div>
-      </section>
+      </SectionCard>
     </template>
 
-    <LogAnalyzerDrawer
-      v-model:show="analyzerOpen"
-      :namespace="namespace"
-      :pod-name="name"
-      :log-lines="lines"
-    />
+    <LogAnalyzerDrawer v-model:show="analyzerOpen" :namespace="namespace" :pod-name="name"
+                       :log-lines="lines"
+                       :preset-question="aiPresetQuestion" />
   </div>
 </template>
+
+<style scoped>
+.pod-detail-content {
+  /* Reserve enough vertical space; cap at 60vh so very tall screens still
+     keep the rest of the page in reach. */
+  min-height: 520px;
+  max-height: 70vh;
+}
+</style>

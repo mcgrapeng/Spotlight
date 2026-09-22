@@ -46,7 +46,7 @@ export function usePodList(opts: {
   watch(
     () => [opts.cluster.value, opts.namespace.value, opts.status.value],
     load,
-    { immediate: false },
+    { immediate: true },
   )
   watch(() => opts.search.value, scheduleLoad)
 

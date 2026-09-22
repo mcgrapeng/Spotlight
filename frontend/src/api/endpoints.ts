@@ -6,6 +6,19 @@ import type {
 
 const ctx = (c?: string | null) => ({ params: { context: c || undefined } })
 
+export interface AuthStatus {
+  configured: boolean; available: boolean;
+  proxy: string; user: string; cluster: string;
+}
+
+export const authApi = {
+  status: () => http.get<AuthStatus>('/auth/status').then((r) => r.data),
+  login: (password: string) =>
+    http.post<{ ok: boolean; proxy: string; user: string; cluster: string; message: string }>(
+      '/auth/login', { password },
+    ).then((r) => r.data),
+}
+
 export const clustersApi = {
   list: () => http.get<ClusterInfo[]>('/clusters').then((r) => r.data),
 }
@@ -34,11 +47,16 @@ export const podsApi = {
     http.get<DashboardStats>('/pods/stats', { params: { context: cluster || undefined } }).then((r) => r.data),
   historyLogs: (
     cluster: string | null, namespace: string, name: string,
-    container?: string, tail = 500,
+    container?: string | null, tail = 500, since?: string,
   ) =>
     http.get<{ total: number; items: LogLine[] }>(
       `/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`,
-      { params: { context: cluster || undefined, container, tail_lines: tail } },
+      { params: {
+          context: cluster || undefined,
+          container: container || undefined,
+          tail_lines: tail,
+          since: since || undefined,
+      } },
     ).then((r) => r.data),
 }
 

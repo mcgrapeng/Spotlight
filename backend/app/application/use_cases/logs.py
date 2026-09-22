@@ -18,8 +18,9 @@ class LogUseCases:
 
     def read_history(
         self, ref: ResourceRef, container: str | None, tail: int,
+        since: str | None = None,
     ) -> list[LogStreamParams]:
-        entries = self._repo.read_logs(ref, container, tail, since=None)
+        entries = self._repo.read_logs(ref, container, tail, since=since)
         return [self._enrich(e) for e in entries]
 
     def stream(

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { NSelect, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage } from 'naive-ui'
+import { NSelect, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage, NAlert } from 'naive-ui'
 import { useAIProviders } from '@/composables/useAIProviders'
 import type { AIProviderInput } from '@/domain/types'
 
@@ -36,6 +36,7 @@ const form = ref<AIProviderInput & { id?: number }>({
 
 const providerOptions = PROVIDERS.map((p) => ({ label: p.label, value: p.value }))
 const modelHint = ref<string>('')
+const formError = ref<string | null>(null)
 
 watch(() => form.value.provider, (v) => {
   const p = PROVIDERS.find((x) => x.value === v)
@@ -44,12 +45,13 @@ watch(() => form.value.provider, (v) => {
 
 const saving = ref(false)
 async function submit() {
+  formError.value = null
   if (!form.value.name || !form.value.provider || !form.value.model) {
-    msg.error('name / provider / model 必填')
+    formError.value = 'name / provider / model 必填'
     return
   }
   if (form.value.provider !== 'ollama' && !form.value.api_key && !form.value.id) {
-    msg.error('非 ollama 必须填写 API Key')
+    formError.value = '非 ollama 必须填写 API Key'
     return
   }
   saving.value = true
@@ -64,6 +66,13 @@ async function submit() {
       msg.success('已添加')
     }
     emit('saved')
+  } catch (e: any) {
+    // 409 = single-active constraint; surface the backend message verbatim
+    if (e?.response?.status === 409) {
+      formError.value = e.response.data?.detail || '已有启用的 AI 模型，请先禁用'
+    } else {
+      formError.value = e?.response?.data?.detail ?? e?.message ?? '保存失败'
+    }
   } finally {
     saving.value = false
   }
@@ -72,6 +81,11 @@ async function submit() {
 
 <template>
   <form class="grid grid-cols-2 gap-4" @submit.prevent="submit">
+    <div v-if="formError" class="col-span-2">
+      <NAlert type="error" :title="'保存失败'" closable @close="formError = null">
+        {{ formError }}
+      </NAlert>
+    </div>
     <div>
       <p class="section-title mb-1">显示名</p>
       <NInput v-model:value="form.name" placeholder="my-openai" />
@@ -109,6 +123,7 @@ async function submit() {
         <template #checked>启用</template>
         <template #unchecked>启用</template>
       </NSwitch>
+      <span class="text-[11px] text-zinc-500">开启「启用」会让该 Provider 立即生效（同时只能启用一个）</span>
     </div>
     <div class="col-span-2 flex justify-end gap-2 pt-2">
       <NSpace>

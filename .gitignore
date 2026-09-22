@@ -1,0 +1,53 @@
+# --- Python (FastAPI backend) ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+develop-eggs/
+downloads/
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- Node / Vue / Vite (frontend) ---
+node_modules/
+dist/
+.vite/
+.parcel-cache/
+.npm
+.eslintcache
+*.tsbuildinfo
+.pnpm-store/
+
+# --- Testing ---
+test-results/
+playwright-report/
+coverage/
+
+# --- Logs / OS / Editor ---
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Env files ---
+.env
+.env.*
+!.env.example
+
+# --- Agent / tooling caches ---
+.serena/

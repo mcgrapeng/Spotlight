@@ -1,4 +1,13 @@
-"""AI use cases: provider CRUD + log analysis."""
+"""AI use cases: provider CRUD + log analysis.
+
+Business rules (single source of truth):
+- A provider can be `enabled` only if no other provider is currently `enabled`.
+  At most one active provider at any time.
+- `is_default` is independent of `enabled` (so the UI can show a "default" hint
+  even before the user activates it). At most one default.
+- analyze_logs() rejects disabled or unknown providers; uses the provider row as
+  configured (no fallback).
+"""
 from __future__ import annotations
 
 from app.application.dto import AnalyzeLogsResult
@@ -6,17 +15,28 @@ from app.application.ports.outbound import AIRepositoryPort
 from app.domain.entities.ai import AIAnalysisRequest, AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
 
+class SingleActiveProviderError(ValueError):
+    """Raised when an operation would result in >1 enabled providers."""
+
 
 class AIUseCases:
     def __init__(self, repo: AIRepositoryPort):
         self._repo = repo
 
     async def list_providers(self) -> list[AIProviderConfig]:
-        providers = await self._repo.list_providers()
-        return [p for p in providers if p.enabled]
+        """Return ALL providers (including disabled) so the UI can manage them."""
+        return await self._repo.list_providers()
+
+    async def list_enabled_providers(self) -> list[AIProviderConfig]:
+        """Return only currently-active providers (used for log analysis)."""
+        return [p for p in await self._repo.list_providers() if p.enabled]
 
     async def upsert_provider(self, cfg: AIProviderConfig) -> AIProviderConfig:
         cfg.validate()
+        if cfg.enabled and not await self._can_enable(cfg.id):
+            raise SingleActiveProviderError(
+                "已有启用的 AI 模型，请先禁用后再切换（系统限制同时只可启用一个模型）。"
+            )
         if cfg.id is None:
             return await self._repo.add_provider(cfg)
         return await self._repo.update_provider(cfg)
@@ -49,3 +69,13 @@ class AIUseCases:
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
         )
+
+    async def _can_enable(self, exclude_id: int | None) -> bool:
+        """True if enabling `exclude_id` (None for a new row) keeps active count ≤1."""
+        for p in await self._repo.list_providers():
+            if not p.enabled:
+                continue
+            if exclude_id is not None and p.id == exclude_id:
+                continue
+            return False
+        return True
