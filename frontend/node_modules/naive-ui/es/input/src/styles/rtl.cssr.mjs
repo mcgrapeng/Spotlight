@@ -1,0 +1,19 @@
+import { cB, cE, cM } from "../../../_utils/cssr/index.mjs";
+//#region src/input/src/styles/rtl.cssr.ts
+var rtl_cssr_default = cB("input", [cM("rtl", `
+ direction: rtl;
+ `, [cE("prefix", {
+  marginRight: 0,
+  marginLeft: "4px"
+}), cE("suffix", {
+  marginRight: "4px",
+  marginLeft: 0
+}), cM("textarea", "width: 100%;", [cB("input-word-count", `
+ left: var(--n-padding-right);
+ right: unset;
+ `)]), cB("input-word-count", `
+ margin-left: 0;
+ margin-right: 4px;
+ `)])]);
+//#endregion
+export { rtl_cssr_default as default };

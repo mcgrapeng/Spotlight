@@ -1,0 +1,2 @@
+import _default, { CollapseTransitionProps, collapseTransitionProps } from "./src/CollapseTransition.js";
+export { type CollapseTransitionProps, _default as NCollapseTransition, collapseTransitionProps };

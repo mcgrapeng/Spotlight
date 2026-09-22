@@ -1,0 +1,2 @@
+import _default, { NumberAnimationInst, NumberAnimationProps, numberAnimationProps } from "./src/NumberAnimation.js";
+export { _default as NNumberAnimation, type NumberAnimationInst, type NumberAnimationProps, numberAnimationProps };

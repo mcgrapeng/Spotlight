@@ -1,0 +1,16 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_layout_src_Layout = require("./src/Layout.js");
+const require_layout_src_LayoutContent = require("./src/LayoutContent.js");
+const require_layout_src_LayoutFooter = require("./src/LayoutFooter.js");
+const require_layout_src_LayoutHeader = require("./src/LayoutHeader.js");
+const require_layout_src_LayoutSider = require("./src/LayoutSider.js");
+exports.NLayout = require_layout_src_Layout.default;
+exports.NLayoutContent = require_layout_src_LayoutContent;
+exports.NLayoutFooter = require_layout_src_LayoutFooter.default;
+exports.NLayoutHeader = require_layout_src_LayoutHeader.default;
+exports.NLayoutSider = require_layout_src_LayoutSider.default;
+exports.layoutContentProps = require_layout_src_Layout.layoutProps;
+exports.layoutFooterProps = require_layout_src_LayoutFooter.layoutFooterProps;
+exports.layoutHeaderProps = require_layout_src_LayoutHeader.headerProps;
+exports.layoutProps = require_layout_src_Layout.layoutProps;
+exports.layoutSiderProps = require_layout_src_LayoutSider.layoutSiderProps;

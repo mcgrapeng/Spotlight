@@ -1,0 +1,4 @@
+import { NDateLocale } from "./enUS.js";
+//#region src/locales/date/csCZ.d.ts
+declare const dateCsCZ: NDateLocale;
+export = dateCsCZ;

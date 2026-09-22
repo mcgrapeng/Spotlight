@@ -1,0 +1,2 @@
+const require__internal_icon_switch_transition_src_IconSwitchTransition = require("./src/IconSwitchTransition.js");
+module.exports = require__internal_icon_switch_transition_src_IconSwitchTransition;

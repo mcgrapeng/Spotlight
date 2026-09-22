@@ -1,0 +1,10 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_modal_src_composables = require("./src/composables.js");
+const require_modal_src_Modal = require("./src/Modal.js");
+const require_modal_src_ModalProvider = require("./src/ModalProvider.js");
+exports.NModal = require_modal_src_Modal.default;
+exports.NModalProvider = require_modal_src_ModalProvider.NModalProvider;
+exports.modalProps = require_modal_src_Modal.modalProps;
+exports.modalProviderProps = require_modal_src_ModalProvider.modalProviderProps;
+exports.useModal = require_modal_src_composables.useModal;
+exports.useModalReactiveList = require_modal_src_composables.useModalReactiveList;

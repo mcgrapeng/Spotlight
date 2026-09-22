@@ -1,0 +1,51 @@
+{
+  "name": "vueuc",
+  "version": "0.4.66",
+  "description": "Util Components for Vue",
+  "main": "lib/index.js",
+  "module": "es/index.js",
+  "author": "07akioni",
+  "license": "MIT",
+  "sideEffects": false,
+  "files": [
+    "es",
+    "lib"
+  ],
+  "devDependencies": {
+    "@css-render/vue3-ssr": "^0.15.10",
+    "@vitest/browser-playwright": "^4.1.11",
+    "oxlint": "^1.79.0",
+    "playwright": "^1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.11",
+    "vue": "^3.5.41",
+    "vue-router": "^5.2.0"
+  },
+  "dependencies": {
+    "@css-render/vue3-ssr": "^0.15.10",
+    "@juggle/resize-observer": "^3.3.1",
+    "css-render": "^0.15.10",
+    "evtd": "^0.2.4",
+    "seemly": "^0.3.6",
+    "vdirs": "^0.1.4",
+    "vooks": "^0.2.4"
+  },
+  "peerDependencies": {
+    "vue": "^3.0.11"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "start": "vite",
+    "build:site": "vite build",
+    "build": "tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json",
+    "clean": "rm -rf lib es site",
+    "release": "pnpm run clean && pnpm run build && pnpm publish",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:install-browsers": "playwright install chromium",
+    "lint": "oxlint src"
+  }
+}

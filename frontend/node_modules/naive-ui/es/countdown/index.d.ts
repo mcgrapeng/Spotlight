@@ -1,0 +1,2 @@
+import _default, { CountdownInst, CountdownProps, CountdownTimeInfo, countdownProps } from "./src/Countdown.js";
+export { type CountdownInst, type CountdownProps, type CountdownTimeInfo, _default as NCountdown, countdownProps };

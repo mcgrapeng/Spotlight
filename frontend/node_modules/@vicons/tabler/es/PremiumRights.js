@@ -1,0 +1,14 @@
+import { openBlock as _openBlock, createElementBlock as _createElementBlock, createStaticVNode as _createStaticVNode, defineComponent } from 'vue'
+const _hoisted_1 = {
+  xmlns: 'http://www.w3.org/2000/svg',
+  'xmlns:xlink': 'http://www.w3.org/1999/xlink',
+  viewBox: '0 0 24 24'
+}
+const _hoisted_2 = /*#__PURE__*/ _createStaticVNode('<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M13.867 9.75c-.246-.48-.708-.769-1.2-.75h-1.334C10.597 9 10 9.67 10 10.5c0 .827.597 1.499 1.333 1.499h1.334c.736 0 1.333.671 1.333 1.5c0 .828-.597 1.499-1.333 1.499h-1.334c-.492.019-.954-.27-1.2-.75"></path><path d="M12 7v2"></path><path d="M12 15v2"></path></g>', 1)
+const _hoisted_3 = [_hoisted_2]
+export default defineComponent({
+  name: 'PremiumRights',
+  render: function render(_ctx, _cache) {
+    return _openBlock(), _createElementBlock('svg', _hoisted_1, _hoisted_3)
+  }
+})

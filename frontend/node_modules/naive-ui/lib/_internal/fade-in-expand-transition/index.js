@@ -1,0 +1,2 @@
+const require__internal_fade_in_expand_transition_src_FadeInExpandTransition = require("./src/FadeInExpandTransition.js");
+module.exports = require__internal_fade_in_expand_transition_src_FadeInExpandTransition;

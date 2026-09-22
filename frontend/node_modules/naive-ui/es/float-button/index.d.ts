@@ -1,0 +1,2 @@
+import _default, { FloatButtonProps, FloatButtonSlots, floatButtonProps } from "./src/FloatButton.js";
+export { type FloatButtonProps, type FloatButtonSlots, _default as NFloatButton, floatButtonProps };

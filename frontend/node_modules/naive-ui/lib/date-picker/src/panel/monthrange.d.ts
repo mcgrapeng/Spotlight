@@ -1,0 +1,376 @@
+import { ThemeCommonVars } from "../../../_styles/common/light.js";
+import { InputTheme } from "../../../input/styles/light.js";
+import "../../../input/styles/index.js";
+import { ButtonTheme } from "../../../button/styles/light.js";
+import "../../../button/styles/index.js";
+import { TimePickerTheme } from "../../../time-picker/styles/light.js";
+import "../../../time-picker/styles/index.js";
+import { IsHourDisabled, IsMinuteDisabled, IsSecondDisabled } from "../../../time-picker/src/interface.js";
+import { TimePickerProps } from "../../../time-picker/src/TimePicker.js";
+import { DatePickerThemeVars } from "../../styles/light.js";
+import "../../styles/index.js";
+import { DatePickerSlots } from "../DatePicker.js";
+import { DefaultTime, IsDateDisabled, OnClose, OnPanelUpdateValue, Shortcuts, Value } from "../interface.js";
+import { DateItem, MonthItem, QuarterItem, YearItem } from "../utils.js";
+import "../../../index.js";
+import { ExtractThemeOverrides } from "../../../_mixins/use-theme.js";
+import "../../../_mixins/index.js";
+import { ScrollbarTheme } from "../../../_internal/scrollbar/styles/light.js";
+import "../../../_internal/scrollbar/styles/index.js";
+import { PropType, VNode } from "vue";
+//#region src/date-picker/src/panel/monthrange.d.ts
+declare const _default: import("vue").DefineComponent<import("vue").ExtractPropTypes<{
+  type: {
+    type: PropType<"monthrange" | "yearrange" | "quarterrange">;
+    required: true;
+  };
+  defaultCalendarStartTime: NumberConstructor;
+  defaultCalendarEndTime: NumberConstructor;
+  bindCalendarMonths: BooleanConstructor;
+  actions: {
+    readonly type: PropType<string[]>;
+    readonly default: () => string[];
+  };
+  active: BooleanConstructor;
+  dateFormat: StringConstructor;
+  fastYearSelect: BooleanConstructor;
+  fastMonthSelect: BooleanConstructor;
+  calendarDayFormat: StringConstructor;
+  calendarHeaderYearFormat: StringConstructor;
+  calendarHeaderMonthFormat: StringConstructor;
+  calendarHeaderMonthYearSeparator: {
+    readonly type: StringConstructor;
+    readonly required: true;
+  };
+  calendarHeaderMonthBeforeYear: {
+    readonly type: BooleanConstructor;
+    readonly default: undefined;
+  };
+  timePickerFormat: {
+    readonly type: StringConstructor;
+    readonly value: "HH:mm:ss";
+  };
+  value: {
+    readonly type: PropType<Value | null>;
+    readonly default: null;
+  };
+  shortcuts: PropType<Shortcuts>;
+  defaultTime: PropType<DefaultTime>;
+  inputReadonly: BooleanConstructor;
+  onClear: FunctionConstructor;
+  onConfirm: PropType<(value: Value | null) => void>;
+  onClose: PropType<OnClose>;
+  onTabOut: FunctionConstructor;
+  onKeydown: FunctionConstructor;
+  onSelectYear: FunctionConstructor;
+  onSelectMonth: FunctionConstructor;
+  onUpdateValue: {
+    readonly type: PropType<OnPanelUpdateValue>;
+    readonly required: true;
+  };
+  themeClass: StringConstructor;
+  onRender: PropType<(() => void) | undefined>;
+  panel: BooleanConstructor;
+  onNextMonth: PropType<() => void>;
+  onPrevMonth: PropType<() => void>;
+  onNextYear: PropType<() => void>;
+  onPrevYear: PropType<() => void>;
+}>, {
+  renderItem: (item: YearItem | MonthItem | QuarterItem, i: number, mergedClsPrefix: string, type: "start" | "end") => VNode;
+  startYearVlRef: unknown;
+  endYearVlRef: unknown;
+  startMonthScrollbarRef: unknown;
+  endMonthScrollbarRef: unknown;
+  startYearScrollbarRef: unknown;
+  endYearScrollbarRef: unknown;
+  startDateDisplayString: import("vue").Ref<string, string>;
+  endDateInput: import("vue").Ref<string, string>;
+  timePickerSize: import("vue").Ref<"small" | "medium" | "large", "small" | "medium" | "large">;
+  startTimeValue: import("vue").ComputedRef<number | null>;
+  endTimeValue: import("vue").ComputedRef<number | null>;
+  datePickerSlots: DatePickerSlots;
+  shortcuts: import("vue").ComputedRef<Shortcuts | undefined>;
+  startCalendarDateTime: import("vue").Ref<number, number>;
+  endCalendarDateTime: import("vue").Ref<number, number>;
+  justifyColumnsScrollState: {
+    (value: [number, number], type: "start" | "end"): void;
+    (): void;
+  };
+  handleFocusDetectorFocus: () => void;
+  handleStartTimePickerChange: (value: number | null) => void;
+  handleEndTimePickerChange: (value: number | null) => void;
+  handleStartDateInput: (value: string) => void;
+  handleStartDateInputBlur: () => void;
+  handleEndDateInput: (value: string) => void;
+  handleEndDateInputBlur: () => void;
+  handleStartYearVlScroll: () => void;
+  handleEndYearVlScroll: () => void;
+  virtualListContainer: (type: "start" | "end") => HTMLElement | null;
+  virtualListContent: (type: "start" | "end") => HTMLElement | null;
+  onUpdateStartCalendarValue: (value: number) => void;
+  onUpdateEndCalendarValue: (value: number) => void;
+  isDateDisabled: import("vue").Ref<IsDateDisabled | undefined, IsDateDisabled | undefined>;
+  isStartHourDisabled: import("vue").ComputedRef<IsHourDisabled | undefined>;
+  isEndHourDisabled: import("vue").ComputedRef<IsHourDisabled | undefined>;
+  isStartMinuteDisabled: import("vue").ComputedRef<IsMinuteDisabled | undefined>;
+  isEndMinuteDisabled: import("vue").ComputedRef<IsMinuteDisabled | undefined>;
+  isStartSecondDisabled: import("vue").ComputedRef<IsSecondDisabled | undefined>;
+  isEndSecondDisabled: import("vue").ComputedRef<IsSecondDisabled | undefined>;
+  isStartDateInvalid: import("vue").ComputedRef<boolean>;
+  isEndDateInvalid: import("vue").ComputedRef<boolean>;
+  isStartTimeInvalid: import("vue").ComputedRef<boolean>;
+  isEndTimeInvalid: import("vue").ComputedRef<boolean>;
+  isStartValueInvalid: import("vue").ComputedRef<boolean>;
+  isEndValueInvalid: import("vue").ComputedRef<boolean>;
+  isRangeInvalid: import("vue").ComputedRef<boolean>;
+  mergedTheme: import("vue").Ref<{
+    common: ThemeCommonVars;
+    self: DatePickerThemeVars;
+    peers: {
+      Input: InputTheme;
+      Button: ButtonTheme;
+      TimePicker: TimePickerTheme;
+      Scrollbar: ScrollbarTheme;
+    };
+    peerOverrides: {
+      Input?: {
+        peers?: {
+          Scrollbar?: ExtractThemeOverrides<ScrollbarTheme> | undefined;
+        } | undefined;
+      } | undefined;
+      Button?: {
+        peers?: {
+          [x: string]: any;
+        } | undefined;
+      } | undefined;
+      TimePicker?: {
+        peers?: {
+          Scrollbar?: ExtractThemeOverrides<ScrollbarTheme> | undefined;
+          Button?: ExtractThemeOverrides<ButtonTheme> | undefined;
+          Input?: ExtractThemeOverrides<InputTheme> | undefined;
+        } | undefined;
+      } | undefined;
+      Scrollbar?: {
+        peers?: {
+          [x: string]: any;
+        } | undefined;
+      } | undefined;
+    };
+  }, {
+    common: ThemeCommonVars;
+    self: DatePickerThemeVars;
+    peers: {
+      Input: InputTheme;
+      Button: ButtonTheme;
+      TimePicker: TimePickerTheme;
+      Scrollbar: ScrollbarTheme;
+    };
+    peerOverrides: {
+      Input?: {
+        peers?: {
+          Scrollbar?: ExtractThemeOverrides<ScrollbarTheme> | undefined;
+        } | undefined;
+      } | undefined;
+      Button?: {
+        peers?: {
+          [x: string]: any;
+        } | undefined;
+      } | undefined;
+      TimePicker?: {
+        peers?: {
+          Scrollbar?: ExtractThemeOverrides<ScrollbarTheme> | undefined;
+          Button?: ExtractThemeOverrides<ButtonTheme> | undefined;
+          Input?: ExtractThemeOverrides<InputTheme> | undefined;
+        } | undefined;
+      } | undefined;
+      Scrollbar?: {
+        peers?: {
+          [x: string]: any;
+        } | undefined;
+      } | undefined;
+    };
+  }>;
+  mergedClsPrefix: import("vue").Ref<string, string>;
+  dateFnsOptions: import("vue").ComputedRef<{
+    locale: import("date-fns").Locale;
+  }>;
+  timePickerProps: import("vue").Ref<TimePickerProps | [TimePickerProps, TimePickerProps] | undefined, TimePickerProps | [TimePickerProps, TimePickerProps] | undefined>;
+  selfRef: import("vue").Ref<HTMLElement | null, HTMLElement | null>;
+  locale: import("vue").Ref<{
+    yearFormat: string;
+    monthFormat: string;
+    dayFormat: string;
+    yearTypeFormat: string;
+    monthTypeFormat: string;
+    dateFormat: string;
+    dateTimeFormat: string;
+    quarterFormat: string;
+    weekFormat: string;
+    clear: string;
+    now: string;
+    confirm: string;
+    selectTime: string;
+    selectDate: string;
+    datePlaceholder: string;
+    datetimePlaceholder: string;
+    monthPlaceholder: string;
+    yearPlaceholder: string;
+    quarterPlaceholder: string;
+    weekPlaceholder: string;
+    startDatePlaceholder: string;
+    endDatePlaceholder: string;
+    startDatetimePlaceholder: string;
+    endDatetimePlaceholder: string;
+    startMonthPlaceholder: string;
+    endMonthPlaceholder: string;
+    monthBeforeYear: boolean;
+    firstDayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    today: string;
+  }, {
+    yearFormat: string;
+    monthFormat: string;
+    dayFormat: string;
+    yearTypeFormat: string;
+    monthTypeFormat: string;
+    dateFormat: string;
+    dateTimeFormat: string;
+    quarterFormat: string;
+    weekFormat: string;
+    clear: string;
+    now: string;
+    confirm: string;
+    selectTime: string;
+    selectDate: string;
+    datePlaceholder: string;
+    datetimePlaceholder: string;
+    monthPlaceholder: string;
+    yearPlaceholder: string;
+    quarterPlaceholder: string;
+    weekPlaceholder: string;
+    startDatePlaceholder: string;
+    endDatePlaceholder: string;
+    startDatetimePlaceholder: string;
+    endDatetimePlaceholder: string;
+    startMonthPlaceholder: string;
+    endMonthPlaceholder: string;
+    monthBeforeYear: boolean;
+    firstDayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    today: string;
+  }>;
+  doConfirm: () => void;
+  doClose: (disableUpdateOnClose?: boolean) => void;
+  doUpdateValue: (value: Value | null, doUpdate: boolean) => void;
+  doTabOut: () => void;
+  handleClearClick: () => void;
+  disableTransitionOneTick: () => void;
+  handlePanelKeyDown: (e: KeyboardEvent) => void;
+  handlePanelFocus: (e: FocusEvent) => void;
+  cachePendingValue: () => void;
+  clearPendingValue: () => void;
+  restorePendingValue: () => void;
+  getShortcutValue: (shortcut: Shortcuts[string]) => number | [number, number] | readonly [number, number];
+  handleShortcutMouseleave: () => void;
+  showMonthYearPanel: import("vue").Ref<boolean, boolean>;
+  handleOpenQuickSelectMonthPanel: () => void;
+  startDatesElRef: import("vue").Ref<HTMLElement | null, HTMLElement | null>;
+  endDatesElRef: import("vue").Ref<HTMLElement | null, HTMLElement | null>;
+  handleDateClick: (dateItem: DateItem) => void;
+  handleColItemClick: (dateItem: MonthItem | QuarterItem | YearItem, clickType: "start" | "end") => void;
+  handleDateMouseEnter: (dateItem: DateItem) => void;
+  handleConfirmClick: () => void;
+  startCalendarPrevYear: () => void;
+  startCalendarPrevMonth: () => void;
+  startCalendarNextYear: () => void;
+  startCalendarNextMonth: () => void;
+  endCalendarPrevYear: () => void;
+  endCalendarPrevMonth: () => void;
+  endCalendarNextMonth: () => void;
+  endCalendarNextYear: () => void;
+  mergedIsDateDisabled: (ts: number) => boolean;
+  changeStartEndTime: (startTime: number, endTime: number, source: "shortcutPreview" | "wipPreview" | "done" | "shortcutDone") => void;
+  ranges: import("vue").Ref<Record<string, [number, number]> | undefined, Record<string, [number, number]> | undefined>;
+  calendarMonthBeforeYear: import("vue").ComputedRef<boolean>;
+  startCalendarMonth: import("vue").ComputedRef<string>;
+  startCalendarYear: import("vue").ComputedRef<string>;
+  endCalendarMonth: import("vue").ComputedRef<string>;
+  endCalendarYear: import("vue").ComputedRef<string>;
+  weekdays: import("vue").ComputedRef<string[]>;
+  startDateArray: import("vue").ComputedRef<DateItem[]>;
+  endDateArray: import("vue").ComputedRef<DateItem[]>;
+  startYearArray: import("vue").ComputedRef<YearItem[]>;
+  startMonthArray: import("vue").ComputedRef<MonthItem[]>;
+  startQuarterArray: import("vue").ComputedRef<QuarterItem[]>;
+  endYearArray: import("vue").ComputedRef<YearItem[]>;
+  endMonthArray: import("vue").ComputedRef<MonthItem[]>;
+  endQuarterArray: import("vue").ComputedRef<QuarterItem[]>;
+  isSelecting: import("vue").Ref<boolean, boolean>;
+  handleRangeShortcutMouseenter: (shortcut: Shortcuts[string]) => void;
+  handleRangeShortcutClick: (shortcut: Shortcuts[string]) => void;
+}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<import("vue").ExtractPropTypes<{
+  type: {
+    type: PropType<"monthrange" | "yearrange" | "quarterrange">;
+    required: true;
+  };
+  defaultCalendarStartTime: NumberConstructor;
+  defaultCalendarEndTime: NumberConstructor;
+  bindCalendarMonths: BooleanConstructor;
+  actions: {
+    readonly type: PropType<string[]>;
+    readonly default: () => string[];
+  };
+  active: BooleanConstructor;
+  dateFormat: StringConstructor;
+  fastYearSelect: BooleanConstructor;
+  fastMonthSelect: BooleanConstructor;
+  calendarDayFormat: StringConstructor;
+  calendarHeaderYearFormat: StringConstructor;
+  calendarHeaderMonthFormat: StringConstructor;
+  calendarHeaderMonthYearSeparator: {
+    readonly type: StringConstructor;
+    readonly required: true;
+  };
+  calendarHeaderMonthBeforeYear: {
+    readonly type: BooleanConstructor;
+    readonly default: undefined;
+  };
+  timePickerFormat: {
+    readonly type: StringConstructor;
+    readonly value: "HH:mm:ss";
+  };
+  value: {
+    readonly type: PropType<Value | null>;
+    readonly default: null;
+  };
+  shortcuts: PropType<Shortcuts>;
+  defaultTime: PropType<DefaultTime>;
+  inputReadonly: BooleanConstructor;
+  onClear: FunctionConstructor;
+  onConfirm: PropType<(value: Value | null) => void>;
+  onClose: PropType<OnClose>;
+  onTabOut: FunctionConstructor;
+  onKeydown: FunctionConstructor;
+  onSelectYear: FunctionConstructor;
+  onSelectMonth: FunctionConstructor;
+  onUpdateValue: {
+    readonly type: PropType<OnPanelUpdateValue>;
+    readonly required: true;
+  };
+  themeClass: StringConstructor;
+  onRender: PropType<(() => void) | undefined>;
+  panel: BooleanConstructor;
+  onNextMonth: PropType<() => void>;
+  onPrevMonth: PropType<() => void>;
+  onNextYear: PropType<() => void>;
+  onPrevYear: PropType<() => void>;
+}>> & Readonly<{}>, {
+  value: Value | null;
+  active: boolean;
+  actions: string[];
+  inputReadonly: boolean;
+  fastYearSelect: boolean;
+  fastMonthSelect: boolean;
+  calendarHeaderMonthBeforeYear: boolean;
+  panel: boolean;
+  bindCalendarMonths: boolean;
+}, {}, {}, {}, string, import("vue").ComponentProvideOptions, true, {}, any>;
+export = _default;

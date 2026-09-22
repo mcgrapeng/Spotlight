@@ -1,0 +1,14 @@
+import { openBlock as _openBlock, createElementBlock as _createElementBlock, createStaticVNode as _createStaticVNode, defineComponent } from 'vue'
+const _hoisted_1 = {
+  xmlns: 'http://www.w3.org/2000/svg',
+  'xmlns:xlink': 'http://www.w3.org/1999/xlink',
+  viewBox: '0 0 24 24'
+}
+const _hoisted_2 = /*#__PURE__*/ _createStaticVNode('<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"></path><rect x="4" y="13" width="5" height="7" rx="2"></rect><path d="M17 13h1a2 2 0 0 1 2 2v1m-.589 3.417c-.361.36-.86.583-1.411.583h-1a2 2 0 0 1-2-2v-3"></path><path d="M4 15v-3c0-2.21.896-4.21 2.344-5.658m2.369-1.638A8 8 0 0 1 20 12v3"></path></g>', 1)
+const _hoisted_3 = [_hoisted_2]
+export default defineComponent({
+  name: 'HeadphonesOff',
+  render: function render(_ctx, _cache) {
+    return _openBlock(), _createElementBlock('svg', _hoisted_1, _hoisted_3)
+  }
+})

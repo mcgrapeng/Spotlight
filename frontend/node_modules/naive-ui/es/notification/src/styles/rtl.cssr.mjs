@@ -1,0 +1,25 @@
+import { c, cB, cE, cM } from "../../../_utils/cssr/index.mjs";
+//#region src/notification/src/styles/rtl.cssr.ts
+var rtl_cssr_default = cB("notification", [cM("rtl", `
+ direction: rtl;
+ `, [cB("notification-main", `
+ margin-left: unset;
+ margin-right: 8px;
+ `, [cE("header", `
+ margin: var(--n-icon-margin);
+ margin-right: 0;
+ `)]), cE("avatar", `
+ left: unset;
+ right: var(--n-padding-left);
+ `), cM("show-avatar", [cB("notification-main", `
+ margin-right: 40px;
+ margin-reft: unset;
+ `)]), cM("closable", [cB("notification-main", [c("> *:first-child", `
+ padding-left: 20px;
+ padding-right: unset;
+ `)]), cE("close", `
+ right: unset;
+ left: 0;
+ `)])])]);
+//#endregion
+export { rtl_cssr_default as default };

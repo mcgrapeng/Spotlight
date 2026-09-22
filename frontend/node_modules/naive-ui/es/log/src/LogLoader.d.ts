@@ -1,0 +1,24 @@
+import { LogSpinProps } from "./public-types.js";
+import { PropType } from "vue";
+//#region src/log/src/LogLoader.d.ts
+declare const _default: import("vue").DefineComponent<import("vue").ExtractPropTypes<{
+  clsPrefix: {
+    type: StringConstructor;
+    required: true;
+  };
+  spinProps: PropType<LogSpinProps>;
+}>, {
+  locale: import("vue").Ref<{
+    loading: string;
+  }, {
+    loading: string;
+  }>;
+}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<import("vue").ExtractPropTypes<{
+  clsPrefix: {
+    type: StringConstructor;
+    required: true;
+  };
+  spinProps: PropType<LogSpinProps>;
+}>> & Readonly<{}>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, true, {}, any>;
+//#endregion
+export { _default as default };

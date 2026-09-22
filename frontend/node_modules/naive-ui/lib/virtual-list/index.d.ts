@@ -1,0 +1,2 @@
+import _default, { VirtualListInst, VirtualListProps, virtualListProps } from "./src/VirtualList.js";
+export { _default as NVirtualList, type VirtualListInst, type VirtualListProps, virtualListProps };

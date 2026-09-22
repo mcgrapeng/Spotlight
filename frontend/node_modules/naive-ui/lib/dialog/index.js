@@ -1,0 +1,11 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_dialog_src_composables = require("./src/composables.js");
+const require_dialog_src_dialogProps = require("./src/dialogProps.js");
+const require_dialog_src_Dialog = require("./src/Dialog.js");
+const require_dialog_src_DialogProvider = require("./src/DialogProvider.js");
+exports.NDialog = require_dialog_src_Dialog.NDialog;
+exports.NDialogProvider = require_dialog_src_DialogProvider.NDialogProvider;
+exports.dialogProps = require_dialog_src_dialogProps.dialogProps;
+exports.dialogProviderProps = require_dialog_src_DialogProvider.dialogProviderProps;
+exports.useDialog = require_dialog_src_composables.useDialog;
+exports.useDialogReactiveList = require_dialog_src_composables.useDialogReactiveList;

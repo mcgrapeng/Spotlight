@@ -1,0 +1,14 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_table_src_Table = require("./src/Table.js");
+const require_table_src_Tbody = require("./src/Tbody.js");
+const require_table_src_Td = require("./src/Td.js");
+const require_table_src_Th = require("./src/Th.js");
+const require_table_src_Thead = require("./src/Thead.js");
+const require_table_src_Tr = require("./src/Tr.js");
+exports.NTable = require_table_src_Table.default;
+exports.NTbody = require_table_src_Tbody;
+exports.NTd = require_table_src_Td;
+exports.NTh = require_table_src_Th;
+exports.NThead = require_table_src_Thead;
+exports.NTr = require_table_src_Tr;
+exports.tableProps = require_table_src_Table.tableProps;

@@ -1,0 +1,3 @@
+//#region src/input-otp/src/styles/input-otp-rtl.cssr.d.ts
+declare const _default: import("css-render").CNode;
+export = _default;

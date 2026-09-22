@@ -1,0 +1,14 @@
+import { openBlock as _openBlock, createElementBlock as _createElementBlock, createStaticVNode as _createStaticVNode, defineComponent } from 'vue'
+const _hoisted_1 = {
+  xmlns: 'http://www.w3.org/2000/svg',
+  'xmlns:xlink': 'http://www.w3.org/1999/xlink',
+  viewBox: '0 0 24 24'
+}
+const _hoisted_2 = /*#__PURE__*/ _createStaticVNode('<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 4h10"></path><path d="M17 4v8a5 5 0 0 1-10 0V4"></path><circle cx="5" cy="9" r="2"></circle><circle cx="19" cy="9" r="2"></circle></g>', 1)
+const _hoisted_3 = [_hoisted_2]
+export default defineComponent({
+  name: 'Trophy',
+  render: function render(_ctx, _cache) {
+    return _openBlock(), _createElementBlock('svg', _hoisted_1, _hoisted_3)
+  }
+})

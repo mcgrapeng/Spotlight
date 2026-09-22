@@ -1,0 +1,17 @@
+import { c, cB, cE, cM } from "../../../_utils/cssr/index.mjs";
+//#region src/steps/src/styles/rtl.cssr.ts
+var rtl_cssr_default = c([cB("steps", [cM("rtl", `
+ direction: rtl;
+ text-align: right;
+ `, [cB("step-content", [cB("step-content-header", `
+ margin-left: 0;
+ margin-right: 9px;
+ `), cE("description", `
+ margin-left: 0;
+ margin-right: 9px;
+ `)]), cM("vertical", [c(">", [cB("step", [c(">", [cB("step-indicator", [c(">", [cB("step-splitor", `
+ left: unset;
+ right: calc(var(--n-indicator-size) / 2);
+ `)])])])])])])])])]);
+//#endregion
+export { rtl_cssr_default as default };

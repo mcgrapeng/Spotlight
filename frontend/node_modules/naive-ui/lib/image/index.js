@@ -1,0 +1,10 @@
+Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+const require_image_src_ImagePreview = require("./src/ImagePreview.js");
+const require_image_src_ImageGroup = require("./src/ImageGroup.js");
+const require_image_src_Image = require("./src/Image.js");
+exports.NImage = require_image_src_Image.default;
+exports.NImageGroup = require_image_src_ImageGroup.default;
+exports.NImagePreview = require_image_src_ImagePreview.default;
+exports.imageGroupProps = require_image_src_ImageGroup.imageGroupProps;
+exports.imagePreviewProps = require_image_src_ImagePreview.imagePreviewProps;
+exports.imageProps = require_image_src_Image.imageProps;
