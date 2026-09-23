@@ -41,8 +41,7 @@ function mountLogViewer(props: { preset?: LogLine[] } = {}) {
   return mount({
     components: { NConfigProvider, NMessageProvider, LogViewer },
     setup() {
-      const wrapperRef = ref<any>(null)
-        return { props, wrapperRef }
+      return { props, darkTheme }
     },
     template: `
       <NConfigProvider :theme="darkTheme">
@@ -56,10 +55,6 @@ function mountLogViewer(props: { preset?: LogLine[] } = {}) {
         </NMessageProvider>
       </NConfigProvider>
     `,
-  }, {
-    global: {
-      provide: { props: { preset: props.preset ?? [] } },
-    },
   })
 }
 

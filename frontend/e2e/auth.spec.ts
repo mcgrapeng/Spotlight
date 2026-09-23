@@ -75,13 +75,14 @@ test.describe('Login gate (Teleport tsh)', () => {
     // Submit empty password — should NOT navigate away.
     const loginBtn = page.getByRole('button', { name: '登录' }).first()
     await loginBtn.click()
-    await expect(page).toHaveURL(/\/login$/)
+    // URL may carry ?next=/dashboard query; we only assert it still starts with /login.
+    expect(page.url()).toContain('/login')
 
     // Now submit a wrong password.
     await page.fill('input[type="password"]', 'wrong')
     await loginBtn.click()
     await expect(page.getByText('wrong password')).toBeVisible()
-    await expect(page).toHaveURL(/\/login$/)
+    expect(page.url()).toContain('/login')
 
     // Swap the mock to success.
     await page.unroute('**/api/v1/auth/login')

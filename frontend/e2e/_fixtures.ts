@@ -29,7 +29,7 @@ export async function installApiMocks(page: Page) {
   )
 
   // ── Cluster + namespaces ─────────────────────────────────────────────────
-  await page.route('**/api/v1/clusters', (route) =>
+  await page.route((url) => new URL(url).pathname === '/api/v1/clusters', (route) =>
     route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify([
@@ -38,10 +38,10 @@ export async function installApiMocks(page: Page) {
       ]),
     }),
   )
-  await page.route('**/api/v1/clusters/current', (route) =>
+  await page.route((url) => new URL(url).pathname === '/api/v1/clusters/current', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ name: 'demo-cluster' }) }),
   )
-  await page.route('**/api/v1/namespaces**', (route) =>
+  await page.route((url) => new URL(url).pathname === '/api/v1/namespaces', (route) =>
     route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify([
@@ -79,7 +79,10 @@ export async function installApiMocks(page: Page) {
   )
 
   // ── Dashboard stats ──────────────────────────────────────────────────────
-  await page.route('**/api/v1/pods/stats', (route) =>
+  await page.route((url) => {
+    const u = new URL(url)
+    return u.pathname === '/api/v1/pods/stats'
+  }, (route) =>
     route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({

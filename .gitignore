@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 *.egg-info/
+*.egg
 .eggs/
 build/
 develop-eggs/
@@ -21,6 +22,15 @@ env/
 htmlcov/
 .tox/
 .nox/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- SQLite / DB ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
 
 # --- Node / Vue / Vite (frontend) ---
 node_modules/
@@ -29,25 +39,71 @@ dist/
 .parcel-cache/
 .npm
 .eslintcache
+.stylelintcache
 *.tsbuildinfo
 .pnpm-store/
+.yarn/
+
+# --- Frontend lockfile outputs ---
+.npmrc.local
+.yarnrc.local
 
 # --- Testing ---
 test-results/
 playwright-report/
+playwright/.cache/
 coverage/
+.nyc_output/
 
 # --- Logs / OS / Editor ---
 *.log
+*.pid
+*.seed
+*.pid.lock
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+.bak
+*.bak
 
-# --- Env files ---
+# --- Env / local config ---
 .env
 .env.*
 !.env.example
+*.local
+config.local.*
+settings.local.*
 
 # --- Agent / tooling caches ---
 .serena/
+.codegraph/
+.claude/
+.cursor/
+.aider*
+.continue/
+.cody/
+.windsurf/
+
+# --- Project-local artefacts ---
+.screenshots/
+.worktrees/
+.worktree/
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# --- Build / misc ---
+*.tgz
+.cache/
+.turbo/
+.next/
+.nuxt/
+.svelte-kit/
+out/

@@ -196,8 +196,8 @@ function groupExpanded(entry: { kind: 'group'; firstIndex: number; lines: LogLin
             <option v-for="c in containers" :key="c" :value="c">{{ c }}</option>
           </select>
 
-          <div class="relative flex-1 max-w-sm">
-            <NIcon :component="Search" :size="13" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+          <div class="filter-wrap">
+            <NIcon :component="Search" :size="13" class="filter-icon" aria-hidden="true" />
             <input
               v-model="filter"
               type="text"
@@ -207,7 +207,7 @@ function groupExpanded(entry: { kind: 'group'; firstIndex: number; lines: LogLin
             />
             <button
               v-if="filter"
-              class="absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
+              class="filter-clear"
               type="button"
               aria-label="清空过滤"
               @click="filter = ''"
@@ -216,17 +216,33 @@ function groupExpanded(entry: { kind: 'group'; firstIndex: number; lines: LogLin
             </button>
           </div>
 
-          <!-- Severity quick-pick -->
+          <!-- Severity quick-pick — only the 5 high-signal levels. TRACE/DEBUG/NOTICE
+               are too noisy for a fast filter; users who need them can use the
+               full dropdown filter via URL params. -->
           <div class="lp-sev-group" role="group" aria-label="最低严重级">
             <button
-              v-for="opt in [{label:'ALL', value: null}, ...SEVERITY_OPTIONS]"
-              :key="opt.value ?? 'all'"
+              type="button"
+              :class="['lp-sev', 'lp-sev-all', minSeverity === null && 'lp-sev-active']"
+              data-sev="all"
+              @click="minSeverity = null"
+              :aria-pressed="minSeverity === null"
+              title="所有级别"
+            >ALL</button>
+            <button
+              v-for="opt in [
+                { label: 'INFO', value: 'info' as LogSeverity },
+                { label: 'WARN+', value: 'warn' as LogSeverity },
+                { label: 'ERROR+', value: 'error' as LogSeverity },
+                { label: 'CRITICAL+', value: 'critical' as LogSeverity },
+                { label: 'FATAL', value: 'fatal' as LogSeverity },
+              ]"
+              :key="opt.value"
               type="button"
               :class="['lp-sev', minSeverity === opt.value && 'lp-sev-active']"
-              :data-sev="opt.value ?? 'all'"
-              @click="minSeverity = opt.value as any"
+              :data-sev="opt.value"
+              @click="minSeverity = opt.value"
               :aria-pressed="minSeverity === opt.value"
-            >{{ (opt.label as string).toUpperCase() }}</button>
+            >{{ opt.label }}</button>
           </div>
 
           <label class="lp-toggle">
@@ -445,13 +461,34 @@ function groupExpanded(entry: { kind: 'group'; firstIndex: number; lines: LogLin
 }
 .container-select:focus { border-color: var(--accent); outline: none; }
 
+/* Filter input — explicit flex layout (no absolute positioning) so the
+   parent doesn't overflow. The wrapper is a fixed-width column, NOT
+   `flex-1 max-w-sm`, which was previously causing the input to grow over
+   the severity chip group. */
+.filter-wrap {
+  position: relative;
+  width: 240px; min-width: 160px;
+  display: flex; align-items: center;
+}
+.filter-icon {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  color: var(--fg-3); pointer-events: none;
+}
 .filter-input {
-  width: 100%; height: 28px; padding: 0 28px 0 30px;
+  width: 100%; height: 28px;
+  padding: 0 30px 0 30px;
   background: var(--bg-2); color: var(--fg-1);
   font-size: 12px; font-family: inherit;
   border: 1px solid var(--line-2); border-radius: 5px;
 }
 .filter-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+.filter-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; color: var(--fg-3);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 3px;
+}
+.filter-clear:hover { background: var(--bg-3); color: var(--fg-1); }
 
 .lp-sev-group {
   display: inline-flex; gap: 1px;
@@ -461,14 +498,23 @@ function groupExpanded(entry: { kind: 'group'; firstIndex: number; lines: LogLin
   padding: 1px;
 }
 .lp-sev {
-  padding: 0 7px; height: 22px;
-  font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600;
+  padding: 0 8px; height: 22px; min-width: 28px;
+  font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 600;
   color: var(--fg-3);
   border-radius: 3px;
   transition: background 80ms ease, color 80ms ease;
+  letter-spacing: 0.04em;
 }
-.lp-sev:hover { color: var(--fg-1); background: var(--bg-3); }
-.lp-sev-active { background: var(--accent); color: #fff; }
+.lp-sev:hover:not(.lp-sev-active) { color: var(--fg-1); background: var(--bg-3); }
+.lp-sev-active { background: var(--accent); color: #fff !important; box-shadow: 0 0 0 1px rgba(91,141,239,.4); }
+
+/* Severity-tinted chip variants — each level uses its semantic color */
+.lp-sev[data-sev="all"]:not(.lp-sev-active) { color: var(--fg-2); background: var(--bg-3); font-weight: 700; }
+.lp-sev[data-sev="info"]:not(.lp-sev-active)  { color: #60a5fa; }
+.lp-sev[data-sev="warn"]:not(.lp-sev-active)  { color: #fbbf24; }
+.lp-sev[data-sev="error"]:not(.lp-sev-active) { color: #fb923c; }
+.lp-sev[data-sev="critical"]:not(.lp-sev-active) { color: #f87171; }
+.lp-sev[data-sev="fatal"]:not(.lp-sev-active) { color: #fca5a5; font-weight: 700; }
 
 .lp-toggle {
   display: inline-flex; align-items: center; gap: 4px;

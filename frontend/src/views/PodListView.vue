@@ -2,7 +2,7 @@
 import { computed, h, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NDataTable, NSelect, NInput, NTag, NIcon } from 'naive-ui'
-import { Search, Filter, Refresh, AlertCircle, AlertTriangle } from '@vicons/tabler'
+import { Search, Refresh, AlertCircle, AlertTriangle } from '@vicons/tabler'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import DataToolbar from '@/components/ui/DataToolbar.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -34,27 +34,32 @@ const statusOptions = [
   { label: 'Succeeded', value: 'Succeeded' },
 ]
 
+const subtitle = computed(() => {
+  const ns = cluster.activeNamespace === '_all' ? '所有 namespace' : cluster.activeNamespace
+  return `${data.value.total.toLocaleString()} 个 · ${ns}`
+})
+
 const columns = computed(() => [
   {
     title: 'Pod',
     key: 'name',
     minWidth: 320,
-    sorter: true,
+    sorter: true as const,
     render: (row: PodInfo) =>
-      h('div', { class: 'flex flex-col gap-0.5' }, [
+      h('div', { class: 'flex flex-col gap-0.5 min-w-0' }, [
         h('a', {
-          class: 'text-zinc-100 font-mono text-[13px] hover:text-indigo-400 transition-colors cursor-pointer focus-visible:outline-none focus-visible:text-indigo-400 focus-visible:underline',
+          class: 'text-zinc-100 font-mono text-[13px] hover:text-indigo-400 transition-colors cursor-pointer truncate focus:outline-none focus-visible:text-indigo-400 focus-visible:underline',
           href: `/pods/${encodeURIComponent(row.namespace)}/${encodeURIComponent(row.name)}`,
           'aria-label': `查看 ${row.name} 详情`,
         }, row.name),
         row.owner_kind
-          ? h('span', { class: 'text-[10.5px] text-zinc-500 font-mono' }, `${row.owner_kind}/${row.owner_name}`)
+          ? h('span', { class: 'text-[10.5px] text-zinc-500 font-mono truncate' }, `${row.owner_kind}/${row.owner_name}`)
           : null,
       ]),
   },
-  { title: 'Namespace', key: 'namespace', width: 180,
+  { title: 'Namespace', key: 'namespace', width: 160,
     render: (row: PodInfo) => h('span', { class: 'text-[12px] text-zinc-400 font-mono' }, row.namespace) },
-  { title: 'Status', key: 'phase', width: 180, sorter: true,
+  { title: 'Status', key: 'phase', width: 170, sorter: true as const,
     render: (row: PodInfo) =>
       h('div', { class: 'flex items-center gap-2' }, [
         h(StatusPill, { phase: row.phase, size: 'sm' }),
@@ -94,39 +99,37 @@ const columns = computed(() => [
   { title: 'Node', key: 'node', width: 180,
     render: (row: PodInfo) =>
       row.node
-        ? h('span', { class: 'text-[12px] text-zinc-400 font-mono' }, row.node.split('.')[0])
-        : h('span', { class: 'text-zinc-600' }, '—'),
-  },
-  { title: 'Age', key: 'age', width: 80, sorter: true,
+        ? h('span', { class: 'text-[12px] text-zinc-400 font-mono truncate' }, row.node.split('.')[0])
+        : h('span', { class: 'text-zinc-600' }, '—') },
+  { title: 'Age', key: 'age', width: 80, sorter: true as const,
     render: (row: PodInfo) => h('span', { class: 'text-[12px] text-zinc-500 tabular-nums' }, row.age ?? '—') },
 ])
-
-const subtitle = computed(() =>
-  `${data.value.total} 个 · ${cluster.activeNamespace === '_all' ? '所有 namespace' : cluster.activeNamespace}`,
-)
 </script>
 
 <template>
-  <div class="page space-y-4">
-    <PageHeader title="Pods" :subtitle="subtitle" />
+  <div class="page space-y-5">
+    <PageHeader title="Pods" :subtitle="subtitle">
+      <template #actions>
+        <button class="btn-secondary" @click="reload" :disabled="loading" aria-label="刷新列表">
+          <NIcon :component="Refresh" :size="13" :class="loading ? 'animate-spin' : ''" />
+          刷新
+        </button>
+      </template>
+    </PageHeader>
 
     <DataToolbar label="Pod 列表筛选">
-      <NIcon :component="Filter" :size="13" class="text-zinc-500" />
-      <NSelect v-model:value="statusFilter" :options="statusOptions" size="small" style="width: 120px" aria-label="按状态筛选" />
+      <NIcon :component="Search" :size="13" class="text-zinc-500" />
+      <NSelect v-model:value="statusFilter" :options="statusOptions" size="small" style="width: 130px" aria-label="按状态筛选" />
       <div class="flex-1 max-w-md">
         <NInput v-model:value="search" size="small" placeholder="搜索 pod / container / node" clearable aria-label="搜索">
           <template #prefix><NIcon :component="Search" :size="13" /></template>
         </NInput>
       </div>
-      <button class="btn-secondary" @click="reload" :disabled="loading" aria-label="刷新列表">
-        <NIcon :component="Refresh" :size="13" />
-        刷新
-      </button>
     </DataToolbar>
 
     <ErrorState v-if="error" :message="error" :on-retry="reload" />
 
-    <div v-else class="card card__body--flush overflow-hidden">
+    <div v-else class="card overflow-hidden">
       <EmptyState
         v-if="!loading && !data.items.length"
         title="没有匹配的 Pod"
