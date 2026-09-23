@@ -162,10 +162,11 @@ describe('LogViewer', () => {
     expect(text).toContain('FATAL')
   })
 
-  it('toolbar contains status text and the history loader button', () => {
+  it('toolbar exposes start-tracking button + history-range pills', () => {
     const wrapper = mountLogViewer({ preset: LINES })
-    expect(wrapper.text()).toContain('历史区间')
-    expect(wrapper.text()).toContain('载入历史')
-    expect(wrapper.text()).toContain('缓冲')
+    expect(wrapper.text()).toContain('5m')
+    expect(wrapper.text()).toContain('15m')
+    expect(wrapper.text()).toContain('1h')
+    expect(wrapper.text()).toContain('开始跟踪')
   })
 })

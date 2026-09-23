@@ -54,15 +54,20 @@ async def stream(
     cluster: Optional[str] = Query(default=None),
     container: Optional[str] = Query(default=None),
     tail_lines: int = Query(default=200, ge=10, le=5000),
+    keepalive_seconds: int = Query(default=15, ge=5, le=60),
     uc: LogUseCases = Depends(log_uc),
 ) -> EventSourceResponse:
-    """SSE log stream.
+    """SSE log stream with heartbeat.
 
-    The kubernetes SDK's `Watch.stream` is a **blocking sync** generator that
-    would otherwise pin an entire ASGI worker to one slow client. We push the
-    iteration off the event loop via `asyncio.to_thread` and surface a
-    cancellation flag the generator can poll each yield. When the client
-    disconnects, `request.is_disconnected()` returns True and we stop the watch.
+    Production hardening vs. the v1 implementation:
+    - **Heartbeat** — yield a `: ping` SSE comment every `keepalive_seconds`
+      so reverse proxies (nginx default 60s) don't silently drop the
+      connection during quiet periods.
+    - **Cancellation on disconnect** — `run_in_executor` does not honor
+      cooperative cancellation, so we explicitly poll `request.is_disconnected()`
+      and break the loop when the client goes away.
+    - **End-of-stream always emitted** in the `finally` block so clients
+      see a clean termination instead of a half-flushed buffer.
     """
     ref = ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
 
@@ -75,13 +80,22 @@ async def stream(
                 if await request.is_disconnected():
                     log.info("sse.client.disconnected", pod=f"{namespace}/{name}")
                     break
+                # Race the next() against the keepalive timeout. If the
+                # upstream goes silent for too long we emit a ping so the
+                # proxy doesn't close the connection.
                 try:
-                    entry = await loop.run_in_executor(None, next, sync_iter)
+                    entry = await asyncio.wait_for(
+                        loop.run_in_executor(None, next, sync_iter),
+                        timeout=keepalive_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    yield {"event": "ping", "data": ""}
+                    continue
                 except StopIteration:
                     break
-                except Exception as e:
-                    log.exception("sse.stream.error", error=str(e))
-                    yield {"event": "error", "data": json.dumps({"message": str(e)})}
+                except Exception as exc:
+                    log.exception("sse.stream.error", error=str(exc))
+                    yield {"event": "error", "data": json.dumps({"message": str(exc)})}
                     return
                 yield {
                     "event": "log",

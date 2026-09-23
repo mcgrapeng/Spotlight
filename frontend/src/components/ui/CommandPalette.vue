@@ -61,6 +61,7 @@ const visible = computed(() => show.value)
           ref="inputRef"
           v-model:value="query"
           placeholder="搜索命令、页面、资源…"
+          aria-label="命令面板搜索"
           size="large"
           :bordered="false"
           :input-props="{ autocomplete: 'off', spellcheck: false }"

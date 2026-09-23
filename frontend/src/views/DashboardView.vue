@@ -150,10 +150,14 @@ function goRestartTop() {
     <!-- KPI hero -->
     <template v-else-if="stats">
       <!-- 3-column hero -->
-      <section class="card overflow-hidden">
+      <!-- role="region" + aria-label exposes each metric as a navigable
+           landmark for screen-reader users. -->
+      <section class="card overflow-hidden"
+               role="region"
+               aria-label="集群关键指标">
         <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-zinc-800/60">
           <!-- Health -->
-          <div class="px-7 py-6">
+          <div class="px-7 py-6" role="group" aria-label="集群健康度">
             <div class="flex items-center gap-2">
               <p class="section-title">集群健康度</p>
               <span v-if="healthTone === 'ok'" class="status-dot status-dot--running" aria-hidden="true"></span>
@@ -183,7 +187,7 @@ function goRestartTop() {
           </div>
 
           <!-- Workload -->
-          <div class="px-7 py-6">
+          <div class="px-7 py-6" role="group" aria-label="工作负载">
             <p class="section-title">工作负载</p>
             <div class="flex items-baseline gap-2 mt-3">
               <p class="text-[52px] font-semibold leading-none tabular-nums tracking-tight text-zinc-100">{{ stats.total_pods }}</p>
@@ -208,7 +212,7 @@ function goRestartTop() {
           </div>
 
           <!-- Alerts -->
-          <div class="px-7 py-6">
+          <div class="px-7 py-6" role="group" aria-label="最近告警">
             <p class="section-title">最近告警</p>
             <div class="flex items-baseline gap-2 mt-3">
               <p
@@ -226,11 +230,12 @@ function goRestartTop() {
             </p>
             <button
               v-if="topRestart"
-              class="mt-3 inline-flex items-center gap-1.5 text-[12px] text-zinc-400 hover:text-zinc-100 transition-colors"
+              class="mt-3 inline-flex items-center gap-1.5 text-[12px] text-zinc-400 hover:text-zinc-100 transition-colors focus:outline-none focus-visible:text-indigo-400"
               @click="goRestartTop"
+              :aria-label="`查看重启次数最高的 Pod: ${topRestart.pod}`"
             >
               <span>查看最高重启 Pod</span>
-              <NIcon :component="ArrowRight" :size="12" />
+              <NIcon :component="ArrowRight" :size="12" aria-hidden="true" />
             </button>
           </div>
         </div>
