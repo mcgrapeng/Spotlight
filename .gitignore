@@ -94,6 +94,7 @@ settings.local.*
 .screenshots/
 .worktrees/
 .worktree/
+docs/
 *.tmp
 *.temp
 .tmp/
