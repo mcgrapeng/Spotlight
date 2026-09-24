@@ -1,0 +1,28 @@
+import { defineConfig, devices } from '@playwright/test'
+
+/**
+ * Dev-server E2E config — targets the running `npm run dev -- --port 7003`
+ * instance and the live :8002 backend. No mocks, no preview server, no build.
+ *
+ * Usage:  node_modules/.bin/playwright test --config=playwright.dev.config.ts e2e/logs.spec.ts
+ *
+ * Assumes the dev server is already running (the Plan F / Task 4 brief
+ * provides the exact command).
+ */
+export default defineConfig({
+  testDir: './e2e',
+  testMatch: 'logs.spec.ts',
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
+  retries: 0,
+  workers: 1,
+  reporter: [['list']],
+  use: {
+    baseURL: 'http://127.0.0.1:7003',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+  ],
+})
