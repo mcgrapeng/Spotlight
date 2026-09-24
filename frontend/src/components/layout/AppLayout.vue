@@ -4,17 +4,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
-import CommandPalette from '@/components/ui/CommandPalette.vue'
+import MobileDrawer from './MobileDrawer.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 
 const SIDEBAR_COLLAPSED_KEY = 'k8s-viewer-sidebar-collapsed'
 
 const route = useRoute()
 const router = useRouter()
-const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
 const key = computed(() => route.fullPath)
 
 const collapsed = ref(false)
+const mobileOpen = ref(false)
 const isMobile = useMediaQuery('(max-width: 767px)')
 
 onMounted(() => {
@@ -28,8 +28,6 @@ function toggleCollapsed() {
 }
 
 useKeyboardShortcuts(() => [
-  { combo: 'mod+k', label: 'Command Palette', handler: () => palette.value?.open() },
-  { combo: '?', handler: () => palette.value?.open() },
   { combo: 'g d', handler: () => router.push({ name: 'dashboard' }) },
   { combo: 'g p', handler: () => router.push({ name: 'pods' }) },
   { combo: 'g n', handler: () => router.push({ name: 'nodes' }) },
@@ -46,7 +44,7 @@ useKeyboardShortcuts(() => [
     <header class="shrink-0 border-b border-sidebar-border">
       <AppHeader
           :sidebar-collapsed="collapsed"
-          @open-palette="palette?.open()"
+          @open-mobile-menu="mobileOpen = true"
           @toggle-sidebar="toggleCollapsed"
       />
     </header>
@@ -58,7 +56,7 @@ useKeyboardShortcuts(() => [
         :class="collapsed ? 'w-16' : 'w-[200px]'"
         aria-label="主导航"
       >
-        <AppSidebar />
+        <AppSidebar :collapsed="collapsed" />
       </aside>
 
       <main
@@ -77,5 +75,5 @@ useKeyboardShortcuts(() => [
     </div>
   </div>
 
-  <CommandPalette ref="palette" />
+  <MobileDrawer :open="mobileOpen" @close="mobileOpen = false" />
 </template>
