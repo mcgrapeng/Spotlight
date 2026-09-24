@@ -11,6 +11,17 @@ import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import type { DashboardStats, EventInfo } from '@/domain/types'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/zh-cn'
+
+dayjs.extend(relativeTime)
+dayjs.locale('zh-cn')
+
+function formatRel(iso: string | null) {
+  if (!iso) return '—'
+  return dayjs(iso).fromNow()
+}
 
 const cluster = useClusterStore()
 const stats = ref<DashboardStats | null>(null)
@@ -178,6 +189,9 @@ const criticalText = computed(() => {
                 <span class="text-muted-foreground">{{ ev.namespace }}/</span>
                 <span class="font-medium">{{ ev.involved_name }}</span>
                 <span class="text-muted-foreground ml-2">×{{ ev.count }}</span>
+              </span>
+              <span class="shrink-0 text-2xs text-muted-foreground" :title="ev.last_seen ?? undefined">
+                {{ formatRel(ev.last_seen) }}
               </span>
             </div>
           </div>
