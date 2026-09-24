@@ -52,6 +52,8 @@ const usedPct = (alloc: string, cap: string, parser: (s: string) => number): num
 }
 const cpuPct = (n: NodeInfo) => usedPct(n.cpu_allocatable, n.cpu_capacity, parseNum)
 const memPct = (n: NodeInfo) => usedPct(n.memory_allocatable, n.memory_capacity, parseMem)
+
+const MAX_PODS_PER_NODE = 110
 </script>
 
 <template>
@@ -168,6 +170,17 @@ const memPct = (n: NodeInfo) => usedPct(n.memory_allocatable, n.memory_capacity,
                 :class="cn('h-full transition-all', memPct(n) > 80 ? 'bg-warning' : 'bg-muted-foreground')"
                 :style="{ width: `${memPct(n)}%` }"
               />
+            </div>
+          </div>
+
+          <div class="mt-3 pt-3 border-t border-border">
+            <div class="flex justify-between text-2xs text-muted-foreground mb-1">
+              <span>Pod 利用率</span>
+              <span class="tabular-nums">{{ n.pod_count }}/{{ MAX_PODS_PER_NODE }}</span>
+            </div>
+            <div class="h-1 bg-muted rounded-full overflow-hidden">
+              <div class="h-full bg-foreground transition-all"
+                   :style="{ width: `${Math.min(100, n.pod_count / MAX_PODS_PER_NODE * 100)}%` }" />
             </div>
           </div>
         </CardContent>
