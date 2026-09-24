@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
 import AppHeader from './AppHeader.vue'
@@ -35,6 +35,20 @@ useKeyboardShortcuts(() => [
   { combo: 'g f', handler: () => router.push({ name: 'favorites' }) },
   { combo: 'g a', handler: () => router.push({ name: 'ai' }) },
 ])
+
+function onGlobalKey(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+  const routes: Record<string, string> = {
+    d: 'dashboard', p: 'pods', n: 'nodes', e: 'events', f: 'favorites', a: 'ai',
+  }
+  const name = routes[e.key.toLowerCase()]
+  if (name) { e.preventDefault(); router.push({ name }) }
+}
+
+onMounted(() => document.addEventListener('keydown', onGlobalKey))
+onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
 </script>
 
 <template>
