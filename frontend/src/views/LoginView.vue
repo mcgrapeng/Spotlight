@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogIn, ShieldCheck } from '@lucide/vue'
+import { LogIn, Loader2, ShieldCheck } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -62,7 +62,8 @@ async function submit() {
             {{ auth.error }}
           </p>
           <Button type="submit" class="w-full" :disabled="auth.busy">
-            <LogIn :size="14" :stroke-width="1.75" class="mr-1.5" />
+            <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
+            <LogIn v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
             {{ auth.busy ? '登录中…' : '登录' }}
           </Button>
         </form>
