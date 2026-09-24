@@ -13,7 +13,7 @@ export interface UsePodLogsOptions {
   maxBuffered?: number
 }
 
-const MAX_BUFFERED_DEFAULT = 5000
+const MAX_BUFFERED_DEFAULT = 10000
 const TAIL_LINES_DEFAULT = 500
 
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g
@@ -39,6 +39,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
   const lines = ref<LogLine[]>([])
   const streaming = ref(false)
   const error = ref<string | null>(null)
+  const unreadCount = ref(0)
 
   const max = opts.maxBuffered ?? MAX_BUFFERED_DEFAULT
   const tail = opts.tailLines ?? TAIL_LINES_DEFAULT
@@ -56,6 +57,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     if (!alive || !opts.name.value) return
     closeStream()
     lines.value = []
+    unreadCount.value = 0
     error.value = null
 
     try {
@@ -78,6 +80,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
           })
         }
       }
+      flat.reverse()
       lines.value = flat
     } catch (e: any) {
       if (!alive) return
@@ -101,10 +104,14 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     function flush() {
       rafScheduled = false
       if (pending.length === 0) return
-      lines.value = [...lines.value, ...pending]
+      // Backend yields lines in chronological order (oldest first within batch).
+      // Store newest-first: reverse pending before prepending.
+      const batch = pending.slice().reverse()
+      lines.value = [...batch, ...lines.value]
       if (lines.value.length > max) {
-        lines.value.splice(0, lines.value.length - max)
+        lines.value = lines.value.slice(0, max)
       }
+      unreadCount.value += pending.length
       pending = []
     }
 
@@ -152,7 +159,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     closeStream()
   })
 
-  function clear() { lines.value = [] }
+  function clear() { lines.value = []; unreadCount.value = 0 }
 
-  return { lines, streaming, error, start, close: closeStream, clear }
+  return { lines, streaming, error, unreadCount, start, close: closeStream, clear }
 }

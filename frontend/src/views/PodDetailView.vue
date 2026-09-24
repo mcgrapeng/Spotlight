@@ -30,10 +30,14 @@ const name = computed(() => String(route.params.name ?? ''))
 const namespace = computed(() => String(route.params.namespace ?? cluster.activeNamespace))
 
 const logStreaming = ref(true)
-const { lines: logLines } = usePodLogs({
+const logUnread = ref(0)
+const { lines: logLines, unreadCount } = usePodLogs({
   cluster, namespace, name, enabled: logsTabActive,
   streaming: logStreaming,
 })
+
+// Keep logUnread in sync with composable (it owns the count via SSR appends).
+watch(unreadCount, (v) => { logUnread.value = v }, { immediate: true })
 
 async function load() {
   if (!name.value) return
@@ -50,7 +54,11 @@ async function load() {
 
 onMounted(load)
 watch(() => `${name.value}/${namespace.value}`, load)
-watch(tab, (v) => { logsTabActive.value = v === 'logs' })
+watch(tab, (v) => {
+  logsTabActive.value = v === 'logs'
+  // Coming back to the Logs tab means the user is looking — reset unread pill.
+  if (v === 'logs') logUnread.value = 0
+})
 function back() { router.push({ name: 'pods' }) }
 </script>
 
@@ -140,7 +148,9 @@ function back() { router.push({ name: 'pods' }) }
               <LogViewer
                 :lines="logLines"
                 v-model:streaming="logStreaming"
+                :unread-count="logUnread"
                 @clear="logLines = []"
+                @consume-unread="logUnread = 0"
               />
             </div>
           </TabsContent>
