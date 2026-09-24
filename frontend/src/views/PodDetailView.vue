@@ -36,6 +36,9 @@ const { lines: logLines, unreadCount } = usePodLogs({
   streaming: logStreaming,
 })
 
+const logViewerRef = ref<InstanceType<typeof LogViewer> | null>(null)
+const filteredLogsForAI = computed(() => logViewerRef.value?.filtered ?? [])
+
 // Keep logUnread in sync with composable (it owns the count via SSR appends).
 watch(unreadCount, (v) => { logUnread.value = v }, { immediate: true })
 
@@ -146,6 +149,7 @@ function back() { router.push({ name: 'pods' }) }
             </div>
             <div class="h-[600px]">
               <LogViewer
+                ref="logViewerRef"
                 :lines="logLines"
                 v-model:streaming="logStreaming"
                 :unread-count="logUnread"
@@ -168,7 +172,7 @@ function back() { router.push({ name: 'pods' }) }
 
     <LogAnalyzerDrawer
       v-model:open="analyzerOpen"
-      :log-content="logLines.map(l => l.content).join('\n')"
+      :log-content="filteredLogsForAI.map(l => l.content).join('\n')"
     />
   </div>
 </template>

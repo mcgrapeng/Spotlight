@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight,
   Copy, X, Terminal, Filter,
@@ -7,10 +7,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-
-interface LogLine {
-  timestamp: string; content: string; container: string; severity: string
-}
+import { useLogFilters, SEVERITY_RANK as SEV_RANK } from '@/composables/useLogFilters'
+import type { LogLine } from '@/domain/types'
 
 const props = defineProps<{
   lines: ReadonlyArray<LogLine>
@@ -32,25 +30,16 @@ const searchInput = ref<InstanceType<typeof HTMLInputElement> | null>(null)
 const lastInteraction = ref(Date.now())
 function markInteraction() { lastInteraction.value = Date.now() }
 
-const MAX_FILTERED = 50000
-
 // === Filtering ===
-const SEV_RANK: Record<string, number> = {
-  trace: 0, debug: 0, info: 1, notice: 1,
-  warn: 2, warning: 2, error: 3, err: 3,
-  critical: 4, fatal: 4, alert: 4, emergency: 4,
-  unknown: 0,
-}
-const MIN_SEVERITY = ref(0)
+const minSeverity = ref(0)
 
-const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return props.lines.filter(l => {
-    if (MIN_SEVERITY.value > 0 && (SEV_RANK[l.severity.toLowerCase()] ?? 0) < MIN_SEVERITY.value) return false
-    if (!q) return true
-    return l.content.toLowerCase().includes(q) || l.container.toLowerCase().includes(q)
-  }).slice(0, MAX_FILTERED)
+const { filtered } = useLogFilters({
+  lines: toRef(props, 'lines'),
+  search,
+  minSeverity,
 })
+
+defineExpose({ filtered })
 
 // === Fold duplicate consecutive lines (logreduce-style) ===
 function normalize(text: string): string {
@@ -247,7 +236,7 @@ function togglePause() {
 }
 
 function setSeverity(rank: number) {
-  MIN_SEVERITY.value = MIN_SEVERITY.value === rank ? 0 : rank
+  minSeverity.value = minSeverity.value === rank ? 0 : rank
 }
 
 function clearSearch() {
@@ -263,9 +252,9 @@ function clearSearch() {
         type="button"
         :class="cn(
           'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors text-2xs',
-          MIN_SEVERITY === 0 ? 'border-foreground/40 bg-foreground/5 text-foreground' : 'border-transparent text-muted-foreground hover:bg-accent',
+          minSeverity === 0 ? 'border-foreground/40 bg-foreground/5 text-foreground' : 'border-transparent text-muted-foreground hover:bg-accent',
         )"
-        @click="MIN_SEVERITY = 0"
+        @click="minSeverity = 0"
       >
         <Filter :size="11" :stroke-width="1.75" />
         全部
@@ -279,8 +268,8 @@ function clearSearch() {
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md transition-colors text-2xs',
           'disabled:opacity-30 disabled:cursor-default',
-          MIN_SEVERITY === SEV_RANK[sev] ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-          MIN_SEVERITY !== SEV_RANK[sev] ? (SEV_CLASS[sev] ?? 'text-muted-foreground') : '',
+          minSeverity === SEV_RANK[sev] ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          minSeverity !== SEV_RANK[sev] ? (SEV_CLASS[sev] ?? 'text-muted-foreground') : '',
         )"
         @click="setSeverity(SEV_RANK[sev])"
         :title="`${sev} · ${count.toLocaleString()} 行`"
@@ -445,7 +434,7 @@ function clearSearch() {
     <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
       <span class="tabular-nums">
         <span class="text-foreground font-medium">{{ filtered.length.toLocaleString() }}</span>
-        <span v-if="search || MIN_SEVERITY > 0"> / {{ lines.length.toLocaleString() }}</span>
+        <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
         行
       </span>
       <div class="flex items-center gap-3">
