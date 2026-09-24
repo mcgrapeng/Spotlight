@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, RefreshCw, Bot } from '@lucide/vue'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { usePodLogs } from '@/composables/usePodLogs'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -13,7 +14,7 @@ import LogViewer from '@/components/log/LogViewer.vue'
 import LogAnalyzerDrawer from '@/components/ai/LogAnalyzerDrawer.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
-import type { PodInfo, LogLine } from '@/domain/types'
+import type { PodInfo } from '@/domain/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,11 +23,15 @@ const pod = ref<PodInfo | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const tab = ref('info')
-const logLines = ref<LogLine[]>([])
+const logsTabActive = ref(false)
 const analyzerOpen = ref(false)
 
 const name = computed(() => String(route.params.name ?? ''))
 const namespace = computed(() => String(route.params.namespace ?? cluster.activeNamespace))
+
+const { lines: logLines, streaming: logStreaming } = usePodLogs({
+  cluster, namespace, name, enabled: logsTabActive,
+})
 
 async function load() {
   if (!name.value) return
@@ -43,6 +48,7 @@ async function load() {
 
 onMounted(load)
 watch(() => `${name.value}/${namespace.value}`, load)
+watch(tab, (v) => { logsTabActive.value = v === 'logs' })
 function back() { router.push({ name: 'pods' }) }
 </script>
 
@@ -138,7 +144,7 @@ function back() { router.push({ name: 'pods' }) }
               </Button>
             </div>
             <div class="h-[600px]">
-              <LogViewer :lines="logLines" :streaming="true" @clear="logLines = []" />
+              <LogViewer :lines="logLines" :streaming="logStreaming" @clear="logLines = []" />
             </div>
           </TabsContent>
 
