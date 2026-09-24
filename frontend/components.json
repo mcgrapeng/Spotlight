@@ -9,7 +9,6 @@
     "cssVariables": true,
     "prefix": ""
   },
-  "framework": "vue",
   "aliases": {
     "components": "@/components",
     "utils": "@/utils",
