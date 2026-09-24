@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search, RefreshCw, AlertCircle, AlertTriangle } from '@lucide/vue'
+import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -53,6 +53,23 @@ function nodeShort(p: PodInfo) { return p.node ? p.node.split('.')[0] : null }
 function open(p: PodInfo) {
   router.push({ name: 'pod-detail', params: { namespace: p.namespace, name: p.name } })
 }
+
+const page = ref(1)
+const pageSize = ref(20)
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(data.value.items.length / pageSize.value))
+)
+const pagedPods = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return data.value.items.slice(start, start + pageSize.value)
+})
+
+watch([pageSize, () => data.value.items], () => { page.value = 1 })
+watch(page, (v) => {
+  if (v > totalPages.value) page.value = totalPages.value
+  if (v < 1) page.value = 1
+})
 </script>
 
 <template>
@@ -96,14 +113,14 @@ function open(p: PodInfo) {
         title="没有匹配的 Pod"
         description="调整搜索词或切换 namespace / 状态过滤"
       />
-      <div v-else class="overflow-x-auto">
+      <div v-else class="overflow-auto max-h-[70vh]">
         <table class="w-full text-sm">
-          <thead class="bg-muted/40 border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+          <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
             <tr>
               <th class="text-left font-medium px-4 py-2.5 min-w-[280px]">Pod</th>
               <th class="text-left font-medium px-4 py-2.5">Namespace</th>
               <th class="text-left font-medium px-4 py-2.5 w-[180px]">Status</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[100px]">Containers</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[110px]">Containers</th>
               <th class="text-left font-medium px-4 py-2.5 w-[110px]">Restarts</th>
               <th class="text-left font-medium px-4 py-2.5 w-[180px]">Node</th>
               <th class="text-left font-medium px-4 py-2.5 w-[80px]">Age</th>
@@ -111,7 +128,7 @@ function open(p: PodInfo) {
           </thead>
           <tbody>
             <tr
-              v-for="row in data.items"
+              v-for="row in pagedPods"
               :key="`${row.namespace}/${row.name}`"
               class="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
               tabindex="0"
@@ -130,7 +147,11 @@ function open(p: PodInfo) {
                   >{{ row.owner_kind }}/{{ row.owner_name }}</span>
                 </div>
               </td>
-              <td class="px-4 py-2.5 font-mono text-xs text-muted-foreground">{{ row.namespace }}</td>
+              <td class="px-4 py-2.5">
+                <span class="inline-flex items-center rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                  {{ row.namespace }}
+                </span>
+              </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center gap-2">
                   <PodStatusPill :phase="row.phase" />
@@ -140,9 +161,14 @@ function open(p: PodInfo) {
                   >{{ row.reason }}</span>
                 </div>
               </td>
-              <td class="px-4 py-2.5 tabular-nums text-[12.5px]">
-                <span :class="cn(readyOf(row) === row.containers.length ? 'text-muted-foreground' : 'text-warning')">
-                  {{ readyOf(row) }}<span class="text-muted-foreground/60">/</span>{{ row.containers.length }}
+              <td class="px-4 py-2.5">
+                <span :class="cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums',
+                  readyOf(row) === row.containers.length
+                    ? 'border-success-border bg-success-bg text-success'
+                    : 'border-warning-border bg-warning-bg text-warning',
+                )">
+                  {{ readyOf(row) }}<span class="opacity-60">/</span>{{ row.containers.length }}
                 </span>
               </td>
               <td class="px-4 py-2.5">
@@ -171,11 +197,15 @@ function open(p: PodInfo) {
                 </div>
                 <span v-else class="text-muted-foreground/60 tabular-nums text-[12.5px]">0</span>
               </td>
-              <td class="px-4 py-2.5">
-                <span v-if="nodeShort(row)" class="font-mono text-xs text-muted-foreground truncate">{{ nodeShort(row) }}</span>
+              <td class="px-4 py-2.5 max-w-[180px]">
+                <span
+                  v-if="nodeShort(row)"
+                  class="inline-block max-w-full truncate font-mono text-[11.5px] text-muted-foreground align-bottom"
+                  :title="row.node ?? undefined"
+                >{{ nodeShort(row) }}</span>
                 <span v-else class="text-muted-foreground/60">—</span>
               </td>
-              <td class="px-4 py-2.5 tabular-nums text-xs text-muted-foreground">{{ row.age ?? '—' }}</td>
+              <td class="px-4 py-2.5 tabular-nums text-[11.5px] text-muted-foreground whitespace-nowrap">{{ row.age ?? '—' }}</td>
             </tr>
             <tr v-if="loading && data.items.length === 0">
               <td colspan="7" class="px-4 py-2">
@@ -184,6 +214,48 @@ function open(p: PodInfo) {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Pagination footer -->
+      <div
+        v-if="data.items.length > 0"
+        class="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-muted/20 text-xs text-muted-foreground"
+      >
+        <div class="tabular-nums">
+          第 {{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, data.items.length) }} 条 /
+          共 {{ data.items.length.toLocaleString() }} 条
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1.5">
+            <span>每页</span>
+            <select
+              v-model.number="pageSize"
+              class="h-7 rounded-md border border-input bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="每页条数"
+            >
+              <option v-for="n in [10, 20, 50, 100]" :key="n" :value="n">{{ n }}</option>
+            </select>
+          </label>
+          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            :disabled="page <= 1"
+            aria-label="上一页"
+            @click="page = page - 1"
+          >
+            <ChevronLeft :size="14" :stroke-width="1.75" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            :disabled="page >= totalPages"
+            aria-label="下一页"
+            @click="page = page + 1"
+          >
+            <ChevronRight :size="14" :stroke-width="1.75" />
+          </Button>
+        </div>
       </div>
     </Card>
   </div>
