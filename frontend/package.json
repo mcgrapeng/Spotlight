@@ -31,6 +31,7 @@
     "vue-sonner": "2.0.9"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "@types/node": "22.20.4",
     "@vitejs/plugin-vue": "^5.2.1",
