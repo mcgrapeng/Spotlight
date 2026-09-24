@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Menu, PanelLeftClose, PanelLeftOpen, Sparkles } from '@lucide/vue'
+import { Menu, PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
@@ -58,28 +58,5 @@ defineEmits<{
     </div>
 
     <div class="flex-1" />
-
-    <Button
-      variant="gradient"
-      size="sm"
-      class="hidden sm:inline-flex"
-      as-child
-    >
-      <router-link to="/ai">
-        <Sparkles :size="14" :stroke-width="1.75" aria-hidden="true" />
-        <span>AI 助手</span>
-      </router-link>
-    </Button>
-    <Button
-      variant="gradient"
-      size="icon-sm"
-      class="sm:hidden"
-      aria-label="AI 助手"
-      as-child
-    >
-      <router-link to="/ai">
-        <Sparkles :size="16" :stroke-width="1.75" aria-hidden="true" />
-      </router-link>
-    </Button>
   </div>
 </template>
