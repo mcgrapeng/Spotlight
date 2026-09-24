@@ -8,6 +8,7 @@ export interface UsePodLogsOptions {
   namespace: Ref<string>
   name: Ref<string>
   enabled: Ref<boolean>
+  streaming?: Ref<boolean>
   tailLines?: number
   maxBuffered?: number
 }
@@ -125,6 +126,12 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     },
     { immediate: true },
   )
+
+  watch(() => opts.streaming?.value, (s) => {
+    if (!alive || s === undefined) return
+    if (s === false) closeStream()
+    else if (opts.enabled.value) start()
+  })
 
   onBeforeUnmount(() => {
     alive = false

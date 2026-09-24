@@ -144,7 +144,11 @@ function back() { router.push({ name: 'pods' }) }
               </Button>
             </div>
             <div class="h-[600px]">
-              <LogViewer :lines="logLines" :streaming="logStreaming" @clear="logLines = []" />
+              <LogViewer
+                :lines="logLines"
+                v-model:streaming="logStreaming"
+                @clear="logLines = []"
+              />
             </div>
           </TabsContent>
 
