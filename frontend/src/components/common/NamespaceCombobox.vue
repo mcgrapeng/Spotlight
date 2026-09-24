@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { Check, ChevronsUpDown, Layers } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from '@/components/ui/command'
+import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from '@/components/ui/command'
 import { useClusterStore } from '@/stores/cluster'
 
 const cluster = useClusterStore()
@@ -59,26 +59,28 @@ function selectNamespace(name: string) {
         <CommandInput placeholder="搜索 namespace…" />
         <CommandList>
           <CommandEmpty>没有匹配的 namespace</CommandEmpty>
-          <CommandItem
-            v-for="opt in options"
-            :key="opt.value"
-            :value="opt.value"
-            @select="selectNamespace(opt.value)"
-          >
-            <Check
-              :size="14"
-              :stroke-width="2"
-              :class="cn('shrink-0', value === opt.value ? 'opacity-100' : 'opacity-0')"
-              aria-hidden="true"
-            />
-            <span class="truncate flex-1">{{ opt.label }}</span>
-            <span
-              v-if="opt.hint"
-              class="text-2xs uppercase tracking-wide text-muted-foreground"
+          <CommandGroup>
+            <CommandItem
+              v-for="opt in options"
+              :key="opt.value"
+              :value="opt.value"
+              @select="selectNamespace(opt.value)"
             >
-              {{ opt.hint }}
-            </span>
-          </CommandItem>
+              <Check
+                :size="14"
+                :stroke-width="2"
+                :class="cn('shrink-0', value === opt.value ? 'opacity-100' : 'opacity-0')"
+                aria-hidden="true"
+              />
+              <span class="truncate flex-1">{{ opt.label }}</span>
+              <span
+                v-if="opt.hint"
+                class="text-2xs uppercase tracking-wide text-muted-foreground"
+              >
+                {{ opt.hint }}
+              </span>
+            </CommandItem>
+          </CommandGroup>
         </CommandList>
       </Command>
     </PopoverContent>
