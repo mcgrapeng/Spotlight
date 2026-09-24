@@ -15,6 +15,15 @@ export interface UsePodLogsOptions {
 const MAX_BUFFERED_DEFAULT = 5000
 const TAIL_LINES_DEFAULT = 500
 
+const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g
+function stripAnsi(s: string): string {
+  return s.replace(ANSI_RE, '')
+}
+
+function splitLogLines(raw: string): string[] {
+  return stripAnsi(raw).split('\n').filter(l => l.length > 0)
+}
+
 /**
  * Pod logs composable.
  *
@@ -56,7 +65,19 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         null, tail,
       )
       if (!alive) return
-      lines.value = items.length > max ? items.slice(-max) : items
+      const flat: LogLine[] = []
+      for (const item of items.slice(-max)) {
+        const lines_ = splitLogLines(item.content)
+        for (const content of lines_) {
+          flat.push({
+            timestamp: item.timestamp,
+            content,
+            container: item.container || '—',
+            severity: item.severity || 'info',
+          })
+        }
+      }
+      lines.value = flat
     } catch (e: any) {
       if (!alive) return
       error.value = e?.response?.data?.detail ?? e?.message ?? '日志加载失败'
@@ -76,8 +97,13 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     es.addEventListener('log', (e) => {
       if (!alive) return
       try {
-        const line: LogLine = JSON.parse((e as MessageEvent).data)
-        lines.value = [...lines.value, line]
+        const raw = JSON.parse((e as MessageEvent).data) as LogLine
+        const container = raw.container || '—'
+        const severity = raw.severity || 'info'
+        const chunks = splitLogLines(raw.content)
+        for (const content of chunks) {
+          lines.value = [...lines.value, { timestamp: raw.timestamp, content, container, severity }]
+        }
         if (lines.value.length > max) {
           lines.value.splice(0, lines.value.length - max)
         }
