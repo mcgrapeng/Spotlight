@@ -34,6 +34,11 @@ const form = ref<AIProviderInput>({
   is_default: props.initial?.is_default ?? false,
 })
 
+const apiBaseInput = computed<string>({
+  get: () => form.value.api_base ?? '',
+  set: (v: string) => { form.value.api_base = v || null },
+})
+
 const providerOptions = [
   { value: 'openai',    label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
@@ -92,7 +97,7 @@ function close() {
 
         <div class="grid gap-1.5">
           <label class="text-sm font-medium" for="provider-base">Base URL（可选）</label>
-          <Input id="provider-base" v-model="form.api_base" placeholder="https://api.openai.com/v1" />
+          <Input id="provider-base" v-model="apiBaseInput" placeholder="https://api.openai.com/v1" />
         </div>
 
         <label class="flex items-center gap-2 text-sm">
