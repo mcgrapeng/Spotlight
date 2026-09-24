@@ -67,9 +67,14 @@ const pagedPods = computed(() => {
 
 watch([pageSize, () => data.value.items], () => { page.value = 1 })
 watch(page, (v) => {
-  if (v > totalPages.value) page.value = totalPages.value
-  if (v < 1) page.value = 1
-})
+  if (!data.value.items.length) {
+    page.value = 1
+    return
+  }
+  const max = Math.max(1, Math.ceil(data.value.items.length / pageSize.value))
+  if (v > max) page.value = max
+  if (v < 1)   page.value = 1
+}, { immediate: true })
 </script>
 
 <template>

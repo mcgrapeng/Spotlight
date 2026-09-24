@@ -32,6 +32,7 @@ export const podsApi = {
   list: (params: {
     cluster?: string | null; namespace?: string | null;
     status?: string; search?: string; labelSelector?: string;
+    signal?: AbortSignal;
   }) =>
     http.get<PodListResponse>('/pods', {
       params: {
@@ -40,6 +41,7 @@ export const podsApi = {
         status: params.status, search: params.search,
         label_selector: params.labelSelector,
       },
+      signal: params.signal,
     }).then((r) => r.data),
   get: (cluster: string | null, namespace: string, name: string) =>
     http.get<PodInfo>(`/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, ctx(cluster)).then((r) => r.data),
