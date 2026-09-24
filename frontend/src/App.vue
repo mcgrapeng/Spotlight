@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { Toaster } from '@/components/ui/sonner'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import CommandPalette from '@/components/layout/CommandPalette.vue'
+import CommandPalette from '@/components/ui/CommandPalette.vue'
 import { useClusterStore } from '@/stores/cluster'
 
 const cluster = useClusterStore()
