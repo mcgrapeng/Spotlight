@@ -99,10 +99,10 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     streaming.value = true
 
     let pending: LogLine[] = []
-    let rafScheduled = false
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
 
     function flush() {
-      rafScheduled = false
+      flushTimer = null
       if (pending.length === 0) return
       // Backend yields lines in chronological order (oldest first within batch).
       // Store newest-first: reverse pending before prepending.
@@ -125,9 +125,8 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         for (const content of chunks) {
           pending.push({ timestamp: raw.timestamp, content, container, severity })
         }
-        if (!rafScheduled) {
-          rafScheduled = true
-          requestAnimationFrame(flush)
+        if (!flushTimer) {
+          flushTimer = setTimeout(flush, 100)
         }
       } catch (err) { console.error('parse log', err) }
     })

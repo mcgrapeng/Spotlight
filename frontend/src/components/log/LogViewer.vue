@@ -29,6 +29,8 @@ const search = ref('')
 const autoFollow = ref(true)
 const scrollEl = ref<HTMLElement | null>(null)
 const searchInput = ref<InstanceType<typeof HTMLInputElement> | null>(null)
+const lastInteraction = ref(Date.now())
+function markInteraction() { lastInteraction.value = Date.now() }
 
 const LINE_HEIGHT = 22
 const BUFFER = 50
@@ -81,18 +83,28 @@ function recomputeVisible() {
 
 function jumpToTop() {
   if (!scrollEl.value) return
-  scrollEl.value.scrollTop = 0
+  scrollEl.value.scrollTo({ top: 0, behavior: 'smooth' })
   recomputeVisible()
 }
 
 watch(filtered, () => {
-  if (autoFollow.value) jumpToTop()
-  else recomputeVisible()
+  const recentlyWatched = Date.now() - lastInteraction.value < 3000
+  const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
+  if (autoFollow.value && recentlyWatched && wasNearTop) {
+    jumpToTop()
+  } else {
+    recomputeVisible()
+  }
 })
 
 watch(() => props.lines.length, () => {
-  if (autoFollow.value) jumpToTop()
-  else recomputeVisible()
+  const recentlyWatched = Date.now() - lastInteraction.value < 3000
+  const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
+  if (autoFollow.value && recentlyWatched && wasNearTop) {
+    jumpToTop()
+  } else {
+    recomputeVisible()
+  }
 })
 
 function onScroll() {
@@ -326,11 +338,12 @@ function clearSearch() {
     <!-- Virtualized log area (NEWEST AT TOP) -->
     <div
       ref="scrollEl"
-      class="flex-1 overflow-auto bg-background relative"
+      class="flex-1 overflow-auto bg-background relative scroll-smooth"
       role="log"
       aria-live="polite"
       aria-label="日志输出（最新在上）"
-      @scroll.passive="onScroll"
+      @mouseenter="markInteraction"
+      @scroll="(e) => { onScroll(); markInteraction() }"
     >
       <!-- "N new" pill when auto-follow is off and new lines arrived -->
       <button
