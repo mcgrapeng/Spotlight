@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Server, Cpu, Stack } from '@vicons/tabler'
-import PageHeader from '@/components/ui/PageHeader.vue'
-import EmptyState from '@/components/ui/EmptyState.vue'
-import LoadingState from '@/components/ui/LoadingState.vue'
-import ErrorState from '@/components/ui/ErrorState.vue'
+import { RefreshCw, Server, Cpu, MemoryStick, Box } from '@lucide/vue'
+import PageHeader from '@/components/common/PageHeader.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import StatusPill from '@/components/common/StatusPill.vue'
+import StatCard from '@/components/common/StatCard.vue'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { nodesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import type { NodeInfo } from '@/domain/types'
@@ -12,159 +17,161 @@ import type { NodeInfo } from '@/domain/types'
 const cluster = useClusterStore()
 const nodes = ref<NodeInfo[]>([])
 const loading = ref(true)
-const errorMsg = ref<string | null>(null)
+const error = ref<string | null>(null)
 
 async function load() {
   if (!cluster.activeCluster) return
   loading.value = true
-  errorMsg.value = null
-  try { nodes.value = await nodesApi.list(cluster.activeCluster) }
-  catch (e: any) { errorMsg.value = e?.response?.data?.detail ?? e?.message ?? '加载失败' }
-  finally { loading.value = false }
+  error.value = null
+  try {
+    nodes.value = await nodesApi.list(cluster.activeCluster)
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+  } finally {
+    loading.value = false
+  }
 }
 onMounted(load)
 watch(() => cluster.activeCluster, load)
 
 const ready = computed(() => nodes.value.filter((n) => n.status === 'Ready').length)
 const notReady = computed(() => nodes.value.length - ready.value)
+const totalPods = computed(() => nodes.value.reduce((sum, n) => sum + n.pod_count, 0))
 const subtitle = computed(() => {
   const total = nodes.value.length
-  if (total === 0) return '尚无节点'
+  if (!total) return '尚无节点'
   const pct = Math.round((ready.value / total) * 100)
   return `${total} 个节点 · ${ready.value} Ready · ${pct}% 在线`
 })
 
-function parseNum(s: string): number { return parseFloat(s) || 0 }
-function parseMem(s: string): number { return parseFloat(s.replace(/[^0-9.]/g, '')) || 0 }
-
-function cpuUsedPct(n: NodeInfo): number {
-  const cap = parseNum(n.cpu_capacity)
-  if (!cap) return 0
-  return Math.min(100, Math.round(((cap - parseNum(n.cpu_allocatable)) / cap) * 100))
+const parseNum = (s: string): number => parseFloat(s) || 0
+const parseMem = (s: string): number => parseFloat(s.replace(/[^0-9.]/g, '')) || 0
+const usedPct = (alloc: string, cap: string, parser: (s: string) => number): number => {
+  const total = parser(cap)
+  if (!total) return 0
+  return Math.min(100, Math.round(((total - parser(alloc)) / total) * 100))
 }
-function memUsedPct(n: NodeInfo): number {
-  const cap = parseMem(n.memory_capacity)
-  if (!cap) return 0
-  return Math.min(100, Math.round(((cap - parseMem(n.memory_allocatable)) / cap) * 100))
-}
+const cpuPct = (n: NodeInfo) => usedPct(n.cpu_allocatable, n.cpu_capacity, parseNum)
+const memPct = (n: NodeInfo) => usedPct(n.memory_allocatable, n.memory_capacity, parseMem)
 </script>
 
 <template>
-  <div class="page space-y-5">
-    <PageHeader title="Nodes" :subtitle="subtitle" />
+  <div class="space-y-5">
+    <PageHeader title="Nodes" :subtitle="subtitle">
+      <template #actions>
+        <Button variant="outline" size="sm" :disabled="loading" @click="load" aria-label="刷新节点列表">
+          <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
+          刷新
+        </Button>
+      </template>
+    </PageHeader>
 
-    <!-- Summary KPI row -->
-    <section v-if="!loading && nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="card px-5 py-4">
-        <p class="section-title">节点总数</p>
-        <p class="mt-2 text-[28px] font-semibold leading-none tabular-nums text-zinc-100">{{ nodes.length }}</p>
-      </div>
-      <div class="card px-5 py-4">
-        <p class="section-title flex items-center gap-1.5">
-          <span class="status-dot status-dot--ready" aria-hidden="true"></span>
-          Ready
-        </p>
-        <p class="mt-2 text-[28px] font-semibold leading-none tabular-nums text-emerald-400">{{ ready }}</p>
-      </div>
-      <div class="card px-5 py-4">
-        <p class="section-title flex items-center gap-1.5">
-          <span class="status-dot status-dot--failed" aria-hidden="true"></span>
-          NotReady
-        </p>
-        <p class="mt-2 text-[28px] font-semibold leading-none tabular-nums" :class="notReady ? 'text-red-400' : 'text-zinc-500'">{{ notReady }}</p>
-      </div>
-      <div class="card px-5 py-4">
-        <p class="section-title">Pod 总数</p>
-        <p class="mt-2 text-[28px] font-semibold leading-none tabular-nums text-zinc-100">{{ nodes.reduce((n, x) => n + x.pod_count, 0) }}</p>
-      </div>
-    </section>
+    <div v-if="!loading && nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <StatCard label="节点总数" :value="nodes.length" />
+      <StatCard label="Ready" :value="ready" :hint="`${notReady} 未就绪`" />
+      <StatCard label="NotReady" :value="notReady" />
+      <StatCard label="Pod 总数" :value="totalPods" />
+    </div>
 
-    <ErrorState v-if="errorMsg" :message="errorMsg" :on-retry="load" />
+    <ErrorState v-if="error" :message="error" @retry="load" />
 
-    <!-- Node cards grid -->
-    <section v-else-if="!loading && nodes.length" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-      <article
-        v-for="n in nodes"
-        :key="n.name"
-        class="card p-5 transition-colors hover:border-zinc-700"
-        :class="n.status === 'Ready' ? '' : 'border-amber-500/40'"
-        :aria-label="`Node ${n.name}`"
-      >
-        <header class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span
-                :class="['w-2 h-2 rounded-full shrink-0',
-                  n.status === 'Ready' ? 'bg-emerald-500' : 'bg-red-500']"
-                aria-hidden="true"
-              />
-              <h3 class="text-[14px] font-semibold text-zinc-100 font-mono truncate">{{ n.name }}</h3>
+    <div
+      v-else-if="!loading && nodes.length"
+      class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
+    >
+      <Card v-for="n in nodes" :key="n.name" class="p-0">
+        <CardContent class="p-5 space-y-4">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <Server :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+                <h3 class="text-sm font-semibold font-mono truncate">{{ n.name }}</h3>
+              </div>
+              <p class="mt-1 text-2xs text-muted-foreground font-mono">v{{ n.kubelet_version }}</p>
             </div>
-            <p class="mt-1 text-[11px] text-zinc-500 font-mono truncate">v{{ n.kubelet_version }}</p>
+            <StatusPill
+              :variant="n.status === 'Ready' ? 'running' : 'failed'"
+              :label="n.status"
+            />
           </div>
-          <span :class="['chip', n.status === 'Ready' ? 'chip--ok' : 'chip--err']">{{ n.status }}</span>
-        </header>
 
-        <div class="mt-3 flex flex-wrap gap-1.5">
-          <span
-            v-for="role in n.roles"
-            :key="role"
-            :class="['chip', role === 'control-plane' ? 'chip--warn' : 'chip--info']"
-          >{{ role }}</span>
-        </div>
+          <div v-if="n.roles.length" class="flex flex-wrap gap-1.5">
+            <span
+              v-for="role in n.roles"
+              :key="role"
+              :class="cn(
+                'inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-medium border',
+                role === 'control-plane'
+                  ? 'bg-warning-bg text-warning border-warning-border'
+                  : 'bg-muted text-muted-foreground border-border',
+              )"
+            >{{ role }}</span>
+          </div>
 
-        <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[12px]">
+          <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Box :size="12" :stroke-width="1.75" />
+                Pods
+              </div>
+              <div class="text-xl font-semibold tabular-nums">{{ n.pod_count }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-muted-foreground mb-1">Age</div>
+              <div class="text-sm tabular-nums">{{ n.age ?? '—' }}</div>
+            </div>
+          </div>
+
           <div>
-            <dt class="section-title">Pods</dt>
-            <dd class="mt-1 text-[20px] font-semibold tabular-nums text-zinc-100">{{ n.pod_count }}</dd>
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="flex items-center gap-1.5 text-muted-foreground">
+                <Cpu :size="12" :stroke-width="1.75" />
+                <span class="font-mono">{{ n.cpu_allocatable }} / {{ n.cpu_capacity }}</span>
+              </span>
+              <span
+                :class="cn(
+                  'font-mono tabular-nums',
+                  cpuPct(n) > 80 ? 'text-warning' : 'text-muted-foreground',
+                )"
+              >{{ cpuPct(n) }}%</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-muted overflow-hidden" :aria-label="`CPU ${cpuPct(n)}%`">
+              <div
+                :class="cn('h-full transition-all', cpuPct(n) > 80 ? 'bg-warning' : 'bg-foreground')"
+                :style="{ width: `${cpuPct(n)}%` }"
+              />
+            </div>
           </div>
+
           <div>
-            <dt class="section-title">Age</dt>
-            <dd class="mt-1 text-[14px] tabular-nums text-zinc-300">{{ n.age ?? '—' }}</dd>
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="flex items-center gap-1.5 text-muted-foreground">
+                <MemoryStick :size="12" :stroke-width="1.75" />
+                <span class="font-mono">{{ n.memory_allocatable }} / {{ n.memory_capacity }}</span>
+              </span>
+              <span
+                :class="cn(
+                  'font-mono tabular-nums',
+                  memPct(n) > 80 ? 'text-warning' : 'text-muted-foreground',
+                )"
+              >{{ memPct(n) }}%</span>
+            </div>
+            <div class="h-1.5 rounded-full bg-muted overflow-hidden" :aria-label="`内存 ${memPct(n)}%`">
+              <div
+                :class="cn('h-full transition-all', memPct(n) > 80 ? 'bg-warning' : 'bg-muted-foreground')"
+                :style="{ width: `${memPct(n)}%` }"
+              />
+            </div>
           </div>
-        </dl>
+        </CardContent>
+      </Card>
+    </div>
 
-        <!-- CPU bar -->
-        <div class="mt-4">
-          <div class="flex items-center justify-between text-[11px] text-zinc-500 mb-1.5">
-            <span class="flex items-center gap-1.5">
-              <span class="text-zinc-400">CPU</span>
-              <span class="font-mono tabular-nums">{{ n.cpu_allocatable }}</span>
-              <span class="text-zinc-600">/</span>
-              <span class="font-mono tabular-nums">{{ n.cpu_capacity }}</span>
-            </span>
-            <span class="font-mono tabular-nums" :class="cpuUsedPct(n) > 80 ? 'text-amber-400' : 'text-zinc-400'">{{ cpuUsedPct(n) }}% 已用</span>
-          </div>
-          <div class="h-1.5 rounded-full bg-zinc-800 overflow-hidden" :aria-label="`CPU ${cpuUsedPct(n)}%`">
-            <div
-              class="h-full transition-all duration-300"
-              :style="{ width: `${cpuUsedPct(n)}%`, background: cpuUsedPct(n) > 80 ? 'var(--warn)' : 'var(--ok)' }"
-            ></div>
-          </div>
-        </div>
-
-        <!-- Memory bar -->
-        <div class="mt-3">
-          <div class="flex items-center justify-between text-[11px] text-zinc-500 mb-1.5">
-            <span class="flex items-center gap-1.5">
-              <span class="text-zinc-400">内存</span>
-              <span class="font-mono tabular-nums">{{ n.memory_allocatable }}</span>
-              <span class="text-zinc-600">/</span>
-              <span class="font-mono tabular-nums">{{ n.memory_capacity }}</span>
-            </span>
-            <span class="font-mono tabular-nums" :class="memUsedPct(n) > 80 ? 'text-amber-400' : 'text-zinc-400'">{{ memUsedPct(n) }}% 已用</span>
-          </div>
-          <div class="h-1.5 rounded-full bg-zinc-800 overflow-hidden" :aria-label="`内存 ${memUsedPct(n)}%`">
-            <div
-              class="h-full transition-all duration-300"
-              :style="{ width: `${memUsedPct(n)}%`, background: memUsedPct(n) > 80 ? 'var(--warn)' : 'var(--info)' }"
-            ></div>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <LoadingState v-else-if="loading" variant="skeleton" :rows="3" height="160px" />
-    <EmptyState v-else :icon="Server" title="没有节点" description="当前集群尚未注册任何 Node" />
+    <LoadingState v-else-if="loading" message="加载节点…" />
+    <EmptyState v-else title="没有节点" description="当前集群尚未注册任何 Node">
+      <template #icon>
+        <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />
+      </template>
+    </EmptyState>
   </div>
 </template>
