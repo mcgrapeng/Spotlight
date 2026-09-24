@@ -23,7 +23,7 @@ const pod = ref<PodInfo | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const tab = ref('logs')
-const logsTabActive = ref(false)
+const logsTabActive = ref(tab.value === 'logs')
 const analyzerOpen = ref(false)
 
 const name = computed(() => String(route.params.name ?? ''))
