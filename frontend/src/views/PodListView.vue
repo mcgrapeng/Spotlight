@@ -59,7 +59,7 @@ function open(p: PodInfo) {
   <div class="space-y-5">
     <PageHeader title="Pods" :subtitle="subtitle">
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="loading" @click="reload" aria-label="刷新列表">
+        <Button variant="outline" size="sm" :disabled="loading" @click="reload" aria-label="刷新">
           <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
           刷新
         </Button>

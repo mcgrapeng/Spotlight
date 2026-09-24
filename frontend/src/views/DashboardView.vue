@@ -76,7 +76,7 @@ const criticalText = computed(() => {
       :subtitle="`健康度 ${healthScore}% · Node ${stats.nodes_ready}/${stats.nodes_total}`"
     >
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="refreshing" @click="load(true)">
+        <Button variant="outline" size="sm" :disabled="refreshing" @click="load(true)" aria-label="刷新">
           <RefreshCw :size="14" :stroke-width="1.75" :class="refreshing && 'animate-spin'" />
           刷新
         </Button>

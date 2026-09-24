@@ -59,7 +59,7 @@ const memPct = (n: NodeInfo) => usedPct(n.memory_allocatable, n.memory_capacity,
   <div class="space-y-5">
     <PageHeader title="Nodes" :subtitle="subtitle">
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="loading" @click="load" aria-label="刷新节点列表">
+        <Button variant="outline" size="sm" :disabled="loading" @click="load" aria-label="刷新">
           <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
           刷新
         </Button>

@@ -58,7 +58,7 @@ function back() { router.push({ name: 'pods' }) }
     <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || '未调度'}`">
       <template #actions>
         <PodStatusPill :phase="pod.phase" class="mr-2" />
-        <Button variant="outline" size="sm" @click="load" :disabled="loading">
+        <Button variant="outline" size="sm" @click="load" :disabled="loading" aria-label="刷新">
           <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
         </Button>
       </template>

@@ -16,7 +16,7 @@
 
     /* === Muted (二级) === */
     --muted: 240 5% 96%;                   /* #F4F4F5 */
-    --muted-foreground: 240 4% 46%;        /* #71717A */
+    --muted-foreground: 240 5% 32%;        /* #52525B */
     --subtle: 240 4% 65%;                  /* #A1A1AA */
 
     /* === Borders === */
@@ -41,7 +41,7 @@
     --success-bg: 138 76% 97%;             /* #F0FDF4 */
     --success-border: 142 86% 83%;         /* #BBF7D0 */
 
-    --warning: 32 95% 44%;                /* #D97706 */
+    --warning: 26 90% 37%;                /* #B35309 */
     --warning-foreground: 0 0% 100%;
     --warning-bg: 48 100% 96%;             /* #FFFBEB */
     --warning-border: 33 100% 82%;         /* #FED7AA */

@@ -46,7 +46,7 @@ const filtered = computed(() => {
 <template>
   <PageHeader :title="`Events · ${cluster.activeCluster || ''}`" :subtitle="cluster.activeNamespace">
     <template #actions>
-      <Button variant="outline" size="sm" @click="load" :disabled="loading">
+      <Button variant="outline" size="sm" @click="load" :disabled="loading" aria-label="刷新">
         <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
       </Button>
     </template>
