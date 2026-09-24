@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
+import { usePagination } from '@/composables/usePagination'
 import type { PodInfo } from '@/domain/types'
 
 const route = useRoute()
@@ -54,27 +55,18 @@ function open(p: PodInfo) {
   router.push({ name: 'pod-detail', params: { namespace: p.namespace, name: p.name } })
 }
 
-const page = ref(1)
 const pageSize = ref(20)
 
-const totalPages = computed(() =>
-  Math.max(1, Math.ceil(data.value.items.length / pageSize.value))
-)
+const { page, totalPages } = usePagination({
+  totalItems: computed(() => data.value.items.length),
+  pageSize,
+  resetKey: computed(() => data.value.items),
+})
+
 const pagedPods = computed(() => {
   const start = (page.value - 1) * pageSize.value
   return data.value.items.slice(start, start + pageSize.value)
 })
-
-watch([pageSize, () => data.value.items], () => { page.value = 1 })
-watch(page, (v) => {
-  if (!data.value.items.length) {
-    page.value = 1
-    return
-  }
-  const max = Math.max(1, Math.ceil(data.value.items.length / pageSize.value))
-  if (v > max) page.value = max
-  if (v < 1)   page.value = 1
-}, { immediate: true })
 </script>
 
 <template>
@@ -135,6 +127,7 @@ watch(page, (v) => {
             <tr
               v-for="row in pagedPods"
               :key="`${row.namespace}/${row.name}`"
+              style="content-visibility: auto; contain-intrinsic-size: auto 44px;"
               class="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
               tabindex="0"
               role="button"
