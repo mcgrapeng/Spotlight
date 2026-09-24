@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NDataTable, NSelect, NInput, NTag, NIcon } from 'naive-ui'
-import { Search, Refresh, AlertCircle, AlertTriangle } from '@vicons/tabler'
-import PageHeader from '@/components/ui/PageHeader.vue'
-import DataToolbar from '@/components/ui/DataToolbar.vue'
-import EmptyState from '@/components/ui/EmptyState.vue'
-import ErrorState from '@/components/ui/ErrorState.vue'
-import StatusPill from '@/components/ui/StatusPill.vue'
+import { Search, RefreshCw, AlertCircle, AlertTriangle } from '@lucide/vue'
+import PageHeader from '@/components/common/PageHeader.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import PodStatusPill from '@/components/pod/PodStatusPill.vue'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
 import type { PodInfo } from '@/domain/types'
@@ -27,11 +30,11 @@ const { data, loading, error, reload } = usePodList({
 })
 
 const statusOptions = [
-  { label: '全部', value: 'all' },
-  { label: 'Running', value: 'Running' },
-  { label: 'Pending', value: 'Pending' },
-  { label: 'Failed', value: 'Failed' },
-  { label: 'Succeeded', value: 'Succeeded' },
+  { value: 'all',       label: '全部' },
+  { value: 'Running',   label: 'Running' },
+  { value: 'Pending',   label: 'Pending' },
+  { value: 'Failed',    label: 'Failed' },
+  { value: 'Succeeded', label: 'Succeeded' },
 ]
 
 const subtitle = computed(() => {
@@ -39,118 +42,149 @@ const subtitle = computed(() => {
   return `${data.value.total.toLocaleString()} 个 · ${ns}`
 })
 
-const columns = computed(() => [
-  {
-    title: 'Pod',
-    key: 'name',
-    minWidth: 320,
-    sorter: true as const,
-    render: (row: PodInfo) =>
-      h('div', { class: 'flex flex-col gap-0.5 min-w-0' }, [
-        h('a', {
-          class: 'text-zinc-100 font-mono text-[13px] hover:text-indigo-400 transition-colors cursor-pointer truncate focus:outline-none focus-visible:text-indigo-400 focus-visible:underline',
-          href: `/pods/${encodeURIComponent(row.namespace)}/${encodeURIComponent(row.name)}`,
-          'aria-label': `查看 ${row.name} 详情`,
-        }, row.name),
-        row.owner_kind
-          ? h('span', { class: 'text-[10.5px] text-zinc-500 font-mono truncate' }, `${row.owner_kind}/${row.owner_name}`)
-          : null,
-      ]),
-  },
-  { title: 'Namespace', key: 'namespace', width: 160,
-    render: (row: PodInfo) => h('span', { class: 'text-[12px] text-zinc-400 font-mono' }, row.namespace) },
-  { title: 'Status', key: 'phase', width: 170, sorter: true as const,
-    render: (row: PodInfo) =>
-      h('div', { class: 'flex items-center gap-2' }, [
-        h(StatusPill, { phase: row.phase, size: 'sm' }),
-        row.reason && h('span', { class: 'chip chip--err' }, () => row.reason),
-      ]) },
-  { title: 'Containers', key: 'containers', width: 110,
-    sorter: (a: PodInfo, b: PodInfo) => a.containers.filter(c => c.ready).length - b.containers.filter(c => c.ready).length,
-    render: (row: PodInfo) => {
-      const ready = row.containers.filter((c) => c.ready).length
-      const total = row.containers.length
-      const ok = ready === total
-      return h('span', {
-        class: 'tabular-nums text-[12.5px] ' + (ok ? 'text-zinc-400' : 'text-amber-400'),
-        'aria-label': `${ready} 个就绪 共 ${total} 个`,
-      }, [`${ready}`, h('span', { class: 'text-zinc-600' }, '/'), `${total}`])
-    } },
-  { title: 'Restarts', key: 'restart_count', width: 110,
-    sorter: (a: PodInfo, b: PodInfo) => a.restart_count - b.restart_count,
-    render: (row: PodInfo) => {
-      if (row.restart_count === 0) {
-        return h('span', { class: 'text-zinc-600 tabular-nums text-[12.5px]' }, '0')
-      }
-      const isCritical = row.restart_count > 100
-      const isWarn = row.restart_count > 5
-      const cls = isCritical ? 'text-red-400 font-semibold' : isWarn ? 'text-amber-400' : 'text-zinc-400'
-      return h('div', {
-        class: 'flex items-center gap-1 tabular-nums text-[12.5px]',
-        'aria-label': `${row.restart_count} 次重启`,
-      }, [
-        h(NIcon, {
-          component: isCritical ? AlertCircle : AlertTriangle,
-          size: 12, color: isCritical ? '#fb7185' : '#fbbf24', 'aria-hidden': true,
-        }),
-        h('span', { class: cls }, row.restart_count.toLocaleString()),
-      ])
-    } },
-  { title: 'Node', key: 'node', width: 180,
-    render: (row: PodInfo) =>
-      row.node
-        ? h('span', { class: 'text-[12px] text-zinc-400 font-mono truncate' }, row.node.split('.')[0])
-        : h('span', { class: 'text-zinc-600' }, '—') },
-  { title: 'Age', key: 'age', width: 80, sorter: true as const,
-    render: (row: PodInfo) => h('span', { class: 'text-[12px] text-zinc-500 tabular-nums' }, row.age ?? '—') },
-])
+function readyOf(p: PodInfo) { return p.containers.filter(c => c.ready).length }
+function restartSeverity(p: PodInfo) {
+  if (p.restart_count > 100) return 'critical'
+  if (p.restart_count > 5)   return 'warn'
+  return 'normal'
+}
+function nodeShort(p: PodInfo) { return p.node ? p.node.split('.')[0] : null }
+
+function open(p: PodInfo) {
+  router.push({ name: 'pod-detail', params: { namespace: p.namespace, name: p.name } })
+}
 </script>
 
 <template>
-  <div class="page space-y-5">
+  <div class="space-y-5">
     <PageHeader title="Pods" :subtitle="subtitle">
       <template #actions>
-        <button class="btn-secondary" @click="reload" :disabled="loading" aria-label="刷新列表">
-          <NIcon :component="Refresh" :size="13" :class="loading ? 'animate-spin' : ''" />
+        <Button variant="outline" size="sm" :disabled="loading" @click="reload" aria-label="刷新列表">
+          <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
           刷新
-        </button>
+        </Button>
       </template>
     </PageHeader>
 
-    <DataToolbar label="Pod 列表筛选">
-      <NIcon :component="Search" :size="13" class="text-zinc-500" />
-      <NSelect v-model:value="statusFilter" :options="statusOptions" size="small" style="width: 130px" aria-label="按状态筛选" />
-      <div class="flex-1 max-w-md">
-        <NInput v-model:value="search" size="small" placeholder="搜索 pod / container / node" clearable aria-label="搜索">
-          <template #prefix><NIcon :component="Search" :size="13" /></template>
-        </NInput>
+    <!-- FilterBar -->
+    <div class="flex items-center gap-3 flex-wrap" role="search" aria-label="Pod 列表筛选">
+      <div class="relative w-44">
+        <select
+          v-model="statusFilter"
+          class="flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="按状态筛选"
+        >
+          <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
       </div>
-    </DataToolbar>
+      <div class="relative flex-1 min-w-[240px] max-w-md">
+        <Search :size="14" class="absolute left-2.5 top-3 text-muted-foreground" :stroke-width="1.75" />
+        <Input
+          v-model="search"
+          placeholder="搜索 pod / container / node"
+          class="pl-8"
+          aria-label="搜索"
+        />
+      </div>
+    </div>
 
-    <ErrorState v-if="error" :message="error" :on-retry="reload" />
+    <ErrorState v-if="error" :message="error" @retry="reload" />
 
-    <div v-else class="card overflow-hidden">
+    <Card v-else class="p-0 overflow-hidden">
       <EmptyState
-        v-if="!loading && !data.items.length"
+        v-if="!loading && data.items.length === 0"
         title="没有匹配的 Pod"
         description="调整搜索词或切换 namespace / 状态过滤"
       />
-      <NDataTable
-        v-else
-        :columns="columns"
-        :data="data.items"
-        :loading="loading"
-        :bordered="false"
-        :pagination="{ pageSize: 50 }"
-        size="medium"
-        :row-key="(r: PodInfo) => `${r.namespace}/${r.name}`"
-        flex-height
-        style="height: calc(100vh - 240px)"
-        :row-props="(row: PodInfo) => ({
-          class: 'cursor-pointer',
-          onClick: () => router.push({ name: 'pod-detail', params: { namespace: row.namespace, name: row.name } }),
-        })"
-      />
-    </div>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-muted/40 border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th class="text-left font-medium px-4 py-2.5 min-w-[280px]">Pod</th>
+              <th class="text-left font-medium px-4 py-2.5">Namespace</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[180px]">Status</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[100px]">Containers</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[110px]">Restarts</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[180px]">Node</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[80px]">Age</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in data.items"
+              :key="`${row.namespace}/${row.name}`"
+              class="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
+              tabindex="0"
+              role="button"
+              :aria-label="`查看 ${row.name} 详情`"
+              @click="open(row)"
+              @keydown.enter="open(row)"
+              @keydown.space.prevent="open(row)"
+            >
+              <td class="px-4 py-2.5 min-w-0">
+                <div class="flex flex-col gap-0.5 min-w-0">
+                  <span class="font-mono text-[13px] text-foreground truncate">{{ row.name }}</span>
+                  <span
+                    v-if="row.owner_kind"
+                    class="text-[10.5px] text-muted-foreground font-mono truncate"
+                  >{{ row.owner_kind }}/{{ row.owner_name }}</span>
+                </div>
+              </td>
+              <td class="px-4 py-2.5 font-mono text-xs text-muted-foreground">{{ row.namespace }}</td>
+              <td class="px-4 py-2.5">
+                <div class="flex items-center gap-2">
+                  <PodStatusPill :phase="row.phase" />
+                  <span
+                    v-if="row.reason"
+                    class="rounded px-1.5 py-0.5 text-2xs font-semibold bg-error-bg text-error border border-error-border"
+                  >{{ row.reason }}</span>
+                </div>
+              </td>
+              <td class="px-4 py-2.5 tabular-nums text-[12.5px]">
+                <span :class="cn(readyOf(row) === row.containers.length ? 'text-muted-foreground' : 'text-warning')">
+                  {{ readyOf(row) }}<span class="text-muted-foreground/60">/</span>{{ row.containers.length }}
+                </span>
+              </td>
+              <td class="px-4 py-2.5">
+                <div
+                  v-if="row.restart_count > 0"
+                  class="flex items-center gap-1 tabular-nums text-[12.5px]"
+                  :aria-label="`${row.restart_count} 次重启`"
+                >
+                  <AlertCircle
+                    v-if="restartSeverity(row) === 'critical'"
+                    :size="12" class="text-error shrink-0" :stroke-width="1.75"
+                    aria-hidden="true"
+                  />
+                  <AlertTriangle
+                    v-else-if="restartSeverity(row) === 'warn'"
+                    :size="12" class="text-warning shrink-0" :stroke-width="1.75"
+                    aria-hidden="true"
+                  />
+                  <span :class="cn(
+                    restartSeverity(row) === 'critical' && 'text-error font-semibold',
+                    restartSeverity(row) === 'warn' && 'text-warning',
+                    restartSeverity(row) === 'normal' && 'text-muted-foreground',
+                  )">
+                    {{ row.restart_count.toLocaleString() }}
+                  </span>
+                </div>
+                <span v-else class="text-muted-foreground/60 tabular-nums text-[12.5px]">0</span>
+              </td>
+              <td class="px-4 py-2.5">
+                <span v-if="nodeShort(row)" class="font-mono text-xs text-muted-foreground truncate">{{ nodeShort(row) }}</span>
+                <span v-else class="text-muted-foreground/60">—</span>
+              </td>
+              <td class="px-4 py-2.5 tabular-nums text-xs text-muted-foreground">{{ row.age ?? '—' }}</td>
+            </tr>
+            <tr v-if="loading && data.items.length === 0">
+              <td colspan="7" class="px-4 py-2">
+                <LoadingState message="加载 Pod 列表…" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
   </div>
 </template>
