@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/nodes', name: 'nodes', component: () => import('@/views/NodesView.vue'), meta: { title: 'Nodes' } },
     { path: '/events', name: 'events', component: () => import('@/views/EventsView.vue'), meta: { title: 'Events' } },
     { path: '/favorites', name: 'favorites', component: () => import('@/views/FavoritesView.vue'), meta: { title: '收藏夹' } },
+    { path: '/ai-settings', redirect: '/ai' },
     { path: '/ai', name: 'ai', component: () => import('@/views/AISettingsView.vue'), meta: { title: 'AI 模型' } },
   ],
 })
