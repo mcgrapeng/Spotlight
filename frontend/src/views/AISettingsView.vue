@@ -1,181 +1,115 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
-import { NDataTable, NEmpty, NModal, NButton, useMessage, NIcon } from 'naive-ui'
-import { Plus, Robot, Key, Pencil, Trash, Stars, Power } from '@vicons/tabler'
-import PageHeader from '@/components/ui/PageHeader.vue'
-import EmptyState from '@/components/ui/EmptyState.vue'
-import LoadingState from '@/components/ui/LoadingState.vue'
-import AIProviderForm from '@/components/ai/AIProviderForm.vue'
+import { onMounted, ref } from 'vue'
+import { Plus, Star, Trash2, Pencil } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
-import { useAIProviders } from '@/composables/useAIProviders'
+import PageHeader from '@/components/common/PageHeader.vue'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import LoadingState from '@/components/common/LoadingState.vue'
+import ErrorState from '@/components/common/ErrorState.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import AIProviderForm from '@/components/ai/AIProviderForm.vue'
 import type { AIProvider, AIProviderInput } from '@/domain/types'
 
-const { providers, loading, load, remove, setDefault, toggle } = useAIProviders()
-const msg = useMessage()
+const providers = ref<AIProvider[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+const dialogOpen = ref(false)
+const editing = ref<(Partial<AIProviderInput> & { id?: number }) | undefined>()
 
-const showAdd = ref(false)
-const editing = ref<(AIProviderInput & { id?: number }) | null>(null)
+async function load() {
+  loading.value = true
+  error.value = null
+  try {
+    providers.value = await aiApi.listProviders()
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+  } finally {
+    loading.value = false
+  }
+}
 
 onMounted(load)
 
-const activeCount = computed(() => providers.value.filter((p) => p.enabled).length)
-const activeProvider = computed(() => providers.value.find((p) => p.enabled) ?? null)
+function openCreate() {
+  editing.value = undefined
+  dialogOpen.value = true
+}
 
-function openAdd() { editing.value = null; showAdd.value = true }
 function openEdit(p: AIProvider) {
   editing.value = {
     id: p.id, name: p.name, provider: p.provider, model: p.model,
-    api_key: '', api_base: p.api_base, temperature: p.temperature, max_tokens: p.max_tokens,
-    is_default: p.is_default, enabled: p.enabled, extra: p.extra,
+    api_base: p.api_base, temperature: p.temperature, max_tokens: p.max_tokens,
+    is_default: p.is_default, enabled: p.enabled,
   }
-  showAdd.value = true
-}
-async function onSaved() { showAdd.value = false; await load() }
-async function onDelete(p: AIProvider) {
-  await remove(p.id)
-  msg.success(`已删除 ${p.name}`)
-}
-async function onToggle(p: AIProvider) {
-  if (p.enabled) {
-    // Already enabled → disable it.
-    await toggle(p)
-    msg.success(`${p.name} 已禁用`)
-  } else {
-    if (activeCount.value >= 1) {
-      msg.warning('同时只能启用一个模型，请先禁用当前启用的模型')
-      return
-    }
-    await toggle(p)
-    msg.success(`${p.name} 已启用`)
-  }
-}
-async function makeDefault(p: AIProvider) {
-  await setDefault(p.id)
-  msg.success(`${p.name} 已设为默认`)
+  dialogOpen.value = true
 }
 
-const columns = computed(() => [
-  { title: '', key: 'default', width: 40,
-    render: (r: AIProvider) => r.is_default
-      ? h(NIcon, { component: Stars, size: 13, color: '#fbbf24', 'aria-label': '默认模型' })
-      : h('span', { class: 'text-zinc-700' }, '·') },
-  { title: '名称', key: 'name', minWidth: 200,
-    render: (r: AIProvider) => h('div', { class: 'flex items-center gap-2' }, [
-      r.is_default && h('span', { class: 'chip chip--warn' }, () => '默认'),
-      r.enabled && h('span', { class: 'chip chip--ok' }, () => '已启用'),
-      h('span', { class: 'text-zinc-100' }, r.name),
-    ]) },
-  { title: 'Provider', key: 'provider', width: 130,
-    render: (r: AIProvider) => h('span', {
-      class: r.provider === 'ollama' ? 'chip chip--neutral' : 'chip chip--info',
-    }, () => r.provider) },
-  { title: 'Model', key: 'model', minWidth: 200,
-    render: (r: AIProvider) => h('code', {
-      class: 'text-zinc-300 text-[12px] font-mono truncate block',
-    }, r.model) },
-  { title: 'API Key', key: 'key', width: 180,
-    render: (r: AIProvider) =>
-      h('div', { class: 'flex items-center gap-1.5 text-zinc-500 text-[12px] font-mono' },
-        [h(NIcon, { component: Key, size: 11 }), r.api_key_masked]) },
-  { title: '', key: 'op', width: 220,
-    render: (r: AIProvider) =>
-      h('div', { class: 'flex items-center gap-1' }, [
-        h('button', {
-          class: 'btn-ghost',
-          title: r.enabled ? '禁用' : '启用',
-          'aria-label': r.enabled ? `禁用 ${r.name}` : `启用 ${r.name}`,
-          onClick: () => onToggle(r),
-        }, [
-          h(NIcon, { component: Power, size: 13, color: r.enabled ? '#22c55e' : '#71717a' }),
-        ]),
-        !r.is_default && h('button', {
-          class: 'btn-ghost',
-          'aria-label': `设为默认 ${r.name}`,
-          onClick: () => makeDefault(r),
-        }, [h('span', { class: 'text-[11px]' }, '默认模型')]),
-        h('button', {
-          class: 'btn-ghost',
-          'aria-label': `编辑 ${r.name}`,
-          onClick: () => openEdit(r),
-        }, [h(NIcon, { component: Pencil, size: 13 })]),
-        h('button', {
-          class: 'btn-ghost',
-          'aria-label': `删除 ${r.name}`,
-          onClick: () => onDelete(r),
-        }, [h(NIcon, { component: Trash, size: 13, color: '#fb7185' })]),
-      ]) },
-])
+async function save(data: AIProviderInput) {
+  if (editing.value?.id) {
+    await aiApi.updateProvider(editing.value.id, data)
+  } else {
+    await aiApi.addProvider(data)
+  }
+  await load()
+}
+
+async function remove(id: number) {
+  if (!confirm('确定删除？')) return
+  await aiApi.deleteProvider(id)
+  providers.value = providers.value.filter(p => p.id !== id)
+}
+
+async function setDefault(p: AIProvider) {
+  await aiApi.setDefault(p.id)
+  await load()
+}
 </script>
 
 <template>
-  <div class="page space-y-4">
-    <PageHeader title="AI 模型" subtitle="通过 LiteLLM 统一适配 OpenAI / Anthropic / Azure / Gemini / Ollama / DeepSeek 等">
-      <template #actions>
-        <button class="btn-primary" @click="openAdd">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          添加 Provider
-        </button>
-      </template>
-    </PageHeader>
+  <PageHeader title="AI 模型" subtitle="通过 LiteLLM 统一适配 OpenAI / Anthropic / Azure / Gemini / Ollama / DeepSeek 等">
+    <template #actions>
+      <Button @click="openCreate">
+        <Plus :size="14" :stroke-width="1.75" class="mr-1" />
+        添加 Provider
+      </Button>
+    </template>
+  </PageHeader>
 
-    <!-- Single-active explanation -->
-    <div class="ai-callout" role="status">
-      <NIcon :component="Stars" :size="14" class="shrink-0" color="#fbbf24" />
-      <span class="text-[12px] text-zinc-300">
-        系统限制同时只能启用一个 AI 模型；该模型会在 Pod 详情页「AI 分析」中自动选用，无需选择。
-      </span>
-      <span v-if="activeProvider" class="ml-auto chip chip--ok shrink-0">
-        当前：
-        <code class="font-mono ml-1">{{ activeProvider.name }}</code>
-      </span>
-    </div>
+  <LoadingState v-if="loading && providers.length === 0" />
+  <ErrorState v-else-if="error" :message="error" @retry="load" />
+  <EmptyState v-else-if="providers.length === 0" title="没有 Provider" description="点击右上角添加" />
 
-    <div class="card card__body--flush">
-      <LoadingState v-if="loading" variant="skeleton" :rows="3" height="120px" />
-      <EmptyState
-        v-else-if="!providers.length"
-        :icon="Robot"
-        title="还没有配置"
-        description="添加后可在 Pod 详情页一键分析日志"
-      >
-        <template #actions>
-          <button class="btn-primary" @click="openAdd">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            添加第一个
-          </button>
-        </template>
-      </EmptyState>
-      <NDataTable
-        v-else
-        :columns="columns"
-        :data="providers"
-        size="medium"
-        :bordered="false"
-      />
-    </div>
-
-    <NModal v-model:show="showAdd" preset="card"
-            :title="editing?.id ? '编辑 Provider' : '添加 Provider'"
-            style="max-width: 680px" :bordered="false">
-      <AIProviderForm :initial="editing ?? undefined" @saved="onSaved">
-        <template #actions>
-          <NButton @click="showAdd = false">取消</NButton>
-        </template>
-      </AIProviderForm>
-    </NModal>
+  <div v-else class="space-y-3">
+    <Card v-for="p in providers" :key="p.id" class="p-0">
+      <CardContent class="p-4">
+        <div class="flex items-center gap-3">
+          <span
+            v-if="p.is_default"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold bg-foreground text-background"
+          >
+            <Star :size="10" :stroke-width="1.75" fill="currentColor" />
+            默认
+          </span>
+          <span class="font-mono text-sm font-semibold">{{ p.name }}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{{ p.provider }}</span>
+          <span class="text-xs text-muted-foreground font-mono">{{ p.model }}</span>
+          <span class="ml-auto text-xs text-muted-foreground font-mono">{{ p.api_key_masked }}</span>
+        </div>
+        <div class="flex gap-1 mt-3 justify-end">
+          <Button v-if="!p.is_default" variant="ghost" size="sm" @click="setDefault(p)">
+            设为默认
+          </Button>
+          <Button variant="ghost" size="sm" @click="openEdit(p)" aria-label="编辑">
+            <Pencil :size="12" :stroke-width="1.75" />
+          </Button>
+          <Button variant="ghost" size="sm" @click="remove(p.id)" aria-label="删除">
+            <Trash2 :size="12" :stroke-width="1.75" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   </div>
-</template>
 
-<style scoped>
-.ai-callout {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
-  background: rgba(245, 158, 11, 0.06);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 6px;
-}
-</style>
+  <AIProviderForm v-model:open="dialogOpen" :initial="editing" @save="save" />
+</template>
