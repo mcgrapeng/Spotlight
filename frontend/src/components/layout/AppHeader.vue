@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Menu, PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
+import { Menu, PanelLeftClose, PanelLeftOpen, Command } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
@@ -58,5 +58,9 @@ defineEmits<{
     </div>
 
     <div class="flex-1" />
+
+    <kbd class="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted text-2xs font-mono text-muted-foreground">
+      <Command :size="10" :stroke-width="2" /> K
+    </kbd>
   </div>
 </template>
