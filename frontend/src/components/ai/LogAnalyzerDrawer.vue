@@ -1,125 +1,70 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { NDrawer, NDrawerContent, NButton, NInput, NSpace, NSpin, NTag, NAlert, useMessage, NIcon } from 'naive-ui'
-import { AlertCircle, Stars } from '@vicons/tabler'
-import { aiApi } from '@/api/endpoints'
-import { useAIProviders } from '@/composables/useAIProviders'
-import { useClusterStore } from '@/stores/cluster'
-import type { AIAnalysisResult, LogLine } from '@/domain/types'
+import { ref, watch } from 'vue'
+import { Bot, Send, X } from '@lucide/vue'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 const props = defineProps<{
-  show: boolean
-  namespace: string
-  podName: string
-  logLines: LogLine[]
-  presetQuestion?: string
+  open: boolean
+  logContent: string
+  loading?: boolean
+  result?: string
 }>()
 
-const emit = defineEmits<{ (e: 'update:show', v: boolean): void }>()
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+  analyze: [content: string]
+}>()
 
-const cluster = useClusterStore()
-const { providers, load } = useAIProviders()
-const msg = useMessage()
-
-// In single-active mode the user doesn't pick — the system has at most one
-// enabled provider. We surface its name in the UI but don't ask the user to choose.
-const activeProvider = computed(() => providers.value.find((p) => p.enabled) ?? null)
-const question = ref(props.presetQuestion ?? '请分析这些日志的根因、异常点和建议')
-const analyzing = ref(false)
-const result = ref<AIAnalysisResult | null>(null)
-const errorText = ref<string | null>(null)
-
-watch(() => props.presetQuestion, (q) => { if (q) question.value = q })
-
-async function refresh() { await load() }
-
-async function run() {
-  if (!activeProvider.value) {
-    msg.error('未配置或未启用 AI 模型，请先在「AI 模型」中启用一个')
-    return
-  }
-  if (!props.logLines.length) { msg.error('日志为空，无法分析'); return }
-  analyzing.value = true
-  result.value = null
-  errorText.value = null
-  try {
-    const text = props.logLines.slice(-200).map((l) => l.content)
-    const r = await aiApi.analyze(cluster.activeCluster, props.namespace, props.podName,
-                                   activeProvider.value.id, text, question.value)
-    result.value = r
-  } catch (e: any) {
-    errorText.value = e?.response?.data?.detail ?? e?.message ?? 'analysis failed'
-  } finally {
-    analyzing.value = false
-  }
-}
-
-function close() { emit('update:show', false) }
+function close() { emit('update:open', false) }
 </script>
 
 <template>
-  <NDrawer :show="show" :width="560" placement="right" @update:show="(v: boolean) => emit('update:show', v)" @after-enter="refresh">
-    <NDrawerContent :title="`AI 分析 · ${podName}`" closable>
-      <div class="space-y-4">
-        <div v-if="activeProvider" class="active-status">
-          <NIcon :component="Stars" :size="14" color="#fbbf24" />
-          <span class="text-[12px] text-zinc-300">
-            使用已启用模型
-            <code class="font-mono text-zinc-100 ml-1">{{ activeProvider.name }}</code>
-            <span class="text-zinc-500 ml-1">({{ activeProvider.provider }}/{{ activeProvider.model }})</span>
-          </span>
-        </div>
-        <div v-else class="ai-callout">
-          <NIcon :component="AlertCircle" :size="14" color="#fb7185" />
-          <span class="text-[12px] text-zinc-300">
-            尚未启用任何 AI 模型 ·
-            <RouterLink :to="{ name: 'ai' }" class="text-indigo-400 underline">前往启用</RouterLink>
-          </span>
-        </div>
+  <Sheet :open="open" @update:open="(v) => emit('update:open', v)">
+    <SheetContent side="right" class="w-[480px] sm:max-w-[480px] p-0 gap-0">
+      <SheetHeader class="px-4 py-3 border-b border-border">
+        <SheetTitle class="flex items-center gap-2">
+          <Bot :size="18" :stroke-width="1.75" />
+          AI 日志分析
+        </SheetTitle>
+        <SheetDescription>把日志片段发给 AI 模型分析根因</SheetDescription>
+      </SheetHeader>
+
+      <div class="flex-1 overflow-auto p-4 space-y-4">
         <div>
-          <p class="section-title mb-1">问题（可选）</p>
-          <NInput v-model:value="question" type="textarea" :rows="3" />
-        </div>
-        <div class="flex items-center justify-between text-xs text-zinc-500">
-          <span>将分析最近 {{ Math.min(props.logLines.length, 200) }} 行（最多 200）</span>
-          <NSpace>
-            <NButton @click="close">关闭</NButton>
-            <NButton type="primary" :loading="analyzing" :disabled="!activeProvider" @click="run">运行分析</NButton>
-          </NSpace>
+          <h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+            日志片段（{{ logContent.length }} 字符）
+          </h4>
+          <pre class="text-xs font-mono bg-muted p-3 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap">{{ logContent }}</pre>
         </div>
 
-        <div v-if="errorText" class="mt-2">
-          <NAlert type="error" :title="'分析失败'" closable @close="errorText = null">
-            {{ errorText }}
-          </NAlert>
+        <div v-if="result">
+          <h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">AI 分析</h4>
+          <div class="text-sm prose prose-sm max-w-none" v-html="result" />
         </div>
 
-        <div v-if="result" class="rounded-md border border-zinc-800 bg-surface-1 p-4">
-          <div class="flex items-center gap-2 mb-3 text-xs text-zinc-500">
-            <NTag size="small" round type="info">{{ result.model }}</NTag>
-            <span>{{ result.latency_ms }} ms</span>
-            <span v-if="result.input_tokens != null">· {{ result.input_tokens }} in / {{ result.output_tokens ?? '?' }} out tokens</span>
-          </div>
-          <pre class="whitespace-pre-wrap text-sm text-zinc-100 font-sans leading-relaxed">{{ result.answer }}</pre>
+        <div v-if="loading" class="flex items-center justify-center py-8 text-muted-foreground">
+          <Bot :size="16" :stroke-width="1.75" class="mr-2 animate-pulse" />
+          AI 正在分析…
         </div>
-        <div v-else-if="analyzing" class="py-12 flex justify-center"><NSpin size="large" /></div>
       </div>
-    </NDrawerContent>
-  </NDrawer>
-</template>
 
-<style scoped>
-.active-status, .ai-callout {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-}
-.active-status {
-  background: rgba(245, 158, 11, 0.06);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-}
-.ai-callout {
-  background: rgba(244, 63, 94, 0.06);
-  border: 1px solid rgba(244, 63, 94, 0.25);
-}
-</style>
+      <div class="border-t border-border p-3 flex gap-2">
+        <Button class="flex-1" :disabled="!logContent || loading" @click="emit('analyze', logContent)">
+          <Send :size="14" :stroke-width="1.75" class="mr-1" />
+          分析
+        </Button>
+        <Button variant="outline" @click="close">
+          <X :size="14" :stroke-width="1.75" />
+        </Button>
+      </div>
+    </SheetContent>
+  </Sheet>
+</template>

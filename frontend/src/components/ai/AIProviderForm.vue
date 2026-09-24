@@ -1,135 +1,116 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { NSelect, NInput, NInputNumber, NSwitch, NButton, NSpace, useMessage, NAlert } from 'naive-ui'
-import { useAIProviders } from '@/composables/useAIProviders'
+import { ref, computed } from 'vue'
+import { Save, X } from '@lucide/vue'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import type { AIProviderInput } from '@/domain/types'
 
-const emit = defineEmits<{ (e: 'saved'): void }>()
-const msg = useMessage()
+const props = defineProps<{
+  open: boolean
+  initial?: Partial<AIProviderInput>
+}>()
 
-const { add, update } = useAIProviders()
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+  save: [data: AIProviderInput]
+}>()
 
-const props = defineProps<{ initial?: (AIProviderInput & { id?: number }) }>()
-
-const PROVIDERS = [
-  { label: 'OpenAI', value: 'openai', modelHint: 'gpt-4o-mini' },
-  { label: 'Anthropic', value: 'anthropic', modelHint: 'claude-3-5-sonnet-latest' },
-  { label: 'Azure OpenAI', value: 'azure', modelHint: 'gpt-4o' },
-  { label: 'Gemini', value: 'gemini', modelHint: 'gemini-1.5-pro' },
-  { label: 'Ollama (local)', value: 'ollama', modelHint: 'llama3.1' },
-  { label: 'DeepSeek', value: 'deepseek', modelHint: 'deepseek-chat' },
-]
-
-const form = ref<AIProviderInput & { id?: number }>({
-  id: props.initial?.id,
+const form = ref<AIProviderInput>({
   name: props.initial?.name ?? '',
   provider: props.initial?.provider ?? 'openai',
   model: props.initial?.model ?? 'gpt-4o-mini',
-  api_key: props.initial?.api_key ?? '',
   api_base: props.initial?.api_base ?? null,
-  temperature: props.initial?.temperature ?? 0.2,
-  max_tokens: props.initial?.max_tokens ?? 1024,
+  api_key: props.initial?.api_key ?? '',
+  temperature: props.initial?.temperature ?? 0.7,
+  max_tokens: props.initial?.max_tokens ?? 2048,
   is_default: props.initial?.is_default ?? false,
-  enabled: props.initial?.enabled ?? true,
-  extra: props.initial?.extra ?? {},
 })
 
-const providerOptions = PROVIDERS.map((p) => ({ label: p.label, value: p.value }))
-const modelHint = ref<string>('')
-const formError = ref<string | null>(null)
+const providerOptions = [
+  { value: 'openai',    label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'azure',     label: 'Azure' },
+  { value: 'gemini',    label: 'Gemini' },
+  { value: 'ollama',    label: 'Ollama' },
+  { value: 'deepseek',  label: 'DeepSeek' },
+]
 
-watch(() => form.value.provider, (v) => {
-  const p = PROVIDERS.find((x) => x.value === v)
-  if (p && !form.value.model) modelHint.value = p.modelHint
-}, { immediate: true })
+function onSubmit() {
+  emit('save', { ...form.value })
+  emit('update:open', false)
+}
 
-const saving = ref(false)
-async function submit() {
-  formError.value = null
-  if (!form.value.name || !form.value.provider || !form.value.model) {
-    formError.value = 'name / provider / model 必填'
-    return
-  }
-  if (form.value.provider !== 'ollama' && !form.value.api_key && !form.value.id) {
-    formError.value = '非 ollama 必须填写 API Key'
-    return
-  }
-  saving.value = true
-  try {
-    if (form.value.id) {
-      const { id, ...rest } = form.value
-      await update(id, rest)
-      msg.success('已更新')
-    } else {
-      const { id, ...rest } = form.value
-      await add(rest)
-      msg.success('已添加')
-    }
-    emit('saved')
-  } catch (e: any) {
-    // 409 = single-active constraint; surface the backend message verbatim
-    if (e?.response?.status === 409) {
-      formError.value = e.response.data?.detail || '已有启用的 AI 模型，请先禁用'
-    } else {
-      formError.value = e?.response?.data?.detail ?? e?.message ?? '保存失败'
-    }
-  } finally {
-    saving.value = false
-  }
+function close() {
+  emit('update:open', false)
 }
 </script>
 
 <template>
-  <form class="grid grid-cols-2 gap-4" @submit.prevent="submit">
-    <div v-if="formError" class="col-span-2">
-      <NAlert type="error" :title="'保存失败'" closable @close="formError = null">
-        {{ formError }}
-      </NAlert>
-    </div>
-    <div>
-      <p class="section-title mb-1">显示名</p>
-      <NInput v-model:value="form.name" placeholder="my-openai" />
-    </div>
-    <div>
-      <p class="section-title mb-1">Provider</p>
-      <NSelect v-model:value="form.provider" :options="providerOptions" />
-    </div>
-    <div>
-      <p class="section-title mb-1">模型</p>
-      <NInput v-model:value="form.model" :placeholder="modelHint" />
-    </div>
-    <div>
-      <p class="section-title mb-1">API Base (可选)</p>
-      <NInput v-model:value="form.api_base" placeholder="https://api.openai.com/v1" />
-    </div>
-    <div class="col-span-2">
-      <p class="section-title mb-1">API Key <span v-if="form.id" class="text-zinc-500">(留空表示不修改)</span></p>
-      <NInput v-model:value="form.api_key" type="password" show-password-on="click" placeholder="sk-..." />
-    </div>
-    <div>
-      <p class="section-title mb-1">Temperature</p>
-      <NInputNumber v-model:value="form.temperature" :min="0" :max="2" :step="0.1" />
-    </div>
-    <div>
-      <p class="section-title mb-1">Max Tokens</p>
-      <NInputNumber v-model:value="form.max_tokens" :min="64" :max="32768" :step="64" />
-    </div>
-    <div class="col-span-2 flex items-center gap-6">
-      <NSwitch v-model:value="form.is_default">
-        <template #checked>默认</template>
-        <template #unchecked>默认</template>
-      </NSwitch>
-      <NSwitch v-model:value="form.enabled">
-        <template #checked>启用</template>
-        <template #unchecked>启用</template>
-      </NSwitch>
-      <span class="text-[11px] text-zinc-500">开启「启用」会让该 Provider 立即生效（同时只能启用一个）</span>
-    </div>
-    <div class="col-span-2 flex justify-end gap-2 pt-2">
-      <NSpace>
-        <slot name="actions" />
-        <NButton type="primary" :loading="saving" @click="submit">保存</NButton>
-      </NSpace>
-    </div>
-  </form>
+  <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
+    <DialogContent class="sm:max-w-[480px]">
+      <DialogHeader>
+        <DialogTitle>{{ initial ? '编辑 Provider' : '添加 Provider' }}</DialogTitle>
+        <DialogDescription>
+          通过 LiteLLM 统一适配 OpenAI / Anthropic / Azure / Gemini / Ollama / DeepSeek 等
+        </DialogDescription>
+      </DialogHeader>
+
+      <form class="grid gap-4 py-4" @submit.prevent="onSubmit">
+        <div class="grid gap-1.5">
+          <label class="text-sm font-medium" for="provider-name">名称</label>
+          <Input id="provider-name" v-model="form.name" placeholder="默认" required />
+        </div>
+
+        <div class="grid gap-1.5">
+          <label class="text-sm font-medium" for="provider-provider">Provider</label>
+          <select
+            id="provider-provider"
+            v-model="form.provider"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option v-for="o in providerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+        </div>
+
+        <div class="grid gap-1.5">
+          <label class="text-sm font-medium" for="provider-model">Model</label>
+          <Input id="provider-model" v-model="form.model" placeholder="gpt-4o-mini" required />
+        </div>
+
+        <div class="grid gap-1.5">
+          <label class="text-sm font-medium" for="provider-key">API Key</label>
+          <Input id="provider-key" v-model="form.api_key" type="password" placeholder="sk-..." />
+        </div>
+
+        <div class="grid gap-1.5">
+          <label class="text-sm font-medium" for="provider-base">Base URL（可选）</label>
+          <Input id="provider-base" v-model="form.api_base" placeholder="https://api.openai.com/v1" />
+        </div>
+
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="form.is_default" type="checkbox" class="h-4 w-4 rounded border-input" />
+          设为默认 provider
+        </label>
+      </form>
+
+      <DialogFooter>
+        <Button variant="outline" type="button" @click="close">
+          <X :size="14" :stroke-width="1.75" class="mr-1" />
+          取消
+        </Button>
+        <Button type="submit" @click="onSubmit">
+          <Save :size="14" :stroke-width="1.75" class="mr-1" />
+          保存
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
