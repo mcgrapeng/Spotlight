@@ -13,6 +13,7 @@
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
+    "@lucide/vue": "1.47.0",
     "@tanstack/vue-table": "9.2.4",
     "@vueuse/core": "^11.3.0",
     "axios": "^1.7.9",
@@ -20,7 +21,6 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "dayjs": "^1.11.13",
-    "lucide-vue-next": "1.0.0",
     "pinia": "^2.3.0",
     "radix-vue": "1.9.17",
     "tailwind-merge": "3.7.0",
