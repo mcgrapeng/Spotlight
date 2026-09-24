@@ -1,85 +1,85 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { NSelect, NIcon, NTooltip, NButton } from 'naive-ui'
-import { Refresh, Server } from '@vicons/tabler'
-import { useClusterStore } from '@/stores/cluster'
-import { useRouter } from 'vue-router'
+import { Menu, PanelLeftClose, PanelLeftOpen, Sparkles } from '@lucide/vue'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
+import NamespaceCombobox from '@/components/common/NamespaceCombobox.vue'
 
-const router = useRouter()
-const cluster = useClusterStore()
+withDefaults(defineProps<{
+  sidebarCollapsed?: boolean
+}>(), { sidebarCollapsed: false })
 
-const clusterOptions = computed(() =>
-  cluster.clusters.map((c) => ({
-    label: c.name === cluster.currentCluster?.name ? `${c.name} · current` : c.name,
-    value: c.name,
-  })),
-)
-const nsOptions = computed(() => [
-  { label: '所有 namespace', value: '_all' },
-  ...cluster.namespaces.map((n) => ({ label: n.name, value: n.name })),
-])
-
-function reload() { router.go(0) }
+defineEmits<{
+  'open-mobile-menu': []
+  'toggle-sidebar': []
+}>()
 </script>
 
 <template>
-  <div class="flex h-full items-center gap-3 px-5">
-    <!-- Cluster selector (single, prominent) -->
-    <div class="header-cluster-detail flex items-center gap-2 shrink-0">
-      <NIcon :component="Server" :size="14" class="text-zinc-500" aria-hidden="true" />
-      <NSelect
-        :value="cluster.activeCluster"
-        :options="clusterOptions"
-        :consistent-menu-width="false"
-        size="small"
-        style="width: 240px"
-        @update:value="(v: string) => cluster.setCluster(v)"
-      />
-    </div>
+  <div
+    class="sticky top-0 z-40 flex items-center gap-2 md:gap-3 h-11 md:h-14 px-3 md:px-5 border-b bg-background"
+  >
+    <button
+      type="button"
+      class="md:hidden inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label="打开菜单"
+      @click="$emit('open-mobile-menu')"
+    >
+      <Menu :size="18" :stroke-width="1.75" aria-hidden="true" />
+    </button>
 
-    <span class="text-zinc-700">/</span>
+    <button
+      type="button"
+      class="hidden md:inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      @click="$emit('toggle-sidebar')"
+    >
+      <PanelLeftOpen v-if="sidebarCollapsed" :size="18" :stroke-width="1.75" aria-hidden="true" />
+      <PanelLeftClose v-else :size="18" :stroke-width="1.75" aria-hidden="true" />
+    </button>
 
-    <div class="header-cluster-detail shrink-0">
-      <NSelect
-        :value="cluster.activeNamespace"
-        :options="nsOptions"
-        size="small"
-        style="width: 180px"
-        :disabled="cluster.namespaces.length === 0"
-        @update:value="(v: string) => cluster.setNamespace(v)"
-      />
+    <router-link
+      to="/dashboard"
+      :class="cn(
+        'flex items-center gap-2 mr-1 md:mr-2 rounded-md',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      )"
+      aria-label="K8s Viewer 首页"
+    >
+      <span class="inline-flex items-center justify-center size-7 md:size-8 rounded-md bg-foreground text-background text-xs font-bold tracking-tight">
+        K8
+      </span>
+      <span class="hidden sm:inline text-sm font-semibold tracking-tight">K8s Viewer</span>
+    </router-link>
+
+    <div class="flex items-center gap-2 min-w-0">
+      <ClusterCombobox />
+      <NamespaceCombobox />
     </div>
 
     <div class="flex-1" />
 
-    <!-- Right: minimal action set -->
-    <div class="flex items-center gap-1 shrink-0">
-      <NTooltip>
-        <template #trigger>
-          <NButton quaternary size="small" @click="router.push({ name: 'ai' })">
-            <template #icon>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
-                <circle cx="12" cy="14" r="2" />
-              </svg>
-            </template>
-            AI
-          </NButton>
-        </template>
-        <span>AI 模型配置</span>
-      </NTooltip>
-
-      <NTooltip>
-        <template #trigger>
-          <button class="btn-ghost" @click="reload" aria-label="刷新当前页面">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
-          </button>
-        </template>
-        <span>刷新</span>
-      </NTooltip>
-    </div>
+    <Button
+      variant="gradient"
+      size="sm"
+      class="hidden sm:inline-flex"
+      as-child
+    >
+      <router-link to="/ai">
+        <Sparkles :size="14" :stroke-width="1.75" aria-hidden="true" />
+        <span>AI 助手</span>
+      </router-link>
+    </Button>
+    <Button
+      variant="gradient"
+      size="icon-sm"
+      class="sm:hidden"
+      aria-label="AI 助手"
+      as-child
+    >
+      <router-link to="/ai">
+        <Sparkles :size="16" :stroke-width="1.75" aria-hidden="true" />
+      </router-link>
+    </Button>
   </div>
 </template>
