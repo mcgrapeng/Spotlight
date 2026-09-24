@@ -29,8 +29,10 @@ const analyzerOpen = ref(false)
 const name = computed(() => String(route.params.name ?? ''))
 const namespace = computed(() => String(route.params.namespace ?? cluster.activeNamespace))
 
-const { lines: logLines, streaming: logStreaming } = usePodLogs({
+const logStreaming = ref(true)
+const { lines: logLines } = usePodLogs({
   cluster, namespace, name, enabled: logsTabActive,
+  streaming: logStreaming,
 })
 
 async function load() {
