@@ -56,6 +56,7 @@ const filtered = computed(() => {
 function normalize(text: string): string {
   return text
     .toLowerCase()
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g, 'UUID')
     .replace(/\b\d+\b/g, 'N')
     .replace(/\b0x[a-f0-9]+\b/g, '0xN')
     .replace(/\s+/g, ' ')
