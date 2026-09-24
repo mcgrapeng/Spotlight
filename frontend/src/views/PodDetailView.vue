@@ -22,7 +22,7 @@ const cluster = useClusterStore()
 const pod = ref<PodInfo | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
-const tab = ref('info')
+const tab = ref('logs')
 const logsTabActive = ref(false)
 const analyzerOpen = ref(false)
 
@@ -124,18 +124,9 @@ function back() { router.push({ name: 'pods' }) }
       <div class="lg:col-span-2">
         <Tabs v-model="tab" class="w-full">
           <TabsList>
-            <TabsTrigger value="info">YAML</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="events">Events</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="info" class="mt-4">
-            <Card class="p-0">
-              <CardContent class="p-0">
-                <pre class="text-xs font-mono p-4 overflow-auto max-h-[600px] whitespace-pre-wrap">{{ JSON.stringify(pod.labels, null, 2) }}</pre>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           <TabsContent value="logs" class="mt-4">
             <div class="flex items-center justify-between mb-2">

@@ -95,6 +95,19 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     es = new EventSource(url)
     streaming.value = true
 
+    let pending: LogLine[] = []
+    let rafScheduled = false
+
+    function flush() {
+      rafScheduled = false
+      if (pending.length === 0) return
+      lines.value = [...lines.value, ...pending]
+      if (lines.value.length > max) {
+        lines.value.splice(0, lines.value.length - max)
+      }
+      pending = []
+    }
+
     es.addEventListener('log', (e) => {
       if (!alive) return
       try {
@@ -103,10 +116,11 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         const severity = raw.severity || 'info'
         const chunks = splitLogLines(raw.content)
         for (const content of chunks) {
-          lines.value = [...lines.value, { timestamp: raw.timestamp, content, container, severity }]
+          pending.push({ timestamp: raw.timestamp, content, container, severity })
         }
-        if (lines.value.length > max) {
-          lines.value.splice(0, lines.value.length - max)
+        if (!rafScheduled) {
+          rafScheduled = true
+          requestAnimationFrame(flush)
         }
       } catch (err) { console.error('parse log', err) }
     })
