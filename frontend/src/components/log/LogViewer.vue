@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
-  Search, Pause, Play, ChevronUp, ChevronDown,
+  Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight,
   Copy, X, Terminal, Filter,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
@@ -32,8 +32,6 @@ const searchInput = ref<InstanceType<typeof HTMLInputElement> | null>(null)
 const lastInteraction = ref(Date.now())
 function markInteraction() { lastInteraction.value = Date.now() }
 
-const LINE_HEIGHT = 22
-const BUFFER = 50
 const MAX_FILTERED = 50000
 
 // === Filtering ===
@@ -54,6 +52,63 @@ const filtered = computed(() => {
   }).slice(0, MAX_FILTERED)
 })
 
+// === Fold duplicate consecutive lines (logreduce-style) ===
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\b\d+\b/g, 'N')
+    .replace(/\b0x[a-f0-9]+\b/g, '0xN')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+interface FoldGroup {
+  kind: 'single'
+  line: LogLine
+  key: number
+}
+interface FoldRun {
+  kind: 'run'
+  lines: LogLine[]
+  key: number
+  sig: string
+  expanded: boolean
+}
+type Group = FoldGroup | FoldRun
+
+const expanded = ref(new Set<number>())
+
+const groups = computed<Group[]>(() => {
+  const out: Group[] = []
+  let i = 0
+  const arr = filtered.value
+  while (i < arr.length) {
+    const sig = normalize(arr[i].content)
+    let j = i + 1
+    while (j < arr.length && normalize(arr[j].content) === sig) j++
+    if (j - i >= 3) {
+      out.push({
+        kind: 'run',
+        lines: arr.slice(i, j),
+        key: i,
+        sig,
+        expanded: expanded.value.has(i),
+      })
+      i = j
+    } else {
+      for (let k = i; k < j; k++) out.push({ kind: 'single', line: arr[k], key: k })
+      i = j
+    }
+  }
+  return out
+})
+
+function toggleExpand(key: number) {
+  const s = new Set(expanded.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  expanded.value = s
+}
+
 // === Severity counts (over full unfiltered set, so chips stay stable while searching) ===
 const counts = computed(() => {
   const c: Record<string, number> = { trace: 0, debug: 0, info: 0, warn: 0, error: 0 }
@@ -64,47 +119,21 @@ const counts = computed(() => {
   return c
 })
 
-// === Virtual scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
-const visibleRange = ref({ start: 0, end: 0, padBottom: 0 })
-
-function recomputeVisible() {
-  const el = scrollEl.value
-  if (!el) return
-  const total = filtered.value.length
-  const viewportH = el.clientHeight
-  const scrollTop = el.scrollTop
-  const start = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - BUFFER)
-  const end = Math.min(total, Math.ceil((scrollTop + viewportH) / LINE_HEIGHT) + BUFFER)
-  const padBottom = Math.max(0, (total - end) * LINE_HEIGHT)
-  if (start !== visibleRange.value.start || end !== visibleRange.value.end || padBottom !== visibleRange.value.padBottom) {
-    visibleRange.value = { start, end, padBottom }
-  }
-}
-
+// === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
 function jumpToTop() {
-  if (!scrollEl.value) return
-  scrollEl.value.scrollTo({ top: 0, behavior: 'smooth' })
-  recomputeVisible()
+  scrollEl.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 watch(filtered, () => {
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
-  if (autoFollow.value && recentlyWatched && wasNearTop) {
-    jumpToTop()
-  } else {
-    recomputeVisible()
-  }
+  if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
 })
 
 watch(() => props.lines.length, () => {
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
-  if (autoFollow.value && recentlyWatched && wasNearTop) {
-    jumpToTop()
-  } else {
-    recomputeVisible()
-  }
+  if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
 })
 
 function onScroll() {
@@ -113,7 +142,6 @@ function onScroll() {
   if (scrollEl.value.scrollTop > 50 && autoFollow.value) {
     autoFollow.value = false
   }
-  recomputeVisible()
 }
 
 function toggleAutoFollow() {
@@ -160,24 +188,13 @@ async function copyAll() {
   try { await navigator.clipboard.writeText(text) } catch (err) { console.error('clipboard', err) }
 }
 
-let resizeObserver: ResizeObserver | null = null
-
 onMounted(() => {
   document.addEventListener('keydown', onKey)
-  nextTick(() => {
-    recomputeVisible()
-    jumpToTop()
-  })
-  if (scrollEl.value && typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => recomputeVisible())
-    resizeObserver.observe(scrollEl.value)
-  }
+  nextTick(jumpToTop)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKey)
-  resizeObserver?.disconnect()
-  resizeObserver = null
 })
 
 // === Visual helpers ===
@@ -196,14 +213,13 @@ const SEV_CLASS: Record<string, string> = {
   alert: 'text-error font-bold', emergency: 'text-error font-bold',
   unknown: 'text-foreground',
 }
-const SEV_BG: Record<string, string> = {
-  error: 'bg-error/5', err: 'bg-error/5', critical: 'bg-error/10',
-  fatal: 'bg-error/10', alert: 'bg-error/10', emergency: 'bg-error/10',
+const SEV_ERROR_KEYS = new Set(['error', 'err', 'critical', 'fatal', 'alert', 'emergency'])
+
+function severityBgFor(s: string): string {
+  return SEV_ERROR_KEYS.has(s.toLowerCase()) ? 'bg-error/5' : ''
 }
-const SEV_LEFT_BORDER: Record<string, string> = {
-  error: 'border-l-error', err: 'border-l-error',
-  critical: 'border-l-error', fatal: 'border-l-error',
-  alert: 'border-l-error', emergency: 'border-l-error',
+function severityBorderFor(s: string): string {
+  return SEV_ERROR_KEYS.has(s.toLowerCase()) ? 'border-l-error' : 'border-l-transparent'
 }
 
 function escapeHtml(s: string): string {
@@ -335,7 +351,7 @@ function clearSearch() {
       </Button>
     </div>
 
-    <!-- Virtualized log area (NEWEST AT TOP) -->
+    <!-- Log area (NEWEST AT TOP) - fold groups, no virtualization -->
     <div
       ref="scrollEl"
       class="flex-1 overflow-auto bg-background relative scroll-smooth"
@@ -361,30 +377,66 @@ function clearSearch() {
         {{ search ? '没有匹配的行' : (streaming ? '等待日志…' : '日志已暂停') }}
       </div>
       <div v-else class="relative">
-        <div
-          v-for="(line, idx) in filtered.slice(visibleRange.start, visibleRange.end)"
-          :key="(visibleRange.start + idx) + ':' + line.content.slice(0, 40)"
-          v-memo="[line.content, line.severity, line.container]"
-          :class="cn(
-            'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2',
-            'hover:bg-muted/40 transition-colors',
-            SEV_BG[line.severity.toLowerCase()] ?? '',
-            SEV_LEFT_BORDER[line.severity.toLowerCase()] ?? 'border-l-transparent',
-          )"
-        >
-          <span
-            :class="cn('shrink-0 mt-px w-3 text-center font-bold tabular-nums', SEV_CLASS[line.severity.toLowerCase()] ?? 'text-foreground')"
-            aria-hidden="true"
-          >{{ SEV_ICON[line.severity.toLowerCase()] ?? '·' }}</span>
-          <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-px">{{ line.timestamp }}</span>
-          <span
-            v-if="line.container && line.container !== '—'"
-            class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-            :title="line.container"
-          >{{ line.container }}</span>
-          <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(line.content)" />
-        </div>
-        <div :style="{ height: visibleRange.padBottom + 'px' }" aria-hidden="true" />
+        <template v-for="group in groups" :key="group.key">
+          <div
+            v-if="group.kind === 'single'"
+            :class="cn(
+              'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2',
+              'hover:bg-muted/40 transition-colors',
+              severityBgFor(group.line.severity),
+              severityBorderFor(group.line.severity),
+            )"
+            v-memo="[group.line.content, group.line.severity]"
+          >
+            <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.line.severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.line.severity.toLowerCase()] ?? '·' }}</span>
+            <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.line.timestamp }}</span>
+            <span
+              v-if="group.line.container && group.line.container !== '—'"
+              class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+              :title="group.line.container"
+            >{{ group.line.container }}</span>
+            <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(group.line.content)" />
+          </div>
+          <template v-else>
+            <div
+              :class="cn(
+                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 cursor-pointer select-none',
+                'hover:bg-muted/40 transition-colors',
+                severityBgFor(group.lines[0].severity),
+                severityBorderFor(group.lines[0].severity),
+              )"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].content]"
+              role="button"
+              :aria-expanded="group.expanded"
+              @click="toggleExpand(group.key)"
+            >
+              <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.lines[0].severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.lines[0].severity.toLowerCase()] ?? '·' }}</span>
+              <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.lines[0].timestamp }}</span>
+              <span
+                v-if="group.lines[0].container && group.lines[0].container !== '—'"
+                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                :title="group.lines[0].container"
+              >{{ group.lines[0].container }}</span>
+              <span class="flex-1 min-w-0 truncate">{{ group.lines[0].content }}</span>
+              <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground text-background text-2xs font-semibold tabular-nums">
+                <ChevronDown v-if="group.expanded" :size="10" :stroke-width="2.5" />
+                <ChevronRight v-else :size="10" :stroke-width="2.5" />
+                ×{{ group.lines.length }}
+              </span>
+            </div>
+            <template v-if="group.expanded">
+              <div
+                v-for="line in group.lines.slice(1)"
+                :key="`${group.key}:${line.timestamp}`"
+                class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground"
+                v-memo="[line.content, line.severity]"
+              >
+                <span class="shrink-0 w-[130px] text-muted-foreground/60 tabular-nums truncate pt-0.5">{{ line.timestamp }}</span>
+                <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(line.content)" />
+              </div>
+            </template>
+          </template>
+        </template>
       </div>
     </div>
 
