@@ -33,10 +33,10 @@ const config = computed(() => {
       props.class
     )"
     role="status"
-    :aria-label="`Status: ${config.label}`"
+    :aria-label="`Status: ${props.label ?? config.label}`"
   >
     <span
-      :class="cn('h-1.5 w-1.5 rounded-full', config.dotClass)"
+      :class="cn('h-1 w-1 rounded-full', config.dotClass)"
       aria-hidden="true"
     />
     {{ label ?? config.label }}
