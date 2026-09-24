@@ -23,6 +23,9 @@ const props = withDefaults(defineProps<Props>(), {
     :as-child="asChild"
     :class="cn(buttonVariants({ variant, size }), props.class)"
   >
-    <slot />
+    <span v-if="variant === 'gradient'">
+      <slot />
+    </span>
+    <slot v-else />
   </Primitive>
 </template>
