@@ -83,7 +83,13 @@ const filtered = computed(() => {
       />
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-semibold text-sm">{{ ev.reason }}</span>
+          <span :class="cn(
+            'inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-medium border',
+            ev.type === 'Warning'
+              ? 'bg-warning-bg text-warning border-warning-border'
+              : 'bg-muted text-muted-foreground border-border',
+          )">{{ ev.type }}</span>
+          <span class="inline-flex items-center rounded px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">{{ ev.reason }}</span>
           <span class="text-2xs text-muted-foreground">{{ ev.namespace }}</span>
           <span class="text-2xs text-muted-foreground font-mono">{{ ev.involved_kind }}/{{ ev.involved_name }}</span>
         </div>

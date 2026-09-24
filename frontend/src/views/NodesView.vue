@@ -5,7 +5,6 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import StatusPill from '@/components/common/StatusPill.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -89,10 +88,18 @@ const memPct = (n: NodeInfo) => usedPct(n.memory_allocatable, n.memory_capacity,
               </div>
               <p class="mt-1 text-2xs text-muted-foreground font-mono">v{{ n.kubelet_version }}</p>
             </div>
-            <StatusPill
-              :variant="n.status === 'Ready' ? 'running' : 'failed'"
-              :label="n.status"
-            />
+            <span :class="cn(
+              'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-2xs font-medium border',
+              n.status === 'Ready'
+                ? 'bg-success-bg text-success border-success-border'
+                : 'bg-error-bg text-error border-error-border',
+            )">
+              <span :class="cn(
+                'inline-block w-1 h-1 rounded-full',
+                n.status === 'Ready' ? 'bg-success' : 'bg-error',
+              )"></span>
+              {{ n.status }}
+            </span>
           </div>
 
           <div v-if="n.roles.length" class="flex flex-wrap gap-1.5">
