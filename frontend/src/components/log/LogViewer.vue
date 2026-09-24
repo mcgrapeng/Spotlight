@@ -20,6 +20,7 @@ const emit = defineEmits<{
   clear: []
   'update:streaming': [value: boolean]
   'consume-unread': []
+  'update:filtered': [value: readonly LogLine[]]
 }>()
 
 // === State ===
@@ -39,7 +40,7 @@ const { filtered } = useLogFilters({
   minSeverity,
 })
 
-defineExpose({ filtered })
+defineExpose({})
 
 // === Fold duplicate consecutive lines (logreduce-style) ===
 function normalize(text: string): string {
@@ -114,11 +115,12 @@ function jumpToTop() {
   scrollEl.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-watch(filtered, () => {
+watch(filtered, (v) => {
+  emit('update:filtered', v)
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
   if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
-})
+}, { immediate: true })
 
 watch(() => props.lines.length, () => {
   const recentlyWatched = Date.now() - lastInteraction.value < 3000

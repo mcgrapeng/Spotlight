@@ -14,7 +14,7 @@ import LogViewer from '@/components/log/LogViewer.vue'
 import LogAnalyzerDrawer from '@/components/ai/LogAnalyzerDrawer.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
-import type { PodInfo } from '@/domain/types'
+import type { PodInfo, LogLine } from '@/domain/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,8 +36,8 @@ const { lines: logLines, unreadCount } = usePodLogs({
   streaming: logStreaming,
 })
 
-const logViewerRef = ref<InstanceType<typeof LogViewer> | null>(null)
-const filteredLogsForAI = computed(() => logViewerRef.value?.filtered ?? [])
+const filteredLogsForAI = ref<readonly LogLine[]>([])
+onMounted(() => { logUnread.value = unreadCount.value })
 
 // Keep logUnread in sync with composable (it owns the count via SSR appends).
 watch(unreadCount, (v) => { logUnread.value = v }, { immediate: true })
@@ -149,10 +149,10 @@ function back() { router.push({ name: 'pods' }) }
             </div>
             <div class="h-[600px]">
               <LogViewer
-                ref="logViewerRef"
                 :lines="logLines"
                 v-model:streaming="logStreaming"
                 :unread-count="logUnread"
+                @update:filtered="filteredLogsForAI = $event"
                 @clear="logLines = []"
                 @consume-unread="logUnread = 0"
               />
