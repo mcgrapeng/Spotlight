@@ -22,7 +22,6 @@ const emit = defineEmits<{
   'update:streaming': [value: boolean]
   'consume-unread': []
   'update:filtered': [value: readonly LogLine[]]
-  'histogram-click': [binIndex: number]
 }>()
 
 // === State ===
@@ -74,7 +73,7 @@ const expanded = ref(new Set<number>())
 const groups = computed<Group[]>(() => {
   const out: Group[] = []
   let i = 0
-  const arr = filtered.value
+  const arr = displayedLines.value
   while (i < arr.length) {
     const sig = normalize(arr[i].content)
     let j = i + 1
@@ -153,12 +152,58 @@ function formatBinTime(idx: number): string {
   return new Date(minTs + idx * binMs).toISOString().slice(11, 19)
 }
 
+function formatBinEndTime(): string {
+  const { minTs, binMs } = histogram.value
+  if (!minTs) return ''
+  return new Date(minTs + HISTOGRAM_BINS * binMs).toISOString().slice(11, 19)
+}
+
+function formatRangeLabel(r: readonly [number, number]): string {
+  const fmt = (t: number) => new Date(t).toISOString().slice(11, 19)
+  return `${fmt(r[0])}–${fmt(r[1])}`
+}
+
+// === Time-range filter (click histogram bar → narrow to that bin) ===
+const histogramRange = ref<[number, number] | null>(null)
+
+function onHistogramBarClick(i: number) {
+  const { minTs, binMs } = histogram.value
+  if (!minTs) return
+  const start = minTs + i * binMs
+  const end = start + binMs
+  const cur = histogramRange.value
+  if (cur && Math.abs(cur[0] - start) < 1 && Math.abs(cur[1] - end) < 1) {
+    histogramRange.value = null
+    return
+  }
+  histogramRange.value = [start, end]
+}
+
+function isBinInRange(i: number): boolean {
+  const r = histogramRange.value
+  if (!r) return false
+  const { minTs, binMs } = histogram.value
+  if (!minTs) return false
+  const binStart = minTs + i * binMs
+  return binStart >= r[0] - binMs / 2 && binStart < r[1]
+}
+
+// === Additional filter pipeline: time range + (later) container ===
+const displayedLines = computed(() => {
+  const r = histogramRange.value
+  if (!r) return filtered.value
+  return filtered.value.filter((l) => {
+    const t = parseTs(l.timestamp)
+    return Number.isFinite(t) && t >= r[0] && t < r[1]
+  })
+})
+
 // === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
 function jumpToTop() {
   scrollEl.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-watch(filtered, (v) => {
+watch(displayedLines, (v) => {
   emit('update:filtered', v)
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
@@ -217,7 +262,7 @@ function onKey(e: KeyboardEvent) {
 }
 
 async function copyAll() {
-  const text = filtered.value
+  const text = displayedLines.value
     .map(l => `${l.timestamp} [${l.severity.toUpperCase()}] [${l.container}] ${l.content}`)
     .join('\n')
   try { await navigator.clipboard.writeText(text) } catch (err) { console.error('clipboard', err) }
@@ -507,7 +552,7 @@ function clearFieldFilter() {
       <Button
         variant="outline" size="sm"
         class="h-7 px-2"
-        :disabled="!filtered.length"
+        :disabled="!displayedLines.length"
         @click="copyAll"
         aria-label="复制全部 (C)"
       >
@@ -543,25 +588,47 @@ function clearFieldFilter() {
       </button>
     </div>
 
-    <!-- Time histogram (60 bins) -->
-    <div
-      class="flex items-end gap-px h-6 px-3 border-b border-border bg-muted/30 shrink-0"
-      role="group"
-      aria-label="时间分布直方图"
-    >
-      <button
-        v-for="(count, i) in histogram.bins"
-        :key="i"
-        type="button"
-        :class="cn(
-          'flex-1 rounded-sm transition-colors cursor-pointer',
-          count === 0 ? 'invisible pointer-events-none' : 'bg-foreground/30 hover:bg-foreground/70',
-        )"
-        :style="count > 0 ? { height: `${(count / histogramMax) * 100}%` } : undefined"
-        :title="count > 0 ? `${formatBinTime(i)} — ${count.toLocaleString()} 条` : undefined"
-        :aria-label="count > 0 ? `${formatBinTime(i)} ${count} 条` : undefined"
-        @click="emit('histogram-click', i)"
-      />
+    <!-- Time histogram (60 bins) with edge labels + click-to-filter -->
+    <div class="border-b border-border bg-muted/30 shrink-0">
+      <div class="flex items-center justify-between gap-2 px-3 pt-1 text-2xs text-muted-foreground font-sans">
+        <span class="tabular-nums">{{ histogram.minTs ? formatBinTime(0) : '—' }}</span>
+        <span
+          v-if="histogramRange"
+          class="inline-flex items-center gap-1 px-1.5 py-px rounded bg-foreground/10 text-foreground font-mono tabular-nums"
+        >
+          {{ formatRangeLabel(histogramRange) }}
+          <button
+            type="button"
+            class="hover:text-error"
+            aria-label="清除时间范围"
+            @click="histogramRange = null"
+          >
+            <X :size="10" :stroke-width="2" />
+          </button>
+        </span>
+        <span v-else class="tabular-nums">{{ lines.length.toLocaleString() }} 条</span>
+        <span class="tabular-nums">{{ histogram.minTs ? formatBinEndTime() : '—' }}</span>
+      </div>
+      <div
+        class="flex items-end gap-px h-10 px-3 pb-1"
+        role="group"
+        aria-label="时间分布直方图"
+      >
+        <button
+          v-for="(count, i) in histogram.bins"
+          :key="i"
+          type="button"
+          :class="cn(
+            'flex-1 rounded-sm transition-colors cursor-pointer',
+            count === 0 ? 'invisible pointer-events-none' : 'hover:bg-foreground/70',
+            isBinInRange(i) ? 'bg-foreground' : 'bg-foreground/30',
+          )"
+          :style="count > 0 ? { height: `${(count / histogramMax) * 100}%` } : undefined"
+          :title="count > 0 ? `${formatBinTime(i)} — ${count.toLocaleString()} 条` : undefined"
+          :aria-label="count > 0 ? `${formatBinTime(i)} ${count} 条` : undefined"
+          @click="onHistogramBarClick(i)"
+        />
+      </div>
     </div>
 
     <!-- Log area (NEWEST AT TOP) - fold groups, no virtualization -->
@@ -585,7 +652,7 @@ function clearFieldFilter() {
         {{ unreadCount }} 条新 · 跳转
       </button>
 
-      <div v-if="filtered.length === 0" class="p-12 text-center text-muted-foreground font-sans">
+      <div v-if="displayedLines.length === 0" class="p-12 text-center text-muted-foreground font-sans">
         <Terminal :size="24" class="mx-auto mb-2 opacity-30" :stroke-width="1.5" />
         {{ search ? '没有匹配的行' : (streaming ? '等待日志…' : '日志已暂停') }}
       </div>
@@ -706,8 +773,8 @@ function clearFieldFilter() {
     <!-- Status bar -->
     <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
       <span class="tabular-nums">
-        <span class="text-foreground font-medium">{{ filtered.length.toLocaleString() }}</span>
-        <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
+        <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
+        <span v-if="search || minSeverity > 0 || histogramRange"> / {{ lines.length.toLocaleString() }}</span>
         行
       </span>
       <div class="flex items-center gap-3">
