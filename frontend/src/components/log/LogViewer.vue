@@ -23,6 +23,7 @@ const emit = defineEmits<{
   'update:streaming': [value: boolean]
   'consume-unread': []
   'update:filtered': [value: readonly LogLine[]]
+  'range-select': [value: [number, number] | null]
 }>()
 
 // === State ===
@@ -112,7 +113,7 @@ const counts = computed(() => {
   return c
 })
 
-// === Time histogram (60 bins over the full unfiltered set — chips-style stable) ===
+// === Time histogram (60 bins, severity-stacked, drag-to-select range) ===
 const HISTOGRAM_BINS = 60
 
 function parseTs(s: string): number {
@@ -120,74 +121,100 @@ function parseTs(s: string): number {
   return Number.isFinite(t) ? t : NaN
 }
 
-const histogram = computed(() => {
-  const bins = new Array<number>(HISTOGRAM_BINS).fill(0)
-  let min = Infinity, max = -Infinity, any = false
-  for (const l of props.lines) {
-    const t = parseTs(l.timestamp)
-    if (!Number.isFinite(t)) continue
-    if (t < min) min = t
-    if (t > max) max = t
-    any = true
+interface HistogramBin {
+  ts: number
+  count: number
+  error: number
+  warn: number
+  info: number
+  isSelected: boolean
+}
+
+const histogramSelection = ref<[number, number] | null>(null)
+
+const histogramData = computed(() => {
+  if (!filtered.value.length) return { bins: [] as HistogramBin[], minTs: 0, maxTs: 0, total: 0, span: 0 }
+  const tsArr = filtered.value.map(l => new Date(l.timestamp).getTime()).filter(t => !isNaN(t))
+  if (!tsArr.length) return { bins: [] as HistogramBin[], minTs: 0, maxTs: 0, total: 0, span: 0 }
+  const minTs = Math.min(...tsArr)
+  const maxTs = Math.max(...tsArr)
+  const span = maxTs - minTs || 1
+  const bins: HistogramBin[] = Array.from({ length: HISTOGRAM_BINS }, () => ({
+    ts: 0, count: 0, error: 0, warn: 0, info: 0, isSelected: false,
+  }))
+  for (const l of filtered.value) {
+    const t = new Date(l.timestamp).getTime()
+    if (isNaN(t)) continue
+    const i = Math.min(HISTOGRAM_BINS - 1, Math.floor((t - minTs) / span * HISTOGRAM_BINS))
+    if (!bins[i].ts) bins[i].ts = minTs + (i / HISTOGRAM_BINS) * span
+    bins[i].count++
+    const sev = l.severity.toLowerCase()
+    if (['error', 'err', 'critical', 'fatal', 'alert', 'emergency'].includes(sev)) bins[i].error++
+    else if (['warn', 'warning'].includes(sev)) bins[i].warn++
+    else bins[i].info++
   }
-  const range = any ? max - min : 0
-  const binMs = range > 0 ? range / HISTOGRAM_BINS : 0
-  if (any) {
-    for (const l of props.lines) {
-      const t = parseTs(l.timestamp)
-      if (!Number.isFinite(t)) continue
-      const idx = range > 0
-        ? Math.min(HISTOGRAM_BINS - 1, Math.max(0, Math.floor((t - min) / binMs)))
-        : 0
-      bins[idx]++
+  if (histogramSelection.value) {
+    const [selStart, selEnd] = histogramSelection.value
+    for (const b of bins) {
+      if (b.ts >= selStart && b.ts < selEnd) b.isSelected = true
     }
   }
-  return { bins, binMs, minTs: any ? min : 0 }
+  return { bins, minTs, maxTs, total: filtered.value.length, span }
 })
 
-const histogramMax = computed(() => Math.max(1, ...histogram.value.bins))
+const histogramMax = computed(() => Math.max(1, ...histogramData.value.bins.map(b => b.count)))
 
-function formatBinTime(idx: number): string {
-  const { minTs, binMs } = histogram.value
-  if (!minTs) return ''
-  return new Date(minTs + idx * binMs).toISOString().slice(11, 19)
+const histogramHeader = computed(() => {
+  const total = histogramData.value.total
+  const spanMs = histogramData.value.span
+  const dur = spanMs < 60_000 ? `${Math.round(spanMs / 1000)}秒` :
+              spanMs < 3_600_000 ? `${Math.floor(spanMs / 60_000)}分${Math.round((spanMs % 60_000) / 1000)}秒` :
+              `${Math.floor(spanMs / 3_600_000)}时${Math.floor((spanMs % 3_600_000) / 60_000)}分`
+  const rate = spanMs > 0 ? (total / (spanMs / 1000)).toFixed(1) : '0'
+  return `${total.toLocaleString()} 条 · ${dur} · 平均 ${rate}/s`
+})
+
+const histogramDrag = ref<{ startMs: number; endMs: number } | null>(null)
+
+function onHistogramMouseDown(e: MouseEvent) {
+  if (!histogramData.value.bins.length) return
+  const target = e.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+  const ms = histogramData.value.minTs + ratio * histogramData.value.span
+  histogramDrag.value = { startMs: ms, endMs: ms }
 }
 
-function formatBinEndTime(): string {
-  const { minTs, binMs } = histogram.value
-  if (!minTs) return ''
-  return new Date(minTs + HISTOGRAM_BINS * binMs).toISOString().slice(11, 19)
+function onHistogramMouseMove(e: MouseEvent) {
+  if (!histogramDrag.value) return
+  const target = e.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+  const ms = histogramData.value.minTs + ratio * histogramData.value.span
+  const start = histogramDrag.value.startMs
+  histogramDrag.value = {
+    startMs: Math.min(start, ms),
+    endMs: Math.max(start, ms),
+  }
 }
 
-function formatRangeLabel(r: readonly [number, number]): string {
-  const fmt = (t: number) => new Date(t).toISOString().slice(11, 19)
-  return `${fmt(r[0])}–${fmt(r[1])}`
-}
-
-// === Time-range filter (click histogram bar → narrow to that bin) ===
-const histogramRange = ref<[number, number] | null>(null)
-
-function onHistogramBarClick(i: number) {
-  const { minTs, binMs } = histogram.value
-  if (!minTs) return
-  const start = minTs + i * binMs
-  const end = start + binMs
-  const cur = histogramRange.value
-  if (cur && Math.abs(cur[0] - start) < 1 && Math.abs(cur[1] - end) < 1) {
-    histogramRange.value = null
+function onHistogramMouseUp() {
+  if (!histogramDrag.value) return
+  const drag = histogramDrag.value
+  const range = drag.endMs - drag.startMs
+  histogramDrag.value = null
+  if (range < 1000) {
+    histogramSelection.value = null
     return
   }
-  histogramRange.value = [start, end]
+  histogramSelection.value = [drag.startMs, drag.endMs]
 }
 
-function isBinInRange(i: number): boolean {
-  const r = histogramRange.value
-  if (!r) return false
-  const { minTs, binMs } = histogram.value
-  if (!minTs) return false
-  const binStart = minTs + i * binMs
-  return binStart >= r[0] - binMs / 2 && binStart < r[1]
+function clearHistogramSelection() {
+  histogramSelection.value = null
 }
+
+watch(histogramSelection, (v) => emit('range-select', v))
 
 // === Additional filter pipeline: container + time range ===
 const selectedContainer = ref<string | null>(null)
@@ -209,7 +236,7 @@ const displayedLines = computed(() => {
   let lines = filtered.value
   const sc = selectedContainer.value
   if (sc) lines = lines.filter((l) => l.container === sc)
-  const r = histogramRange.value
+  const r = histogramSelection.value
   if (r) lines = lines.filter((l) => {
     const t = parseTs(l.timestamp)
     return Number.isFinite(t) && t >= r[0] && t < r[1]
@@ -730,46 +757,99 @@ function truncatedHtml(content: string): string {
       </button>
     </div>
 
-    <!-- Time histogram (60 bins) with edge labels + click-to-filter -->
-    <div class="border-b border-border bg-muted/30 shrink-0">
-      <div class="flex items-center justify-between gap-2 px-3 pt-1 text-2xs text-muted-foreground font-sans">
-        <span class="tabular-nums">{{ histogram.minTs ? formatBinTime(0) : '—' }}</span>
-        <span
-          v-if="histogramRange"
-          class="inline-flex items-center gap-1 px-1.5 py-px rounded bg-foreground/10 text-foreground font-mono tabular-nums"
-        >
-          {{ formatRangeLabel(histogramRange) }}
-          <button
-            type="button"
-            class="hover:text-error"
-            aria-label="清除时间范围"
-            @click="histogramRange = null"
-          >
-            <X :size="10" :stroke-width="2" />
-          </button>
-        </span>
-        <span v-else class="tabular-nums">{{ lines.length.toLocaleString() }} 条</span>
-        <span class="tabular-nums">{{ histogram.minTs ? formatBinEndTime() : '—' }}</span>
-      </div>
-      <div
-        class="flex items-end gap-px h-10 px-3 pb-1"
-        role="group"
-        aria-label="时间分布直方图"
-      >
+    <!-- Time histogram (color-coded, drag-to-select range) -->
+    <div
+      v-if="histogramData.bins.length > 1"
+      class="border-b border-border bg-background shrink-0 select-none"
+    >
+      <!-- Header strip: total + duration + rate + reset -->
+      <div class="flex items-center justify-between px-3 py-1.5 text-2xs text-muted-foreground font-sans">
+        <span class="tabular-nums">{{ histogramHeader }}</span>
         <button
-          v-for="(count, i) in histogram.bins"
-          :key="i"
+          v-if="histogramSelection"
           type="button"
-          :class="cn(
-            'flex-1 rounded-sm transition-colors cursor-pointer',
-            count === 0 ? 'invisible pointer-events-none' : 'hover:bg-foreground/70',
-            isBinInRange(i) ? 'bg-foreground' : 'bg-foreground/30',
-          )"
-          :style="count > 0 ? { height: `${(count / histogramMax) * 100}%` } : undefined"
-          :title="count > 0 ? `${formatBinTime(i)} — ${count.toLocaleString()} 条` : undefined"
-          :aria-label="count > 0 ? `${formatBinTime(i)} ${count} 条` : undefined"
-          @click="onHistogramBarClick(i)"
-        />
+          class="text-2xs hover:text-foreground underline tabular-nums"
+          @click="clearHistogramSelection"
+        >
+          重置范围
+        </button>
+      </div>
+
+      <!-- Bar chart + legend + time axis -->
+      <div class="flex items-end gap-2 px-3 pb-1 pt-1">
+        <!-- Y-axis mini legend -->
+        <div class="flex flex-col gap-1 text-2xs text-muted-foreground pr-1 mb-3 font-sans">
+          <span class="flex items-center gap-1">
+            <span class="h-1 w-1 rounded-full bg-error" />
+            <span class="tabular-nums">错</span>
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="h-1 w-1 rounded-full bg-warning" />
+            <span class="tabular-nums">警</span>
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="h-1 w-1 rounded-full bg-foreground/40" />
+            <span class="tabular-nums">信</span>
+          </span>
+        </div>
+
+        <!-- Bars + selection overlay -->
+        <div
+          class="relative flex-1 h-12 flex items-end gap-px cursor-crosshair select-none"
+          role="slider"
+          aria-label="日志活动分布（拖动选择时间范围）"
+          @mousedown="onHistogramMouseDown"
+          @mousemove="onHistogramMouseMove"
+          @mouseup="onHistogramMouseUp"
+          @mouseleave="histogramDrag = null"
+        >
+          <!-- Bars (stacked info/warn/error) -->
+          <div
+            v-for="(bin, i) in histogramData.bins"
+            :key="i"
+            class="flex-1 flex flex-col-reverse justify-end"
+            :title="bin.count > 0 ? `${bin.count} 条 (错 ${bin.error} 警 ${bin.warn} 信 ${bin.info})` : ''"
+          >
+            <div
+              class="w-full bg-foreground/40 rounded-sm transition-opacity hover:opacity-80"
+              :style="{ height: bin.info > 0 ? `${(bin.info / histogramMax) * 100}%` : '0', minHeight: bin.info > 0 ? '1px' : '0' }"
+            />
+            <div
+              class="w-full bg-warning rounded-sm"
+              :style="{ height: bin.warn > 0 ? `${(bin.warn / histogramMax) * 100}%` : '0' }"
+            />
+            <div
+              class="w-full bg-error rounded-sm"
+              :style="{ height: bin.error > 0 ? `${(bin.error / histogramMax) * 100}%` : '0' }"
+            />
+          </div>
+
+          <!-- Selection overlay -->
+          <div
+            v-if="histogramDrag || histogramSelection"
+            class="absolute top-0 bottom-0 bg-foreground/20 border-x-2 border-foreground pointer-events-none"
+            :style="{
+              left: ((histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0) - histogramData.minTs) / histogramData.span * 100 + '%',
+              width: (((histogramDrag?.endMs ?? histogramSelection?.[1] ?? 0) - (histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0)) / histogramData.span) * 100 + '%'
+            }"
+          />
+        </div>
+      </div>
+
+      <!-- Time labels (relative) -->
+      <div class="flex justify-between px-3 pb-1.5 text-2xs text-muted-foreground font-sans tabular-nums">
+        <span v-if="histogramData.span > 0">
+          {{ histogramData.span > 86400000
+              ? `-${Math.round(histogramData.span / 86400000)}天`
+              : histogramData.span > 3600000
+              ? `-${Math.round(histogramData.span / 3600000)}小时`
+              : histogramData.span > 60000
+              ? `-${Math.round(histogramData.span / 60000)}分`
+              : `-${Math.round(histogramData.span / 1000)}秒`
+          }}
+        </span>
+        <span v-else>-</span>
+        <span>现在</span>
       </div>
     </div>
 
@@ -958,7 +1038,7 @@ function truncatedHtml(content: string): string {
     <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
       <span class="tabular-nums">
         <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
-        <span v-if="search || minSeverity > 0 || histogramRange"> / {{ lines.length.toLocaleString() }}</span>
+        <span v-if="search || minSeverity > 0 || histogramSelection"> / {{ lines.length.toLocaleString() }}</span>
         行
       </span>
       <div class="flex items-center gap-3">
