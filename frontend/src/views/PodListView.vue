@@ -118,9 +118,15 @@ const pagedPods = computed(() => {
     <Card v-else class="p-0 overflow-hidden">
       <EmptyState
         v-if="!loading && data.items.length === 0"
-        title="没有匹配的 Pod"
-        description="调整搜索词或切换 namespace / 状态过滤"
-      />
+        :title="search ? `没有匹配「${search}」的 Pod` : (statusFilter !== 'all' ? `没有 ${statusFilter} 状态的 Pod` : '没有匹配的 Pod')"
+        :description="search || statusFilter !== 'all' ? `当前过滤：${search ? '搜索「' + search + '」' : ''}${search && statusFilter !== 'all' ? ' + ' : ''}${statusFilter !== 'all' ? '状态 ' + statusFilter : ''}` : '调整搜索词或切换 namespace / 状态过滤'"
+      >
+        <template v-if="search || statusFilter !== 'all'" #action>
+          <Button variant="outline" size="sm" @click="search = ''; statusFilter = 'all'">
+            清除过滤
+          </Button>
+        </template>
+      </EmptyState>
       <div v-else class="overflow-auto max-h-[70vh]">
         <table class="w-full text-sm">
           <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
