@@ -317,6 +317,54 @@ function clearRecent() {
   recentSearches.value = []
   try { localStorage.removeItem(RECENT_KEY) } catch { /* ignore */ }
 }
+
+// === JSON auto-detect + pretty-print ===
+// ponytail: primitives rejected by JSON.parse('42') === 42 fall through this guard;
+// only objects/arrays get a badge (numbers/strings/booleans/null alone are too noisy)
+const jsonCache = new Map<string, unknown>()
+
+function parseJson(content: string): unknown {
+  if (jsonCache.has(content)) return jsonCache.get(content) ?? null
+  let parsed: unknown = null
+  try { parsed = JSON.parse(content) } catch { /* not JSON */ }
+  if (parsed === null || typeof parsed !== 'object') parsed = null
+  jsonCache.set(content, parsed)
+  return parsed
+}
+
+function isJson(content: string): boolean {
+  return parseJson(content) !== null
+}
+
+function prettyJson(content: string): string {
+  const parsed = parseJson(content)
+  if (parsed === null) return ''
+  const json = JSON.stringify(parsed, null, 2)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  // Tokenize: "key":  → info,  "value"  → success,  number → warning,  true/false/null → error
+  return json.replace(
+    /("(?:\\.|[^"\\])*")(\s*:)?|(\b(?:true|false|null)\b)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+    (m, str, colon, bool, num) => {
+      if (str !== undefined) {
+        return colon !== undefined
+          ? `<span class="text-info">${str}</span>${colon}`
+          : `<span class="text-success">${str}</span>`
+      }
+      if (bool !== undefined) return `<span class="text-error">${bool}</span>`
+      if (num !== undefined) return `<span class="text-warning">${num}</span>`
+      return m
+    },
+  )
+}
+
+const jsonExpanded = ref(new Set<string>())
+function toggleJson(key: string) {
+  const s = new Set(jsonExpanded.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  jsonExpanded.value = s
+}
 </script>
 
 <template>
@@ -497,25 +545,44 @@ function clearRecent() {
       </div>
       <div v-else class="relative">
         <template v-for="group in groups" :key="group.key">
-          <div
-            v-if="group.kind === 'single'"
-            :class="cn(
-              'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2',
-              'hover:bg-muted/40 transition-colors',
-              severityBgFor(group.line.severity),
-              severityBorderFor(group.line.severity),
-            )"
-            v-memo="[group.line.content, group.line.severity]"
-          >
-            <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.line.severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.line.severity.toLowerCase()] ?? '·' }}</span>
-            <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.line.timestamp }}</span>
-            <span
-              v-if="group.line.container && group.line.container !== '—'"
-              class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-              :title="group.line.container"
-            >{{ group.line.container }}</span>
-            <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(group.line.content)" />
-          </div>
+          <template v-if="group.kind === 'single'">
+            <div
+              :class="cn(
+                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2',
+                'hover:bg-muted/40 transition-colors',
+                severityBgFor(group.line.severity),
+                severityBorderFor(group.line.severity),
+              )"
+              v-memo="[group.line.content, group.line.severity, jsonExpanded.has(`${group.key}`)]"
+            >
+              <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.line.severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.line.severity.toLowerCase()] ?? '·' }}</span>
+              <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.line.timestamp }}</span>
+              <span
+                v-if="group.line.container && group.line.container !== '—'"
+                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                :title="group.line.container"
+              >{{ group.line.container }}</span>
+              <button
+                v-if="isJson(group.line.content)"
+                type="button"
+                @click="toggleJson(`${group.key}`)"
+                class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
+                :aria-expanded="jsonExpanded.has(`${group.key}`)"
+                aria-label="切换 JSON 展开"
+              >
+                JSON
+                <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
+                <ChevronUp v-else :size="9" :stroke-width="2.5" />
+              </button>
+              <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(group.line.content)" />
+            </div>
+            <pre
+              v-if="isJson(group.line.content) && jsonExpanded.has(`${group.key}`)"
+              class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono whitespace-pre"
+              v-html="prettyJson(group.line.content)"
+            />
+          </template>
           <template v-else>
             <div
               :class="cn(
@@ -524,7 +591,7 @@ function clearRecent() {
                 severityBgFor(group.lines[0].severity),
                 severityBorderFor(group.lines[0].severity),
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].content]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].content, jsonExpanded.has(`${group.key}`)]"
               role="button"
               :aria-expanded="group.expanded"
               @click="toggleExpand(group.key)"
@@ -536,6 +603,19 @@ function clearRecent() {
                 class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                 :title="group.lines[0].container"
               >{{ group.lines[0].container }}</span>
+              <button
+                v-if="isJson(group.lines[0].content)"
+                type="button"
+                @click.stop="toggleJson(`${group.key}`)"
+                class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
+                :aria-expanded="jsonExpanded.has(`${group.key}`)"
+                aria-label="切换 JSON 展开"
+              >
+                JSON
+                <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
+                <ChevronUp v-else :size="9" :stroke-width="2.5" />
+              </button>
               <span class="flex-1 min-w-0 truncate">{{ group.lines[0].content }}</span>
               <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground text-background text-2xs font-semibold tabular-nums">
                 <ChevronDown v-if="group.expanded" :size="10" :stroke-width="2.5" />
@@ -544,15 +624,33 @@ function clearRecent() {
               </span>
             </div>
             <template v-if="group.expanded">
-              <div
-                v-for="line in group.lines.slice(1)"
-                :key="`${group.key}:${line.timestamp}`"
-                class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground"
-                v-memo="[line.content, line.severity]"
-              >
-                <span class="shrink-0 w-[130px] text-muted-foreground/60 tabular-nums truncate pt-0.5">{{ line.timestamp }}</span>
-                <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(line.content)" />
-              </div>
+              <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.timestamp}`">
+                <div
+                  class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground"
+                  v-memo="[line.content, line.severity, jsonExpanded.has(`${group.key + idx + 1}`)]"
+                >
+                  <span class="shrink-0 w-[130px] text-muted-foreground/60 tabular-nums truncate pt-0.5">{{ line.timestamp }}</span>
+                  <button
+                    v-if="isJson(line.content)"
+                    type="button"
+                    @click="toggleJson(`${group.key + idx + 1}`)"
+                    class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                    :title="jsonExpanded.has(`${group.key + idx + 1}`) ? '折叠 JSON' : '展开 JSON'"
+                    :aria-expanded="jsonExpanded.has(`${group.key + idx + 1}`)"
+                    aria-label="切换 JSON 展开"
+                  >
+                    JSON
+                    <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
+                    <ChevronUp v-else :size="9" :stroke-width="2.5" />
+                  </button>
+                  <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(line.content)" />
+                </div>
+                <pre
+                  v-if="isJson(line.content) && jsonExpanded.has(`${group.key + idx + 1}`)"
+                  class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono whitespace-pre"
+                  v-html="prettyJson(line.content)"
+                />
+              </template>
             </template>
           </template>
         </template>

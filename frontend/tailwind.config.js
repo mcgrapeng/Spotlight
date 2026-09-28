@@ -64,6 +64,12 @@ export default {
           bg: 'hsl(var(--error-bg))',
           border: 'hsl(var(--error-border))',
         },
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+          bg: 'hsl(var(--info-bg))',
+          border: 'hsl(var(--info-border))',
+        },
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',

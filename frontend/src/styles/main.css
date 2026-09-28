@@ -51,6 +51,11 @@
     --error-bg: 0 86% 97%;                 /* #FEF2F2 */
     --error-border: 0 86% 90%;             /* #FECACA */
 
+    --info: 217 91% 60%;                   /* #3B82F6 — JSON keys */
+    --info-foreground: 0 0% 100%;
+    --info-bg: 214 100% 97%;               /* #EFF6FF */
+    --info-border: 214 95% 93%;            /* #DBEAFE */
+
     /* === Sidebar === */
     --sidebar-background: 0 0% 100%;       /* #FFFFFF */
     --sidebar-foreground: 240 6% 10%;
