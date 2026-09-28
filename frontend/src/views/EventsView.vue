@@ -98,10 +98,17 @@ const totalEvents = computed(() => events.value.length)
   <EmptyState v-else-if="filtered.length === 0" title="没有事件" />
 
   <div v-else class="space-y-2">
-    <div
+    <component
+      :is="ev.involved_kind === 'Pod' ? 'router-link' : 'div'"
       v-for="ev in filtered"
       :key="ev.name"
-      class="flex items-start gap-3 p-3 rounded-lg border border-border bg-card"
+      v-bind="ev.involved_kind === 'Pod' ? { to: { name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } } } : {}"
+      :class="cn(
+        'flex items-start gap-3 p-3 rounded-lg border transition-colors',
+        ev.involved_kind === 'Pod'
+          ? 'border-border bg-card hover:bg-muted/30 hover:border-foreground/20 cursor-pointer'
+          : 'border-border bg-card opacity-75',
+      )"
     >
       <component
         :is="ev.type === 'Warning' ? AlertTriangle : AlertCircle"
@@ -127,6 +134,6 @@ const totalEvents = computed(() => events.value.length)
           <span>×{{ ev.count }}</span>
         </div>
       </div>
-    </div>
+    </component>
   </div>
 </template>
