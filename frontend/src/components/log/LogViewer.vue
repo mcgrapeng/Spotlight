@@ -254,6 +254,37 @@ function isNewestLine(idx: number, _totalLines: number): boolean {
   return props.streaming && idx === 0
 }
 
+// === Severity badge (per-row label, replaces single-char icon) ===
+const SEV_BADGE_CLASS: Record<string, string> = {
+  critical: 'bg-error text-background border-error font-bold',
+  fatal: 'bg-error text-background border-error font-bold',
+  alert: 'bg-error text-background border-error font-bold',
+  emergency: 'bg-error text-background border-error font-bold',
+  error: 'bg-error/15 text-error border-error/40 font-semibold',
+  err: 'bg-error/15 text-error border-error/40 font-semibold',
+  warn: 'bg-warning/15 text-warning border-warning/40 font-medium',
+  warning: 'bg-warning/15 text-warning border-warning/40 font-medium',
+  info: 'bg-muted text-foreground border-border font-medium',
+  notice: 'bg-muted text-foreground border-border font-medium',
+  trace: 'bg-transparent text-muted-foreground/50 border-transparent',
+  debug: 'bg-transparent text-muted-foreground/50 border-transparent',
+  unknown: 'bg-muted text-muted-foreground border-border',
+}
+const SEV_BADGE_TEXT: Record<string, string> = {
+  critical: 'CRIT', fatal: 'FATAL', alert: 'ALERT', emergency: 'EMRG',
+  error: 'ERROR', err: 'ERROR',
+  warn: 'WARN', warning: 'WARN',
+  info: 'INFO', notice: 'NOTI',
+  trace: '[T]', debug: '[D]',
+  unknown: '?',
+}
+function sevBadgeClass(s: string): string {
+  return SEV_BADGE_CLASS[s.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border'
+}
+function sevBadgeText(s: string): string {
+  return SEV_BADGE_TEXT[s.toLowerCase()] ?? '?'
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c] as string,
@@ -706,7 +737,7 @@ function truncatedHtml(content: string): string {
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
-              <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.line.severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.line.severity.toLowerCase()] ?? '·' }}</span>
+              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.severity))">{{ sevBadgeText(group.line.severity) }}</span>
               <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.line.timestamp }}</span>
               <span
                 v-if="group.line.container && group.line.container !== '—'"
@@ -774,7 +805,7 @@ function truncatedHtml(content: string): string {
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
-              <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.lines[0].severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.lines[0].severity.toLowerCase()] ?? '·' }}</span>
+              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].severity))">{{ sevBadgeText(group.lines[0].severity) }}</span>
               <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.lines[0].timestamp }}</span>
               <span
                 v-if="group.lines[0].container && group.lines[0].container !== '—'"
