@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -43,6 +43,18 @@ watch(search, (v) => {
 watch(() => route.query.search, (v) => {
   const next = (v as string) || ''
   if (next !== search.value) search.value = next
+})
+
+onMounted(() => {
+  // Auto-focus search after page settles (skip if user already clicked somewhere else)
+  setTimeout(() => {
+    if (!search.value) {
+      const el = document.querySelector('input[aria-label="搜索"]')
+      if (el && !document.activeElement?.matches('input, button, select, textarea')) {
+        ;(el as HTMLInputElement).focus()
+      }
+    }
+  }, 250)
 })
 
 const { data, loading, error, reload } = usePodList({
@@ -122,6 +134,19 @@ const pagedPods = computed(() => {
           aria-label="搜索"
         />
       </div>
+    </div>
+
+    <div v-if="search" class="flex items-center gap-2 -mt-2 mb-2">
+      <span class="text-xs text-muted-foreground">过滤:</span>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-accent text-accent-foreground text-xs font-mono hover:bg-accent/80"
+        @click="search = ''"
+      >
+        <span>"{{ search }}"</span>
+        <X :size="11" :stroke-width="2.5" />
+      </button>
+      <span class="text-xs text-muted-foreground">{{ data.items.length }} 个结果</span>
     </div>
 
     <ErrorState v-if="error" :message="error" @retry="reload" />
