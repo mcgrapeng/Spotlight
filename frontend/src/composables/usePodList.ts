@@ -83,7 +83,7 @@ export function usePodList(opts: {
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       load()
-    }, opts.debounceMs ?? 250)
+    }, opts.debounceMs ?? 150)
   }
 
   watch(
