@@ -35,7 +35,7 @@ async function load() {
     events.value = await eventsApi.list({
       cluster: cluster.activeCluster,
       namespace: cluster.activeNamespace,
-      limit: 200,
+      limit: 500,
     })
   } catch (e: any) {
     error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
@@ -52,17 +52,30 @@ const filtered = computed(() => {
   if (typeFilter.value === 'all') return events.value
   return events.value.filter(e => e.type === typeFilter.value)
 })
+
+const countByType = computed<Record<string, number>>(() => {
+  const c: Record<string, number> = { Warning: 0, Normal: 0 }
+  for (const e of events.value) {
+    if (e.type in c) c[e.type]++
+  }
+  return c
+})
+
+const totalEvents = computed(() => events.value.length)
 </script>
 
 <template>
-  <PageHeader :title="`Events · ${cluster.activeCluster || ''}`" :subtitle="cluster.activeNamespace">
+  <PageHeader
+    :title="`Events · ${cluster.activeCluster || ''}`"
+    :subtitle="`${cluster.activeNamespace} · ${filtered.length} / ${events.length} 个事件`"
+  >
     <template #actions>
       <Button variant="outline" size="sm" @click="load" :disabled="loading" aria-label="刷新">
         <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
       </Button>
     </template>
     <template #extra>
-      <div class="flex gap-2 mt-3">
+      <div class="flex flex-wrap items-center gap-2 mt-3">
         <Button
           v-for="t in ['all', 'Warning', 'Normal'] as const"
           :key="t"
@@ -71,7 +84,11 @@ const filtered = computed(() => {
           @click="typeFilter = t"
         >
           {{ t === 'all' ? '全部' : t }}
+          <span class="ml-1.5 text-2xs tabular-nums opacity-70">({{ t === 'all' ? events.length : countByType[t] }})</span>
         </Button>
+        <span v-if="totalEvents > events.length" class="text-2xs text-warning ml-2">
+          只显示最近 {{ events.length }} / 总 {{ totalEvents }} 个
+        </span>
       </div>
     </template>
   </PageHeader>
