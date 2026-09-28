@@ -85,17 +85,17 @@ function traceIdColor(tid: string): string {
 // ponytail: JSON cache must live BEFORE the WeakMap helpers — they call parseJson at
 // decorate-time, and decorate runs when watch(displayedLines, {immediate:true}) tracks
 // its source during setup. If jsonCache were still in TDZ, cachedIsJson would throw.
-const jsonCache = new Map<string, unknown>()
-function parseJson(content: string): unknown {
-  if (jsonCache.has(content)) return jsonCache.get(content) ?? null
+// ponytail: WeakMap keyed by LogLine — entries GC'd when the line drops out of the
+// buffer. Map<string,> grew unboundedly across long sessions (audit T1).
+const jsonCache = new WeakMap<LogLine, unknown>()
+function parseJson(line: LogLine): unknown {
+  const cached = jsonCache.get(line)
+  if (cached !== undefined) return cached
   let parsed: unknown = null
-  try { parsed = JSON.parse(content) } catch { /* not JSON */ }
+  try { parsed = JSON.parse(line.content) } catch { /* not JSON */ }
   if (parsed === null || typeof parsed !== 'object') parsed = null
-  jsonCache.set(content, parsed)
+  jsonCache.set(line, parsed)
   return parsed
-}
-function isJson(content: string): boolean {
-  return parseJson(content) !== null
 }
 
 // ponytail: per-line WeakMap caches — auto-clean when lines drop out of the buffer.
@@ -103,6 +103,7 @@ function isJson(content: string): boolean {
 // regex/JSON.parse.
 const traceIdCache = new WeakMap<LogLine, string | null>()
 const isJsonCache = new WeakMap<LogLine, { isJson: boolean }>()
+const sigCache = new WeakMap<LogLine, string>()
 
 function cachedTraceId(line: LogLine): string | null {
   let v = traceIdCache.get(line)
@@ -116,10 +117,19 @@ function cachedTraceId(line: LogLine): string | null {
 function cachedIsJson(line: LogLine): boolean {
   let v = isJsonCache.get(line)
   if (!v) {
-    v = { isJson: parseJson(line.content) !== null }
+    v = { isJson: parseJson(line) !== null }
     isJsonCache.set(line, v)
   }
   return v.isJson
+}
+
+function cachedSig(line: LogLine): string {
+  let s = sigCache.get(line)
+  if (s === undefined) {
+    s = normalize(line.content)
+    sigCache.set(line, s)
+  }
+  return s
 }
 
 interface DecoratedLine {
@@ -156,9 +166,9 @@ const groups = computed<Group[]>(() => {
   let i = 0
   const arr = displayedLines.value
   while (i < arr.length) {
-    const sig = normalize(arr[i].raw.content)
+    const sig = cachedSig(arr[i].raw)
     let j = i + 1
-    while (j < arr.length && normalize(arr[j].raw.content) === sig) j++
+    while (j < arr.length && cachedSig(arr[j].raw) === sig) j++
     if (j - i >= 3) {
       out.push({
         kind: 'run',
@@ -495,31 +505,10 @@ function clearRecent() {
 // (jsonCache/parseJson/isJson live above near decorated — they're needed at decorate
 // time and jsonCache must be initialized before the watch tracks displayedLines)
 
-function prettyJson(content: string): string {
-  const parsed = parseJson(content)
-  if (parsed === null) return ''
-  const json = JSON.stringify(parsed, null, 2)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  // Tokenize: "key":  → info,  "value"  → success,  number → warning,  true/false/null → error
-  return json.replace(
-    /("(?:\\.|[^"\\])*")(\s*:)?|(\b(?:true|false|null)\b)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
-    (m, str, colon, bool, num) => {
-      if (str !== undefined) {
-        return colon !== undefined
-          ? `<span class="text-info">${str}</span>${colon}`
-          : `<span class="text-success">${str}</span>`
-      }
-      if (bool !== undefined) return `<span class="text-error">${bool}</span>`
-      if (num !== undefined) return `<span class="text-warning">${num}</span>`
-      return m
-    },
-  )
-}
-
 interface JsonLineHtml { num: number; indent: number; html: string }
-const jsonLinesCache = new Map<string, JsonLineHtml[]>()
+// ponytail: WeakMap keyed by LogLine — entries GC'd when the line drops out of the
+// buffer. Map<string,> grew unboundedly across long sessions (audit T1).
+const jsonLinesCache = new WeakMap<LogLine, JsonLineHtml[]>()
 
 function tokenizeJsonLine(line: string): string {
   return line
@@ -541,20 +530,20 @@ function tokenizeJsonLine(line: string): string {
     )
 }
 
-function formatJsonLines(content: string): JsonLineHtml[] {
-  const cached = jsonLinesCache.get(content)
+function formatJsonLines(line: LogLine): JsonLineHtml[] {
+  const cached = jsonLinesCache.get(line)
   if (cached) return cached
-  const parsed = parseJson(content)
+  const parsed = parseJson(line)
   if (parsed === null) return []
   const text = JSON.stringify(parsed, null, 2)
   const out: JsonLineHtml[] = []
-  for (const [i, line] of text.split('\n').entries()) {
-    const m = line.match(/^( *)/)
+  for (const [i, srcLine] of text.split('\n').entries()) {
+    const m = srcLine.match(/^( *)/)
     const indent = (m?.[1].length ?? 0) / 2
-    const stripped = line.slice(m?.[1].length ?? 0)
+    const stripped = srcLine.slice(m?.[1].length ?? 0)
     out.push({ num: i + 1, indent, html: tokenizeJsonLine(stripped) })
   }
-  jsonLinesCache.set(content, out)
+  jsonLinesCache.set(line, out)
   return out
 }
 
@@ -579,7 +568,7 @@ function toggleJson(key: string) {
 // === JSON field chips (top-level keys from the first JSON object line) ===
 const jsonFieldChips = computed<string[]>(() => {
   for (const l of props.lines) {
-    const parsed = parseJson(l.content)
+    const parsed = parseJson(l)
     if (parsed !== null && !Array.isArray(parsed)) {
       return Object.keys(parsed as Record<string, unknown>)
     }
@@ -927,7 +916,7 @@ function truncatedHtml(content: string): string {
               class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
             >
               <div
-                v-for="jl in formatJsonLines(group.line.raw.content)"
+                v-for="jl in formatJsonLines(group.line.raw)"
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
@@ -1047,7 +1036,7 @@ function truncatedHtml(content: string): string {
                   class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
                 >
                   <div
-                    v-for="jl in formatJsonLines(line.raw.content)"
+                    v-for="jl in formatJsonLines(line.raw)"
                     :key="jl.num"
                     class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
                   >
