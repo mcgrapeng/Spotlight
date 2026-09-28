@@ -2,10 +2,11 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight,
-  Copy, X, Terminal, Filter,
+  Copy, X, Terminal, Filter, Clock,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { useLogFilters, SEVERITY_RANK as SEV_RANK } from '@/composables/useLogFilters'
 import type { LogLine } from '@/domain/types'
@@ -286,6 +287,36 @@ function setSeverity(rank: number) {
 function clearSearch() {
   search.value = ''
 }
+
+// === Recent search history (localStorage, last 10, debounced 1.5s) ===
+const RECENT_KEY = 'k8s-viewer:log-search-history'
+const MAX_RECENT = 10
+
+const recentSearches = ref<string[]>(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'))
+const searchHistoryOpen = ref(false)
+let searchHistoryTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(search, (v, old) => {
+  const q = v.trim()
+  if (!q || q === old?.trim()) return
+  if (searchHistoryTimer) clearTimeout(searchHistoryTimer)
+  searchHistoryTimer = setTimeout(() => {
+    const next = [q, ...recentSearches.value.filter(s => s !== q)].slice(0, MAX_RECENT)
+    recentSearches.value = next
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)) } catch { /* quota / disabled */ }
+  }, 1500)
+})
+
+function applyRecent(q: string) {
+  search.value = q
+  searchHistoryOpen.value = false
+}
+
+function clearRecent() {
+  if (searchHistoryTimer) clearTimeout(searchHistoryTimer)
+  recentSearches.value = []
+  try { localStorage.removeItem(RECENT_KEY) } catch { /* ignore */ }
+}
 </script>
 
 <template>
@@ -345,6 +376,39 @@ function clearSearch() {
           <X :size="13" :stroke-width="1.75" />
         </button>
       </div>
+      <Popover v-model:open="searchHistoryOpen">
+        <PopoverTrigger as-child>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 px-2"
+            aria-label="搜索历史"
+          >
+            <Clock :size="13" :stroke-width="1.75" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-[260px] p-0" align="start">
+          <div v-if="recentSearches.length === 0" class="p-4 text-center text-2xs text-muted-foreground">
+            暂无历史搜索
+          </div>
+          <div v-else class="py-1">
+            <button
+              v-for="q in recentSearches"
+              :key="q"
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              @click="applyRecent(q)"
+            >
+              <span class="flex-1 truncate">{{ q }}</span>
+            </button>
+            <div class="border-t border-border p-1">
+              <Button variant="ghost" size="sm" class="w-full" @click="clearRecent">
+                清除全部
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
       <Button
         variant="outline" size="sm"
         class="h-7 px-2"
