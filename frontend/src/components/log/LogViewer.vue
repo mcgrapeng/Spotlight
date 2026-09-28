@@ -131,7 +131,7 @@ interface HistogramBin {
 }
 
 const histogramSelection = ref<[number, number] | null>(null)
-const histogramCollapsed = ref(false)
+const histogramCollapsed = ref(true)   // default collapsed — most logs are sparse, save space
 
 const histogramData = computed(() => {
   if (!filtered.value.length) return { bins: [] as HistogramBin[], minTs: 0, maxTs: 0, total: 0, span: 0 }
@@ -816,17 +816,44 @@ function truncatedHtml(content: string): string {
         </div>
       </div>
 
-      <!-- Mini sparkline when collapsed -->
-      <div v-if="histogramCollapsed" class="h-7 flex items-end gap-px px-3 pb-1">
-        <div
-          v-for="(bin, i) in histogramData.bins"
-          :key="`spark-${i}`"
-          class="flex-1 rounded-sm"
-          :class="bin.error > 0 ? 'bg-error' : bin.warn > 0 ? 'bg-warning' : bin.info > 0 ? 'bg-foreground/40' : 'bg-border/30'"
-          :style="{ height: bin.count > 0 ? `${(bin.count / histogramMax) * 100}%` : '1px', minHeight: '1px' }"
-          :title="bin.count > 0 ? formatBinTime(i) + ' — ' + bin.count + ' 条' : ''"
-          @click="onBinClick(i)"
-        />
+      <!-- Mini sparkline when collapsed: full-width bars + hover tooltip with severity breakdown -->
+      <div v-if="histogramCollapsed" class="h-7 px-3 pb-1">
+        <div class="relative flex items-end gap-px h-full">
+          <div
+            v-for="(bin, i) in histogramData.bins"
+            :key="`spark-${i}`"
+            class="flex-1 rounded-sm cursor-pointer"
+            :class="bin.error > 0 ? 'bg-error' : bin.warn > 0 ? 'bg-warning' : bin.info > 0 ? 'bg-foreground/40' : 'bg-border/30'"
+            :style="{ height: bin.count > 0 ? `${(bin.count / histogramMax) * 100}%` : '1px', minHeight: '1px' }"
+            :title="bin.count > 0 ? formatBinTime(i) + ' — ' + bin.count + ' 条' : ''"
+            @click="onBinClick(i)"
+            @mouseenter="hoverBin = i"
+            @mouseleave="hoverBin = null"
+          />
+          <div
+            v-if="hoverBin !== null && histogramData.bins[hoverBin]"
+            class="absolute z-20 px-2 py-1.5 rounded-md bg-foreground text-background text-2xs shadow-lg pointer-events-none whitespace-nowrap"
+            :style="{
+              bottom: 'calc(100% + 4px)',
+              left: `${(hoverBin / histogramData.bins.length) * 100}%`,
+              transform: 'translateX(-50%)',
+            }"
+          >
+            <div class="font-mono tabular-nums">{{ formatBinTime(hoverBin) }}</div>
+            <div class="flex gap-3 mt-0.5 tabular-nums">
+              <span v-if="histogramData.bins[hoverBin].error > 0" class="text-error">
+                ●错 {{ histogramData.bins[hoverBin].error }}
+              </span>
+              <span v-if="histogramData.bins[hoverBin].warn > 0" class="text-warning">
+                ●警 {{ histogramData.bins[hoverBin].warn }}
+              </span>
+              <span v-if="histogramData.bins[hoverBin].info > 0">
+                ●信 {{ histogramData.bins[hoverBin].info }}
+              </span>
+              <span class="font-semibold">= {{ histogramData.bins[hoverBin].count }} 条</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Full chart when expanded -->
