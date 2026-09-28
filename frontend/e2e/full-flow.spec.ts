@@ -272,7 +272,7 @@ const routes = [
   { path: '/events',       title: /^Events/ },
   { path: '/favorites',    title: /^收藏夹$/ },
   { path: '/ai',           title: /^AI 模型$/ },
-  { path: '/login',        title: /^K8s Viewer$/ },
+  { path: '/login',        title: /^Fathom$/ },
 ] as const
 
 for (const r of routes) {

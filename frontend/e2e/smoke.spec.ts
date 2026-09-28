@@ -18,7 +18,7 @@ import { installApiMocks } from './_fixtures'
  * Per-page expected title regex. Matches the first `.page-title` or `h1`.
  * - Dashboard renders `cluster.activeCluster` (defaults to '总览' when empty).
  * - Events appends the cluster name: `Events · demo-cluster`.
- * - LoginView uses a plain `<h1>` (no PageHeader) — title text is "K8s Viewer".
+ * - LoginView uses a plain `<h1>` (no PageHeader) — title text is "Fathom".
  */
 const pages = [
   { path: '/', name: '总览', expectTitle: /demo-cluster|总览/ },
@@ -28,7 +28,7 @@ const pages = [
   { path: '/events', name: 'Events', expectTitle: /^Events ·/ },
   { path: '/favorites', name: '收藏夹', expectTitle: /^收藏夹$/ },
   { path: '/ai', name: 'AI 模型', expectTitle: /^AI 模型$/ },
-  { path: '/login', name: '登录', expectTitle: /^K8s Viewer$/ },
+  { path: '/login', name: '登录', expectTitle: /^Fathom$/ },
 ] as const
 
 for (const p of pages) {

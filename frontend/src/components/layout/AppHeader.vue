@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Menu, PanelLeftClose, PanelLeftOpen, Command } from '@lucide/vue'
+import { Menu, PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
+import LogoMark from '@/components/common/LogoMark.vue'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
 import NamespaceCombobox from '@/components/common/NamespaceCombobox.vue'
 
@@ -41,15 +41,18 @@ defineEmits<{
     <router-link
       to="/dashboard"
       :class="cn(
-        'flex items-center gap-2 mr-1 md:mr-2 rounded-md',
+        'group flex items-center gap-2 mr-1 md:mr-2 rounded-md py-1 pr-1',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )"
-      aria-label="K8s Viewer 首页"
+      aria-label="Fathom 首页"
     >
-      <span class="inline-flex items-center justify-center size-7 md:size-8 rounded-md bg-foreground text-background text-xs font-bold tracking-tight">
-        K8
+      <span class="inline-flex items-center justify-center size-7 md:size-8 text-foreground">
+        <LogoMark :size="28" />
       </span>
-      <span class="hidden sm:inline text-sm font-semibold tracking-tight">K8s Viewer</span>
+      <span class="hidden sm:flex flex-col leading-none">
+        <span class="text-sm font-semibold tracking-tight text-foreground">Fathom</span>
+        <span class="text-[10px] font-medium tracking-wide text-muted-foreground/70 mt-0.5">集群驾驶舱</span>
+      </span>
     </router-link>
 
     <div class="flex items-center gap-2 min-w-0">
@@ -58,9 +61,5 @@ defineEmits<{
     </div>
 
     <div class="flex-1" />
-
-    <kbd class="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted text-2xs font-mono text-muted-foreground">
-      <Command :size="10" :stroke-width="2" /> K
-    </kbd>
   </div>
 </template>

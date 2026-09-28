@@ -29,7 +29,7 @@ router.beforeEach(async (to) => {
 })
 
 router.afterEach((to) => {
-  document.title = `${to.meta.title ?? ''} · K8s Viewer`
+  document.title = `${to.meta.title ?? ''} · Fathom`
 })
 
 export default router

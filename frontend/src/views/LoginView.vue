@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogIn, Loader2, ShieldCheck } from '@lucide/vue'
+import { LogIn, Loader2 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import LogoMark from '@/components/common/LogoMark.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -34,13 +35,13 @@ async function submit() {
       <CardContent class="p-8">
         <div class="text-center mb-6">
           <div
-            class="inline-flex h-12 w-12 rounded-lg bg-foreground text-background items-center justify-center mb-3"
+            class="inline-flex h-12 w-12 rounded-lg items-center justify-center mb-3 text-foreground"
             aria-hidden="true"
           >
-            <ShieldCheck :size="22" :stroke-width="1.75" />
+            <LogoMark :size="36" />
           </div>
-          <h1 class="text-2xl font-bold tracking-tight">K8s Viewer</h1>
-          <p class="text-sm text-muted-foreground mt-1">集群可视化平台</p>
+          <h1 class="text-2xl font-bold tracking-tight">Fathom</h1>
+          <p class="text-sm text-muted-foreground mt-1">集群驾驶舱</p>
         </div>
 
         <form class="space-y-3" @submit.prevent="submit">

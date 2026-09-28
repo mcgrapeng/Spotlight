@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { clustersApi, namespacesApi } from '@/api/endpoints'
 import type { ClusterInfo, NamespaceInfo } from '@/domain/types'
 
-const STORAGE_KEY = 'k8s-viewer.selection.v2'
+const STORAGE_KEY = 'fathom.selection.v2'
 
 export const useClusterStore = defineStore('cluster', () => {
   const clusters = ref<ClusterInfo[]>([])

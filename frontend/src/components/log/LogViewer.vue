@@ -29,10 +29,10 @@ const emit = defineEmits<{
 const search = ref('')
 const autoFollow = ref(true)
 const wrapMode = ref<'wrap' | 'nowrap'>(
-  (localStorage.getItem('k8s-viewer:log-wrap') as 'wrap' | 'nowrap') ?? 'wrap',
+  (localStorage.getItem('fathom:log-wrap') as 'wrap' | 'nowrap') ?? 'wrap',
 )
 watch(wrapMode, (m) => {
-  try { localStorage.setItem('k8s-viewer:log-wrap', m) } catch { /* quota / disabled */ }
+  try { localStorage.setItem('fathom:log-wrap', m) } catch { /* quota / disabled */ }
 })
 function toggleWrap() {
   wrapMode.value = wrapMode.value === 'wrap' ? 'nowrap' : 'wrap'
@@ -470,7 +470,7 @@ function clearSearch() {
 }
 
 // === Recent search history (localStorage, last 10, debounced 1.5s) ===
-const RECENT_KEY = 'k8s-viewer:log-search-history'
+const RECENT_KEY = 'fathom:log-search-history'
 const MAX_RECENT = 10
 
 const recentSearches = ref<string[]>(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'))
