@@ -113,8 +113,8 @@ const counts = computed(() => {
   return c
 })
 
-// === Time histogram (60 bins, severity-stacked, drag-to-select range) ===
-const HISTOGRAM_BINS = 60
+// === Time histogram (24 bins, severity-stacked, drag-to-select range) ===
+const HISTOGRAM_BINS = 24
 
 function parseTs(s: string): number {
   const t = new Date(s).getTime()
@@ -215,6 +215,32 @@ function clearHistogramSelection() {
 }
 
 watch(histogramSelection, (v) => emit('range-select', v))
+
+// === Hover tooltip + bin click ===
+const hoverBin = ref<number | null>(null)
+
+function formatBinTime(i: number): string {
+  const bin = histogramData.value.bins[i]
+  if (!bin?.ts) return ''
+  const age = histogramData.value.maxTs - bin.ts
+  if (age < 60_000) return `-${Math.round(age / 1000)}秒`
+  if (age < 3_600_000) return `-${Math.floor(age / 60_000)}分${Math.round((age % 60_000) / 1000)}秒`
+  if (age < 86_400_000) return `-${Math.floor(age / 3_600_000)}时${Math.floor((age % 3_600_000) / 60_000)}分`
+  return `-${Math.round(age / 86_400_000)}天`
+}
+
+function onBinClick(i: number) {
+  const bin = histogramData.value.bins[i]
+  if (!bin?.ts) return
+  if (histogramSelection.value &&
+      Math.abs(bin.ts - histogramSelection.value[0]) < 100) {
+    clearHistogramSelection()
+    return
+  }
+  const startMs = bin.ts
+  const binSpan = histogramData.value.span / histogramData.value.bins.length
+  histogramSelection.value = [startMs, startMs + binSpan]
+}
 
 // === Additional filter pipeline: container + time range ===
 const selectedContainer = ref<string | null>(null)
@@ -780,52 +806,63 @@ function truncatedHtml(content: string): string {
         </div>
       </div>
 
-      <!-- Bar chart + legend + time axis -->
+      <!-- Bar chart area: tall + gridlines + custom tooltip -->
       <div class="flex items-stretch gap-2 px-3 pb-1 pt-1.5">
-        <!-- Y-axis legend with counts (severe on top: error → warn → info) -->
-        <div class="flex flex-col justify-end gap-0.5 text-2xs text-muted-foreground pr-1 font-sans tabular-nums shrink-0">
+        <!-- Y-axis legend (compact) -->
+        <div class="flex flex-col justify-end gap-0.5 text-2xs text-muted-foreground pr-1 font-sans tabular-nums shrink-0 self-stretch">
           <span class="flex items-center gap-1 h-3">
-            <span class="h-1.5 w-1.5 rounded-sm bg-error shrink-0" />
-            <span class="text-error font-medium">错</span>
-            <span class="font-mono">{{ histogramData.bins.reduce((s, b) => s + b.error, 0) }}</span>
+            <span class="h-2 w-2 rounded-sm bg-error shrink-0" />
+            <span class="text-error font-semibold">错</span>
+            <span class="font-mono text-foreground">{{ histogramData.bins.reduce((s, b) => s + b.error, 0) }}</span>
           </span>
           <span class="flex items-center gap-1 h-3">
-            <span class="h-1.5 w-1.5 rounded-sm bg-warning shrink-0" />
-            <span class="text-warning font-medium">警</span>
-            <span class="font-mono">{{ histogramData.bins.reduce((s, b) => s + b.warn, 0) }}</span>
+            <span class="h-2 w-2 rounded-sm bg-warning shrink-0" />
+            <span class="text-warning font-semibold">警</span>
+            <span class="font-mono text-foreground">{{ histogramData.bins.reduce((s, b) => s + b.warn, 0) }}</span>
           </span>
           <span class="flex items-center gap-1 h-3">
-            <span class="h-1.5 w-1.5 rounded-sm bg-foreground/40 shrink-0" />
-            <span class="font-medium">信</span>
-            <span class="font-mono">{{ histogramData.bins.reduce((s, b) => s + b.info, 0) }}</span>
+            <span class="h-2 w-2 rounded-sm bg-foreground shrink-0" />
+            <span class="font-semibold">信</span>
+            <span class="font-mono text-foreground">{{ histogramData.bins.reduce((s, b) => s + b.info, 0) }}</span>
           </span>
         </div>
 
-        <!-- Bars + selection overlay -->
-        <div class="relative flex-1 h-16 select-none">
-          <!-- Max-count label -->
-          <div class="absolute -top-1 right-0 text-2xs text-muted-foreground tabular-nums font-sans">
+        <!-- Bar chart with gridlines -->
+        <div class="relative flex-1 h-40 select-none">
+          <!-- Gridlines -->
+          <div class="absolute inset-0 pointer-events-none">
+            <div class="absolute left-0 right-0 h-px bg-border/30" style="top: 25%" />
+            <div class="absolute left-0 right-0 h-px bg-border/30" style="top: 50%" />
+            <div class="absolute left-0 right-0 h-px bg-border/30" style="top: 75%" />
+          </div>
+
+          <!-- Y-scale label (right side, top) -->
+          <div class="absolute -top-1 right-0 text-2xs text-muted-foreground tabular-nums font-sans z-10">
             max {{ histogramMax }}
           </div>
+
+          <!-- Bars (stacked info/warn/error) -->
           <div
-            class="absolute inset-0 flex items-end gap-0.5 cursor-crosshair"
+            class="absolute inset-0 flex items-end gap-1 cursor-crosshair"
             role="slider"
-            :aria-label="`日志活动分布 (max ${histogramMax} 条/帧, ${histogramData.bins.length} 帧)`"
+            :aria-label="`日志活动分布 (${histogramData.bins.length} 帧, max ${histogramMax} 条/帧)`"
             @mousedown="onHistogramMouseDown"
             @mousemove="onHistogramMouseMove"
             @mouseup="onHistogramMouseUp"
             @mouseleave="histogramDrag = null"
           >
-            <!-- Bars (stacked info/warn/error) -->
             <div
               v-for="(bin, i) in histogramData.bins"
               :key="i"
-              class="flex-1 flex flex-col-reverse justify-end hover:opacity-100 opacity-90 transition-opacity"
-              :title="bin.count > 0 ? `${bin.count} 条 (错 ${bin.error} 警 ${bin.warn} 信 ${bin.info})` : ''"
+              class="flex-1 flex flex-col-reverse justify-end hover:opacity-100 hover:ring-1 hover:ring-primary/40 rounded-sm opacity-90 transition-opacity cursor-pointer relative group"
+              :title="bin.count > 0 ? formatBinTime(i) + ' — ' + bin.count + ' 条' : ''"
+              @mouseenter="hoverBin = i"
+              @mouseleave="hoverBin = null"
+              @click="onBinClick(i)"
             >
               <div
-                class="w-full bg-foreground/50 rounded-sm"
-                :style="{ height: bin.info > 0 ? `${(bin.info / histogramMax) * 100}%` : '0', minHeight: bin.info > 0 ? '1px' : '0' }"
+                class="w-full bg-foreground/90 rounded-sm transition-shadow"
+                :style="{ height: bin.info > 0 ? `${(bin.info / histogramMax) * 100}%` : '0', minHeight: bin.info > 0 ? '2px' : '0' }"
               />
               <div
                 class="w-full bg-warning rounded-sm"
@@ -836,20 +873,46 @@ function truncatedHtml(content: string): string {
                 :style="{ height: bin.error > 0 ? `${(bin.error / histogramMax) * 100}%` : '0' }"
               />
             </div>
+          </div>
 
-            <!-- Selection overlay (dashed during drag, solid when committed) -->
-            <div
-              v-if="histogramDrag || histogramSelection"
-              class="absolute top-0 bottom-0 pointer-events-none border-2"
-              :class="histogramDrag ? 'border-dashed border-foreground/70 bg-foreground/15' : 'border-foreground bg-foreground/10 rounded-sm'"
-              :style="{
-                left: ((histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0) - histogramData.minTs) / histogramData.span * 100 + '%',
-                width: (((histogramDrag?.endMs ?? histogramSelection?.[1] ?? 0) - (histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0)) / histogramData.span) * 100 + '%'
-              }"
-            >
-              <div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-1.5 py-0.5 rounded bg-foreground text-background text-2xs font-medium tabular-nums whitespace-nowrap">
-                {{ Math.round(((histogramDrag?.endMs ?? histogramSelection?.[1] ?? 0) - (histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0)) / 1000) }}s 选中
-              </div>
+          <!-- Hover tooltip -->
+          <div
+            v-if="hoverBin !== null && histogramData.bins[hoverBin]"
+            class="absolute z-20 px-2 py-1.5 rounded-md bg-foreground text-background text-2xs shadow-lg pointer-events-none whitespace-nowrap"
+            :style="{
+              bottom: '100%',
+              left: `${(hoverBin / histogramData.bins.length) * 100}%`,
+              transform: 'translateX(-50%)',
+              marginBottom: '4px',
+            }"
+          >
+            <div class="font-mono tabular-nums">{{ formatBinTime(hoverBin) }}</div>
+            <div class="flex gap-3 mt-0.5 tabular-nums">
+              <span v-if="histogramData.bins[hoverBin].error > 0" class="text-error">
+                ●错 {{ histogramData.bins[hoverBin].error }}
+              </span>
+              <span v-if="histogramData.bins[hoverBin].warn > 0" class="text-warning">
+                ●警 {{ histogramData.bins[hoverBin].warn }}
+              </span>
+              <span v-if="histogramData.bins[hoverBin].info > 0">
+                ●信 {{ histogramData.bins[hoverBin].info }}
+              </span>
+              <span class="font-semibold">= {{ histogramData.bins[hoverBin].count }} 条</span>
+            </div>
+          </div>
+
+          <!-- Selection overlay (during drag OR committed) -->
+          <div
+            v-if="histogramDrag || histogramSelection"
+            class="absolute top-0 bottom-0 pointer-events-none border-2"
+            :class="histogramDrag ? 'border-dashed border-foreground/70 bg-foreground/15' : 'border-foreground bg-foreground/10 rounded-sm'"
+            :style="{
+              left: ((histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0) - histogramData.minTs) / histogramData.span * 100 + '%',
+              width: (((histogramDrag?.endMs ?? histogramSelection?.[1] ?? 0) - (histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0)) / histogramData.span) * 100 + '%'
+            }"
+          >
+            <div class="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-1.5 py-0.5 rounded bg-foreground text-background text-2xs font-medium tabular-nums whitespace-nowrap">
+              {{ Math.round(((histogramDrag?.endMs ?? histogramSelection?.[1] ?? 0) - (histogramDrag?.startMs ?? histogramSelection?.[0] ?? 0)) / 1000) }}s 选中
             </div>
           </div>
         </div>
