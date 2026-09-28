@@ -68,14 +68,56 @@ function traceIdColor(tid: string): string {
   return `hsl(${Math.abs(h) % 360} 60% 45%)`
 }
 
+// ponytail: JSON cache must live BEFORE the WeakMap helpers — they call parseJson at
+// decorate-time, and decorate runs when watch(displayedLines, {immediate:true}) tracks
+// its source during setup. If jsonCache were still in TDZ, cachedIsJson would throw.
+const jsonCache = new Map<string, unknown>()
+function parseJson(content: string): unknown {
+  if (jsonCache.has(content)) return jsonCache.get(content) ?? null
+  let parsed: unknown = null
+  try { parsed = JSON.parse(content) } catch { /* not JSON */ }
+  if (parsed === null || typeof parsed !== 'object') parsed = null
+  jsonCache.set(content, parsed)
+  return parsed
+}
+function isJson(content: string): boolean {
+  return parseJson(content) !== null
+}
+
+// ponytail: per-line WeakMap caches — auto-clean when lines drop out of the buffer.
+// Decorate once per line; render path reads primitives off the line, no per-row
+// regex/JSON.parse.
+const traceIdCache = new WeakMap<LogLine, string | null>()
+const isJsonCache = new WeakMap<LogLine, { isJson: boolean }>()
+
+function cachedTraceId(line: LogLine): string | null {
+  let v = traceIdCache.get(line)
+  if (v === undefined) {
+    v = extractTraceId(line.content)
+    traceIdCache.set(line, v)
+  }
+  return v
+}
+
+function cachedIsJson(line: LogLine): boolean {
+  let v = isJsonCache.get(line)
+  if (!v) {
+    v = { isJson: parseJson(line.content) !== null }
+    isJsonCache.set(line, v)
+  }
+  return v.isJson
+}
+
 interface DecoratedLine {
   raw: LogLine
   traceId: string | null
+  isJson: boolean
 }
 const decorated = computed<DecoratedLine[]>(() =>
   filtered.value.map(line => ({
     raw: line,
-    traceId: extractTraceId(line.content),
+    traceId: cachedTraceId(line),
+    isJson: cachedIsJson(line),
   })),
 )
 
@@ -119,6 +161,43 @@ const groups = computed<Group[]>(() => {
   }
   return out
 })
+
+// === Virtual scroll (NEWEST AT TOP, scrollTop=0) ===
+// ponytail: fixed LINE_HEIGHT assumes one row per group; expanded runs/JSON add extra
+// DOM rows below the header, so total scrollHeight drifts slightly past scrollTop+pad
+// when many are expanded. Acceptable for typical logs where runs stay collapsed. Upgrade
+// path: track per-group cumulative offsets with a ResizeObserver.
+const LINE_HEIGHT = 22
+const BUFFER = 8
+
+const virtualRange = ref({ start: 0, end: 100 })
+
+function recomputeVirtualRange() {
+  const el = scrollEl.value
+  if (!el) return
+  const total = groups.value.length
+  if (total === 0) {
+    virtualRange.value = { start: 0, end: 0 }
+    return
+  }
+  const top = el.scrollTop
+  const viewportH = el.clientHeight
+  const start = Math.max(0, Math.floor(top / LINE_HEIGHT) - BUFFER)
+  const end = Math.min(total, Math.ceil((top + viewportH) / LINE_HEIGHT) + BUFFER)
+  if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
+    virtualRange.value = { start, end }
+  }
+}
+
+const renderedGroups = computed(() => {
+  const { start, end } = virtualRange.value
+  return groups.value.slice(start, end)
+})
+
+const padTop = computed(() => virtualRange.value.start * LINE_HEIGHT)
+const padBottom = computed(() =>
+  Math.max(0, (groups.value.length - virtualRange.value.end) * LINE_HEIGHT),
+)
 
 function toggleExpand(key: number) {
   const s = new Set(expanded.value)
@@ -169,6 +248,7 @@ watch(displayedLines, (v) => {
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
   if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
+  nextTick(recomputeVirtualRange)
 }, { immediate: true })
 
 watch(() => props.lines.length, () => {
@@ -178,6 +258,7 @@ watch(() => props.lines.length, () => {
 })
 
 function onScroll() {
+  recomputeVirtualRange()
   if (!scrollEl.value) return
   // If user scrolled away from top, disable auto-follow (show unread pill)
   if (scrollEl.value.scrollTop > 50 && autoFollow.value) {
@@ -274,8 +355,11 @@ function timeOpacity(ts: string): number {
   return 0.3
 }
 
-function isNewestLine(idx: number, _totalLines: number): boolean {
-  return props.streaming && idx === 0
+function isNewestLine(group: Group): boolean {
+  // ponytail: under virtualization, v-for idx is local to the rendered slice — use
+  // group.key (= position in displayedLines) so the pulse follows the actual newest
+  // line, not "first row currently in viewport".
+  return props.streaming && group.key === 0
 }
 
 // === Severity badge (per-row label, replaces single-char icon) ===
@@ -394,20 +478,8 @@ function clearRecent() {
 // === JSON auto-detect + pretty-print ===
 // ponytail: primitives rejected by JSON.parse('42') === 42 fall through this guard;
 // only objects/arrays get a badge (numbers/strings/booleans/null alone are too noisy)
-const jsonCache = new Map<string, unknown>()
-
-function parseJson(content: string): unknown {
-  if (jsonCache.has(content)) return jsonCache.get(content) ?? null
-  let parsed: unknown = null
-  try { parsed = JSON.parse(content) } catch { /* not JSON */ }
-  if (parsed === null || typeof parsed !== 'object') parsed = null
-  jsonCache.set(content, parsed)
-  return parsed
-}
-
-function isJson(content: string): boolean {
-  return parseJson(content) !== null
-}
+// (jsonCache/parseJson/isJson live above near decorated — they're needed at decorate
+// time and jsonCache must be initialized before the watch tracks displayedLines)
 
 function prettyJson(content: string): string {
   const parsed = parseJson(content)
@@ -765,7 +837,8 @@ function truncatedHtml(content: string): string {
         {{ search ? '没有匹配的行' : (streaming ? '等待日志…' : '日志已暂停') }}
       </div>
       <div v-else class="relative">
-        <template v-for="(group, idx) in groups" :key="group.key">
+        <div :style="{ height: padTop + 'px' }" aria-hidden="true" />
+        <template v-for="(group, idx) in renderedGroups" :key="group.key">
           <template v-if="group.kind === 'single'">
             <div
               :class="cn(
@@ -785,7 +858,7 @@ function truncatedHtml(content: string): string {
                 aria-hidden="true"
               />
               <span
-                v-if="isNewestLine(idx, groups.length)"
+                v-if="isNewestLine(group)"
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
@@ -802,7 +875,7 @@ function truncatedHtml(content: string): string {
                 :title="group.line.raw.container"
               >{{ group.line.raw.container }}</span>
               <button
-                v-if="isJson(group.line.raw.content)"
+                v-if="group.line.isJson"
                 type="button"
                 @click="toggleJson(`${group.key}`)"
                 class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -826,7 +899,7 @@ function truncatedHtml(content: string): string {
               </button>
             </div>
             <div
-              v-if="isJson(group.line.raw.content) && jsonExpanded.has(`${group.key}`)"
+              v-if="group.line.isJson && jsonExpanded.has(`${group.key}`)"
               class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
             >
               <div
@@ -865,7 +938,7 @@ function truncatedHtml(content: string): string {
                 aria-hidden="true"
               />
               <span
-                v-if="isNewestLine(idx, groups.length)"
+                v-if="isNewestLine(group)"
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
@@ -882,7 +955,7 @@ function truncatedHtml(content: string): string {
                 :title="group.lines[0].raw.container"
               >{{ group.lines[0].raw.container }}</span>
               <button
-                v-if="isJson(group.lines[0].raw.content)"
+                v-if="group.lines[0].isJson"
                 type="button"
                 @click.stop="toggleJson(`${group.key}`)"
                 class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -922,7 +995,7 @@ function truncatedHtml(content: string): string {
                     {{ fmtLocalTime(line.raw.timestamp) }}
                   </span>
                   <button
-                    v-if="isJson(line.raw.content)"
+                    v-if="line.isJson"
                     type="button"
                     @click="toggleJson(`${group.key + idx + 1}`)"
                     class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -946,7 +1019,7 @@ function truncatedHtml(content: string): string {
                   </button>
                 </div>
                 <div
-                  v-if="isJson(line.raw.content) && jsonExpanded.has(`${group.key + idx + 1}`)"
+                  v-if="line.isJson && jsonExpanded.has(`${group.key + idx + 1}`)"
                   class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
                 >
                   <div
@@ -966,6 +1039,7 @@ function truncatedHtml(content: string): string {
             </template>
           </template>
         </template>
+        <div :style="{ height: padBottom + 'px' }" aria-hidden="true" />
       </div>
     </div>
 
