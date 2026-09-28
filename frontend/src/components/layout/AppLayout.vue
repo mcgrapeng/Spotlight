@@ -57,9 +57,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
   <div class="min-h-screen bg-background flex flex-col">
     <header class="shrink-0 border-b border-sidebar-border">
       <AppHeader
-          :sidebar-collapsed="collapsed"
           @open-mobile-menu="mobileOpen = true"
-          @toggle-sidebar="toggleCollapsed"
       />
     </header>
 
@@ -70,7 +68,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
         :class="collapsed ? 'w-16' : 'w-[200px]'"
         aria-label="主导航"
       >
-        <AppSidebar :collapsed="collapsed" />
+        <AppSidebar :collapsed="collapsed" @toggle-sidebar="toggleCollapsed" />
       </aside>
 
       <main

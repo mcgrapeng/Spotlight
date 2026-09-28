@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { Menu, PanelLeftClose, PanelLeftOpen } from '@lucide/vue'
+import { Menu } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import LogoMark from '@/components/common/LogoMark.vue'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
 import NamespaceCombobox from '@/components/common/NamespaceCombobox.vue'
 
-withDefaults(defineProps<{
-  sidebarCollapsed?: boolean
-}>(), { sidebarCollapsed: false })
-
 defineEmits<{
   'open-mobile-menu': []
-  'toggle-sidebar': []
 }>()
 </script>
 
@@ -19,6 +14,7 @@ defineEmits<{
   <div
     class="sticky top-0 z-40 flex items-center gap-2 md:gap-3 h-11 md:h-14 px-3 md:px-5 border-b bg-background"
   >
+    <!-- mobile only: hamburger 触发 drawer；desktop 下让出最左给 logo -->
     <button
       type="button"
       class="md:hidden inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -26,16 +22,6 @@ defineEmits<{
       @click="$emit('open-mobile-menu')"
     >
       <Menu :size="18" :stroke-width="1.75" aria-hidden="true" />
-    </button>
-
-    <button
-      type="button"
-      class="hidden md:inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
-      @click="$emit('toggle-sidebar')"
-    >
-      <PanelLeftOpen v-if="sidebarCollapsed" :size="18" :stroke-width="1.75" aria-hidden="true" />
-      <PanelLeftClose v-else :size="18" :stroke-width="1.75" aria-hidden="true" />
     </button>
 
     <router-link

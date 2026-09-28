@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
+  PanelLeftClose, PanelLeftOpen,
 } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { eventsApi } from '@/api/endpoints'
@@ -14,6 +15,7 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   navigate: []
+  'toggle-sidebar': []
 }>()
 
 const route = useRoute()
@@ -36,8 +38,10 @@ async function refreshEventBadge() {
     const events = await eventsApi.list({
       cluster: cluster.activeCluster,
       namespace: '_all',
-      limit: 200,
+      limit: 500,
     })
+    // ponytail: count = 告警源数量（与 /events 列表行数一致）。每条 event 的
+    // count 字段（重复触发次数）只在 row 内部显示，避免 badge 与列表对不上。
     const warns = events.filter(e => e.type === 'Warning').length
     eventBadge.value = warns
     localStorage.setItem(cacheKey, JSON.stringify({ value: warns, ts: Date.now() }))
@@ -103,7 +107,7 @@ const isActive = (path: string) =>
       </router-link>
     </div>
 
-    <div class="px-2 pt-2 border-t border-sidebar-border">
+    <div class="px-2 pt-2 border-t border-sidebar-border flex flex-col gap-0.5">
       <router-link
         to="/settings"
         :class="cn(
@@ -118,6 +122,22 @@ const isActive = (path: string) =>
         <Settings :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">设置</span>
       </router-link>
+      <!-- ponytail: 折叠按钮贴在 sidebar 自己身上 —— 视觉归属清晰，logo 不被抢位 -->
+      <button
+        type="button"
+        :class="cn(
+          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
+          'hover:bg-sidebar-accent text-sidebar-foreground',
+          props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
+        )"
+        :aria-label="props.collapsed ? '展开侧边栏' : '收起侧边栏'"
+        :title="props.collapsed ? '展开侧边栏' : '收起侧边栏'"
+        @click="$emit('toggle-sidebar')"
+      >
+        <PanelLeftOpen v-if="props.collapsed" :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <PanelLeftClose v-else :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <span v-if="!props.collapsed">收起侧边栏</span>
+      </button>
     </div>
   </nav>
 </template>

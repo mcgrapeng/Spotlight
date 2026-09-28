@@ -174,7 +174,7 @@ def test_dashboard(client):
     assert r.status_code == 200
     body = r.json()
     assert body["total_pods"] == 1
-    assert body["warning_events"] == 1
+    assert body["warning_events"] == 1  # distinct Warning entries (count field is per-row only)
 
 
 def test_list_events(client):

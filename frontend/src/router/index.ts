@@ -14,6 +14,7 @@ const router = createRouter({
     { path: '/favorites', name: 'favorites', component: () => import('@/views/FavoritesView.vue'), meta: { title: '收藏夹' } },
     { path: '/ai-settings', redirect: '/ai' },
     { path: '/ai', name: 'ai', component: () => import('@/views/AISettingsView.vue'), meta: { title: 'AI 模型' } },
+    { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: '设置' } },
   ],
 })
 

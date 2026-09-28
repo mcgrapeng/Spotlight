@@ -22,15 +22,39 @@ const targets = [
   { path: '/nodes', name: 'v6-nodes' },
   { path: '/events', name: 'v6-events' },
   { path: '/ai', name: 'v6-ai' },
+  { path: '/settings', name: 'v6-settings' },
   { path: '/login', name: 'v6-login' },
 ] as const
+
+const nodeFixtures = [
+  {
+    name: 'server-prod-01', status: 'Ready', roles: ['worker'],
+    version: 'v1.30.0', os_image: 'Ubuntu 22.04', kubelet_version: 'v1.30.0',
+    cpu_capacity: '4', memory_capacity: '64Gi',
+    cpu_allocatable: '3.5', memory_allocatable: '56Gi',
+    pod_count: 42, age: '45d',
+  },
+  {
+    name: 'server-prod-02', status: 'Ready', roles: ['worker'],
+    version: 'v1.30.0', os_image: 'Ubuntu 22.04', kubelet_version: 'v1.30.0',
+    cpu_capacity: '4', memory_capacity: '64Gi',
+    cpu_allocatable: '3.5', memory_allocatable: '56Gi',
+    pod_count: 105, age: '45d',
+  },
+  {
+    name: 'server-prod-03', status: 'Ready', roles: ['control-plane', 'worker'],
+    version: 'v1.30.0', os_image: 'Ubuntu 22.04', kubelet_version: 'v1.30.0',
+    cpu_capacity: '8', memory_capacity: '128Gi',
+    cpu_allocatable: '1', memory_allocatable: '4Gi',
+    pod_count: 28, age: '12d',
+  },
+]
 
 for (const t of targets) {
   test(`screenshot ${t.name}`, async ({ page }) => {
     await installApiMocks(page)
-    // _fixtures doesn't mock /api/v1/nodes — empty array is enough for NodesView.
     await page.route('**/api/v1/nodes**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(nodeFixtures) }),
     )
 
     await page.setViewportSize({ width: 1440, height: 900 })

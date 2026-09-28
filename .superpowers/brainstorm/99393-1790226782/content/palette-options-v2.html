@@ -1,0 +1,396 @@
+<div style="max-width: 1400px; margin: 0 auto;">
+  <h2 style="font-size: 1.75rem; font-weight: 600; margin-bottom: 0.5rem; color: #fafafa;">配色方案 v2 · 5 种新方向</h2>
+  <p class="subtitle" style="color: #a0a0a8; margin-bottom: 2rem; font-size: 0.95rem;">
+    第一轮都偏"金/橙"琥珀色，撞车了。这次给你 5 个完全不同色相的方向 — 跳开暖金，主色从绿到红到银都试。每个都用 Dashboard 真实结构渲染。
+  </p>
+
+  <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem;">
+
+    <!-- ============================================ -->
+    <!-- F · 月光银 + 暖黑 -->
+    <!-- ============================================ -->
+    <div class="card" data-choice="palette-f" onclick="toggleSelect(this)" style="cursor: pointer; background: #1a1a1f; border: 1px solid #2a2a30; border-radius: 16px; overflow: hidden;">
+      <div class="card-image" style="background: transparent; aspect-ratio: auto; padding: 0;">
+        <div style="display: flex; height: 400px; font-family: -apple-system, 'Inter', sans-serif; background: #14110E; color: #E8E4DC;">
+          <div style="width: 200px; background: #1A1714; border-right: 1px solid #2A2620; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-bottom: 16px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #D8D4C8, #A8A296); display: flex; align-items: center; justify-content: center; color: #14110E; font-weight: 600; font-size: 12px;">K8</div>
+              <div style="font-size: 13px; font-weight: 600; color: #E8E4DC;">K8s Viewer</div>
+            </div>
+            <div style="height: 1px; background: #2A2620; margin: 8px 0;"></div>
+            <div style="padding: 7px 10px; border-radius: 6px; background: #2A2620; color: #E8E4DC; font-size: 12.5px;">▦  总览</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #8E8678; font-size: 12.5px;">▢  Pods</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #8E8678; font-size: 12.5px;">▢  Nodes</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #8E8678; font-size: 12.5px;">▢  Events</div>
+          </div>
+          <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 8px;">
+                <div style="background: #1A1714; border: 1px solid #2A2620; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #B8B0A2;">⌘ kubernetes-admin</div>
+                <div style="background: #1A1714; border: 1px solid #2A2620; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #B8B0A2;">所有 namespace</div>
+              </div>
+              <div style="background: linear-gradient(135deg, #E8E4DC, #C8C4B6); color: #14110E; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;">+ AI 助手</div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <div style="font-size: 22px; font-weight: 600; color: #FFFFFF;">总览</div>
+              <div style="font-size: 12px; color: #8E8678;">kubernetes-admin@kubernetes</div>
+            </div>
+            <div style="background: rgba(200, 90, 80, 0.06); border: 1px solid rgba(200, 90, 80, 0.22); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: rgba(200, 90, 80, 0.15); display: flex; align-items: center; justify-content: center; color: #E0937A; font-size: 13px;">!</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #B85450; font-weight: 600; margin-bottom: 2px;">CRITICAL</div>
+                <div style="font-size: 12.5px; color: #E8E4DC;">monitoring/tempo-distributed-... 累计重启 21,322 次</div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div style="background: #1A1714; border: 1px solid #2A2620; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #8E8678; margin-bottom: 8px; letter-spacing: 0.3px;">集群健康度</div>
+                <div style="font-size: 26px; font-weight: 600; color: #B8D8B8;">94<span style="font-size: 15px; color: #B8D8B8;">%</span></div>
+                <div style="height: 3px; background: #2A2620; border-radius: 2px; margin-top: 10px; overflow: hidden;">
+                  <div style="width: 94%; height: 100%; background: linear-gradient(90deg, #B8D8B8, #D8E8D8);"></div>
+                </div>
+              </div>
+              <div style="background: #1A1714; border: 1px solid #2A2620; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #8E8678; margin-bottom: 8px; letter-spacing: 0.3px;">运行 Pods</div>
+                <div style="font-size: 26px; font-weight: 600; color: #E8E4DC;">288</div>
+                <div style="font-size: 11px; color: #8E8678; margin-top: 10px;">Node Ready <span style="color: #E8E4DC; font-weight: 600;">3 / 3</span></div>
+              </div>
+              <div style="background: #1A1714; border: 1px solid #2A2620; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #8E8678; margin-bottom: 8px; letter-spacing: 0.3px;">告警事件</div>
+                <div style="font-size: 26px; font-weight: 600; color: #E8C99E;">24</div>
+                <div style="font-size: 11px; color: #8E8678; margin-top: 10px;">Namespace <span style="color: #E8E4DC; font-weight: 600;">_all</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
+          <h3 style="color: #fafafa; margin: 0;">F · 月光银 + 暖黑</h3>
+          <span style="font-size: 11px; color: #D8D4C8; font-weight: 600; letter-spacing: 0.5px;">QUIET LUXURY</span>
+        </div>
+        <p style="color: #a0a0a8; margin: 0; font-size: 13px;">背景 #14110E · 主色 #D8D4C8（哑光银）· 文字 #E8E4DC（米白）· 成功 #B8D8B8 · 警告 #E8C99E · 错误 #E0937A。<strong>最安静、最克制</strong>。像 The Row / COS 那种"不张扬的贵气"。主色不抢戏，靠层次感取胜。</p>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #14110E; border: 1px solid #2a2a30;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #1A1714;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #D8D4C8;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #B8D8B8;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #E8C99E;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #E0937A;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- G · 砖红 + 暖黑 -->
+    <!-- ============================================ -->
+    <div class="card" data-choice="palette-g" onclick="toggleSelect(this)" style="cursor: pointer; background: #1a1a1f; border: 1px solid #2a2a30; border-radius: 16px; overflow: hidden;">
+      <div class="card-image" style="background: transparent; aspect-ratio: auto; padding: 0;">
+        <div style="display: flex; height: 400px; font-family: -apple-system, 'Inter', sans-serif; background: #161310; color: #F0E8DC;">
+          <div style="width: 200px; background: #1D1814; border-right: 1px solid #2D251F; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-bottom: 16px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #C2685A, #8E4840); display: flex; align-items: center; justify-content: center; color: #F0E8DC; font-weight: 600; font-size: 12px;">K8</div>
+              <div style="font-size: 13px; font-weight: 600; color: #F0E8DC;">K8s Viewer</div>
+            </div>
+            <div style="height: 1px; background: #2D251F; margin: 8px 0;"></div>
+            <div style="padding: 7px 10px; border-radius: 6px; background: #2D251F; color: #F0E8DC; font-size: 12.5px;">▦  总览</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #8E8275; font-size: 12.5px;">▢  Pods</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #8E8275; font-size: 12.5px;">▢  Nodes</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #8E8275; font-size: 12.5px;">▢  Events</div>
+          </div>
+          <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 8px;">
+                <div style="background: #1D1814; border: 1px solid #2D251F; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #BFB5A5;">⌘ kubernetes-admin</div>
+                <div style="background: #1D1814; border: 1px solid #2D251F; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #BFB5A5;">所有 namespace</div>
+              </div>
+              <div style="background: #C2685A; color: #F0E8DC; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;">+ AI 助手</div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <div style="font-size: 22px; font-weight: 600; color: #FFFFFF;">总览</div>
+              <div style="font-size: 12px; color: #8E8275;">kubernetes-admin@kubernetes</div>
+            </div>
+            <div style="background: linear-gradient(90deg, rgba(194, 104, 90, 0.12), rgba(194, 104, 90, 0.04)); border: 1px solid rgba(194, 104, 90, 0.3); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: #C2685A; display: flex; align-items: center; justify-content: center; color: #F0E8DC; font-size: 13px; font-weight: 700;">!</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #C2685A; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.5px;">CRITICAL</div>
+                <div style="font-size: 12.5px; color: #F0E8DC;">monitoring/tempo-distributed-... 累计重启 21,322 次</div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div style="background: #1D1814; border: 1px solid #2D251F; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #8E8275; margin-bottom: 8px; letter-spacing: 0.3px;">集群健康度</div>
+                <div style="font-size: 26px; font-weight: 600; color: #A8C97A;">94<span style="font-size: 15px;">%</span></div>
+                <div style="height: 3px; background: #2D251F; border-radius: 2px; margin-top: 10px; overflow: hidden;">
+                  <div style="width: 94%; height: 100%; background: #A8C97A;"></div>
+                </div>
+              </div>
+              <div style="background: #1D1814; border: 1px solid #2D251F; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #8E8275; margin-bottom: 8px; letter-spacing: 0.3px;">运行 Pods</div>
+                <div style="font-size: 26px; font-weight: 600; color: #F0E8DC;">288</div>
+                <div style="font-size: 11px; color: #8E8275; margin-top: 10px;">Node Ready <span style="color: #F0E8DC; font-weight: 600;">3 / 3</span></div>
+              </div>
+              <div style="background: #1D1814; border: 1px solid #2D251F; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #8E8275; margin-bottom: 8px; letter-spacing: 0.3px;">告警事件</div>
+                <div style="font-size: 26px; font-weight: 600; color: #C2685A;">24</div>
+                <div style="font-size: 11px; color: #8E8275; margin-top: 10px;">Namespace <span style="color: #F0E8DC; font-weight: 600;">_all</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
+          <h3 style="color: #fafafa; margin: 0;">G · 砖红 + 暖黑</h3>
+          <span style="font-size: 11px; color: #C2685A; font-weight: 600; letter-spacing: 0.5px;">EARTH</span>
+        </div>
+        <p style="color: #a0a0a8; margin: 0; font-size: 13px;">背景 #161310 · 主色 #C2685A（赤陶/砖红）· 文字 #F0E8DC · 成功 #A8C97A · 警告 #D9A55F · 错误 #C2685A。<strong>温暖、有底气</strong>。像砖墙、陶艺、Astier de Villatte 那种"被时间打磨过的"质感。</p>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #161310; border: 1px solid #2a2a30;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #1D1814;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #C2685A;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #A8C97A;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #D9A55F;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #C2685A;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- H · 森林绿 + 暖黑 -->
+    <!-- ============================================ -->
+    <div class="card" data-choice="palette-h" onclick="toggleSelect(this)" style="cursor: pointer; background: #1a1a1f; border: 1px solid #2a2a30; border-radius: 16px; overflow: hidden;">
+      <div class="card-image" style="background: transparent; aspect-ratio: auto; padding: 0;">
+        <div style="display: flex; height: 400px; font-family: -apple-system, 'Inter', sans-serif; background: #0F1411; color: #EDE5D5;">
+          <div style="width: 200px; background: #151A16; border-right: 1px solid #222823; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-bottom: 16px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #7A9B6E, #5A7A50); display: flex; align-items: center; justify-content: center; color: #0F1411; font-weight: 600; font-size: 12px;">K8</div>
+              <div style="font-size: 13px; font-weight: 600; color: #EDE5D5;">K8s Viewer</div>
+            </div>
+            <div style="height: 1px; background: #222823; margin: 8px 0;"></div>
+            <div style="padding: 7px 10px; border-radius: 6px; background: #222823; color: #EDE5D5; font-size: 12.5px;">▦  总览</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #858877; font-size: 12.5px;">▢  Pods</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #858877; font-size: 12.5px;">▢  Nodes</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #858877; font-size: 12.5px;">▢  Events</div>
+          </div>
+          <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 8px;">
+                <div style="background: #151A16; border: 1px solid #222823; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #B8B0A2;">⌘ kubernetes-admin</div>
+                <div style="background: #151A16; border: 1px solid #222823; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #B8B0A2;">所有 namespace</div>
+              </div>
+              <div style="background: #7A9B6E; color: #0F1411; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;">+ AI 助手</div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <div style="font-size: 22px; font-weight: 600; color: #FFFFFF;">总览</div>
+              <div style="font-size: 12px; color: #858877;">kubernetes-admin@kubernetes</div>
+            </div>
+            <div style="background: rgba(200, 100, 90, 0.06); border: 1px solid rgba(200, 100, 90, 0.22); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: rgba(200, 100, 90, 0.15); display: flex; align-items: center; justify-content: center; color: #E0937A; font-size: 13px; font-weight: 700;">!</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #C88072; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.5px;">CRITICAL</div>
+                <div style="font-size: 12.5px; color: #EDE5D5;">monitoring/tempo-distributed-... 累计重启 21,322 次</div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div style="background: #151A16; border: 1px solid #222823; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #858877; margin-bottom: 8px; letter-spacing: 0.3px;">集群健康度</div>
+                <div style="font-size: 26px; font-weight: 600; color: #A8C97A;">94<span style="font-size: 15px;">%</span></div>
+                <div style="height: 3px; background: #222823; border-radius: 2px; margin-top: 10px; overflow: hidden;">
+                  <div style="width: 94%; height: 100%; background: linear-gradient(90deg, #7A9B6E, #A8C97A);"></div>
+                </div>
+              </div>
+              <div style="background: #151A16; border: 1px solid #222823; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #858877; margin-bottom: 8px; letter-spacing: 0.3px;">运行 Pods</div>
+                <div style="font-size: 26px; font-weight: 600; color: #EDE5D5;">288</div>
+                <div style="font-size: 11px; color: #858877; margin-top: 10px;">Node Ready <span style="color: #EDE5D5; font-weight: 600;">3 / 3</span></div>
+              </div>
+              <div style="background: #151A16; border: 1px solid #222823; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #858877; margin-bottom: 8px; letter-spacing: 0.3px;">告警事件</div>
+                <div style="font-size: 26px; font-weight: 600; color: #D9A55F;">24</div>
+                <div style="font-size: 11px; color: #858877; margin-top: 10px;">Namespace <span style="color: #EDE5D5; font-weight: 600;">_all</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
+          <h3 style="color: #fafafa; margin: 0;">H · 森林绿 + 暖黑</h3>
+          <span style="font-size: 11px; color: #7A9B6E; font-weight: 600; letter-spacing: 0.5px;">EARTH · COOL</span>
+        </div>
+        <p style="color: #a0a0a8; margin: 0; font-size: 13px;">背景 #0F1411（墨绿黑）· 主色 #7A9B6E（苔藓绿）· 文字 #EDE5D5 · 成功 #A8C97A · 警告 #D9A55F · 错误 #C88072。<strong>冷暖对撞</strong>。像黑胡桃木 + 苔藓，温暖又安静，<strong>运维/IT 场景下非常专业</strong>。</p>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #0F1411; border: 1px solid #2a2a30;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #151A16;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #7A9B6E;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #A8C97A;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #D9A55F;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #C88072;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- I · 暮蓝紫 + 暖黑 (深空感) -->
+    <!-- ============================================ -->
+    <div class="card" data-choice="palette-i" onclick="toggleSelect(this)" style="cursor: pointer; background: #1a1a1f; border: 1px solid #2a2a30; border-radius: 16px; overflow: hidden;">
+      <div class="card-image" style="background: transparent; aspect-ratio: auto; padding: 0;">
+        <div style="display: flex; height: 400px; font-family: -apple-system, 'Inter', sans-serif; background: #14121A; color: #ECE5F0;">
+          <div style="width: 200px; background: #1A1820; border-right: 1px solid #2A2732; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-bottom: 16px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #9D88D4, #7868B0); display: flex; align-items: center; justify-content: center; color: #ECE5F0; font-weight: 600; font-size: 12px;">K8</div>
+              <div style="font-size: 13px; font-weight: 600; color: #ECE5F0;">K8s Viewer</div>
+            </div>
+            <div style="height: 1px; background: #2A2732; margin: 8px 0;"></div>
+            <div style="padding: 7px 10px; border-radius: 6px; background: #2A2732; color: #ECE5F0; font-size: 12.5px;">▦  总览</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #908AA0; font-size: 12.5px;">▢  Pods</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #908AA0; font-size: 12.5px;">▢  Nodes</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #908AA0; font-size: 12.5px;">▢  Events</div>
+          </div>
+          <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 8px;">
+                <div style="background: #1A1820; border: 1px solid #2A2732; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #BDB5C8;">⌘ kubernetes-admin</div>
+                <div style="background: #1A1820; border: 1px solid #2A2732; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #BDB5C8;">所有 namespace</div>
+              </div>
+              <div style="background: #9D88D4; color: #14121A; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;">+ AI 助手</div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <div style="font-size: 22px; font-weight: 600; color: #FFFFFF;">总览</div>
+              <div style="font-size: 12px; color: #908AA0;">kubernetes-admin@kubernetes</div>
+            </div>
+            <div style="background: linear-gradient(90deg, rgba(200, 100, 90, 0.1), rgba(200, 100, 90, 0.03)); border: 1px solid rgba(200, 100, 90, 0.25); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: rgba(200, 100, 90, 0.18); display: flex; align-items: center; justify-content: center; color: #E0937A; font-size: 13px; font-weight: 700;">!</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #E0937A; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.5px;">CRITICAL</div>
+                <div style="font-size: 12.5px; color: #ECE5F0;">monitoring/tempo-distributed-... 累计重启 21,322 次</div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div style="background: #1A1820; border: 1px solid #2A2732; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #908AA0; margin-bottom: 8px; letter-spacing: 0.3px;">集群健康度</div>
+                <div style="font-size: 26px; font-weight: 600; color: #88C096;">94<span style="font-size: 15px;">%</span></div>
+                <div style="height: 3px; background: #2A2732; border-radius: 2px; margin-top: 10px; overflow: hidden;">
+                  <div style="width: 94%; height: 100%; background: linear-gradient(90deg, #9D88D4, #88C096);"></div>
+                </div>
+              </div>
+              <div style="background: #1A1820; border: 1px solid #2A2732; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #908AA0; margin-bottom: 8px; letter-spacing: 0.3px;">运行 Pods</div>
+                <div style="font-size: 26px; font-weight: 600; color: #ECE5F0;">288</div>
+                <div style="font-size: 11px; color: #908AA0; margin-top: 10px;">Node Ready <span style="color: #ECE5F0; font-weight: 600;">3 / 3</span></div>
+              </div>
+              <div style="background: #1A1820; border: 1px solid #2A2732; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #908AA0; margin-bottom: 8px; letter-spacing: 0.3px;">告警事件</div>
+                <div style="font-size: 26px; font-weight: 600; color: #E8B66F;">24</div>
+                <div style="font-size: 11px; color: #908AA0; margin-top: 10px;">Namespace <span style="color: #ECE5F0; font-weight: 600;">_all</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
+          <h3 style="color: #fafafa; margin: 0;">I · 暮蓝紫 + 暖黑</h3>
+          <span style="font-size: 11px; color: #9D88D4; font-weight: 600; letter-spacing: 0.5px;">DUSK</span>
+        </div>
+        <p style="color: #a0a0a8; margin: 0; font-size: 13px;">背景 #14121A（深空紫黑）· 主色 #9D88D4（暮紫）· 文字 #ECE5F0 · 成功 #88C096 · 警告 #E8B66F · 错误 #E0937A。<strong>夜间感、神秘、专注</strong>。像 Vercel 深夜模式 + Linear 暖化版。冷感最强但有温度。</p>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #14121A; border: 1px solid #2a2a30;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #1A1820;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #9D88D4;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #88C096;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #E8B66F;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #E0937A;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- J · 桃粉 + 暖黑 (暮春) -->
+    <!-- ============================================ -->
+    <div class="card" data-choice="palette-j" onclick="toggleSelect(this)" style="cursor: pointer; background: #1a1a1f; border: 1px solid #2a2a30; border-radius: 16px; overflow: hidden;">
+      <div class="card-image" style="background: transparent; aspect-ratio: auto; padding: 0;">
+        <div style="display: flex; height: 400px; font-family: -apple-system, 'Inter', sans-serif; background: #161314; color: #F0E5E0;">
+          <div style="width: 200px; background: #1D1818; border-right: 1px solid #2E2525; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px; margin-bottom: 16px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #D49AA0, #B07880); display: flex; align-items: center; justify-content: center; color: #161314; font-weight: 600; font-size: 12px;">K8</div>
+              <div style="font-size: 13px; font-weight: 600; color: #F0E5E0;">K8s Viewer</div>
+            </div>
+            <div style="height: 1px; background: #2E2525; margin: 8px 0;"></div>
+            <div style="padding: 7px 10px; border-radius: 6px; background: #2E2525; color: #F0E5E0; font-size: 12.5px;">▦  总览</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #948585; font-size: 12.5px;">▢  Pods</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #948585; font-size: 12.5px;">▢  Nodes</div>
+            <div style="padding: 7px 10px; border-radius: 6px; color: #948585; font-size: 12.5px;">▢  Events</div>
+          </div>
+          <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 8px;">
+                <div style="background: #1D1818; border: 1px solid #2E2525; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #C8B5B0;">⌘ kubernetes-admin</div>
+                <div style="background: #1D1818; border: 1px solid #2E2525; padding: 5px 10px; border-radius: 6px; font-size: 12px; color: #C8B5B0;">所有 namespace</div>
+              </div>
+              <div style="background: #D49AA0; color: #161314; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;">+ AI 助手</div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <div style="font-size: 22px; font-weight: 600; color: #FFFFFF;">总览</div>
+              <div style="font-size: 12px; color: #948585;">kubernetes-admin@kubernetes</div>
+            </div>
+            <div style="background: rgba(200, 90, 90, 0.06); border: 1px solid rgba(200, 90, 90, 0.22); border-radius: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 10px;">
+              <div style="width: 24px; height: 24px; border-radius: 6px; background: rgba(200, 90, 90, 0.15); display: flex; align-items: center; justify-content: center; color: #E07878; font-size: 13px; font-weight: 700;">!</div>
+              <div style="flex: 1;">
+                <div style="font-size: 11px; color: #C87070; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.5px;">CRITICAL</div>
+                <div style="font-size: 12.5px; color: #F0E5E0;">monitoring/tempo-distributed-... 累计重启 21,322 次</div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              <div style="background: #1D1818; border: 1px solid #2E2525; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #948585; margin-bottom: 8px; letter-spacing: 0.3px;">集群健康度</div>
+                <div style="font-size: 26px; font-weight: 600; color: #A8C97A;">94<span style="font-size: 15px;">%</span></div>
+                <div style="height: 3px; background: #2E2525; border-radius: 2px; margin-top: 10px; overflow: hidden;">
+                  <div style="width: 94%; height: 100%; background: #A8C97A;"></div>
+                </div>
+              </div>
+              <div style="background: #1D1818; border: 1px solid #2E2525; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #948585; margin-bottom: 8px; letter-spacing: 0.3px;">运行 Pods</div>
+                <div style="font-size: 26px; font-weight: 600; color: #F0E5E0;">288</div>
+                <div style="font-size: 11px; color: #948585; margin-top: 10px;">Node Ready <span style="color: #F0E5E0; font-weight: 600;">3 / 3</span></div>
+              </div>
+              <div style="background: #1D1818; border: 1px solid #2E2525; border-radius: 10px; padding: 14px;">
+                <div style="font-size: 11px; color: #948585; margin-bottom: 8px; letter-spacing: 0.3px;">告警事件</div>
+                <div style="font-size: 26px; font-weight: 600; color: #D49AA0;">24</div>
+                <div style="font-size: 11px; color: #948585; margin-top: 10px;">Namespace <span style="color: #F0E5E0; font-weight: 600;">_all</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 16px 20px;">
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
+          <h3 style="color: #fafafa; margin: 0;">J · 桃粉 + 暖黑</h3>
+          <span style="font-size: 11px; color: #D49AA0; font-weight: 600; letter-spacing: 0.5px;">SOFT</span>
+        </div>
+        <p style="color: #a0a0a8; margin: 0; font-size: 13px;">背景 #161314（暖墨）· 主色 #D49AA0（暮粉）· 文字 #F0E5E0 · 成功 #A8C97A · 警告 #E8B89A · 错误 #C87070。<strong>柔软、温柔</strong>。像 Notion + Glossier。运维场景里会很反传统，<strong>可能不适合严肃生产监控</strong>。</p>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #161314; border: 1px solid #2a2a30;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #1D1818;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #D49AA0;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #A8C97A;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #E8B89A;"></div>
+          <div style="width: 18px; height: 18px; border-radius: 4px; background: #C87070;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top: 2rem; padding: 16px 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; color: #c8c8d0; font-size: 13px; line-height: 1.7;">
+    <strong style="color: #fafafa;">5 个方向差异：</strong><br>
+    <strong>F · 月光银</strong> — 主色最弱，靠排版/层次取胜，最"无印良品"<br>
+    <strong>G · 砖红</strong> — 大地色系最暖，Astier de Villatte 陶瓷感<br>
+    <strong>H · 森林绿</strong> — 唯一冷暖撞色，最适合运维/IT 场景<br>
+    <strong>I · 暮蓝紫</strong> — 夜间感最强，Vercel 深夜模式<br>
+    <strong>J · 桃粉</strong> — 反传统，但太软不适合监控场景<br>
+    <br>
+    <strong style="color: #fafafa;">老实说：</strong>这一轮我故意把"主色饱和度"都拉低、把"卡片层次"做得更细腻，看看是不是上一个版本的"颜色太冲"让你不满意。如果还不满意，告诉我哪个具体元素（比如"卡片边框太亮""文字太白""主色想再亮/再暗一点"），我针对性调整而不是再换一整轮。
+  </div>
+</div>

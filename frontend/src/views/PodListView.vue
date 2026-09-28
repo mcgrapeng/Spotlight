@@ -51,6 +51,17 @@ function restartSeverity(p: PodInfo) {
 }
 function nodeShort(p: PodInfo) { return p.node ? p.node.split('.')[0] : null }
 
+const PHASE_TONE: Record<string, string> = {
+  Running:   'hover:bg-success/5',
+  Pending:   'hover:bg-warning/5',
+  Failed:    'bg-error/5 hover:bg-error/10',
+  Succeeded: 'hover:bg-muted/40',
+  Unknown:   'hover:bg-muted/40',
+}
+function rowClass(p: PodInfo) {
+  return PHASE_TONE[p.phase] ?? 'hover:bg-muted/40'
+}
+
 function open(p: PodInfo) {
   router.push({ name: 'pod-detail', params: { namespace: p.namespace, name: p.name } })
 }
@@ -147,7 +158,10 @@ const pagedPods = computed(() => {
               v-for="row in pagedPods"
               :key="`${row.namespace}/${row.name}`"
               style="content-visibility: auto; contain-intrinsic-size: auto 44px;"
-              class="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
+              :class="cn(
+                'border-b border-border last:border-0 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none transition-colors',
+                rowClass(row),
+              )"
               tabindex="0"
               role="button"
               :aria-label="`查看 ${row.name} 详情`"
@@ -179,14 +193,28 @@ const pagedPods = computed(() => {
                 </div>
               </td>
               <td class="px-4 py-2.5">
-                <span :class="cn(
-                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums',
-                  readyOf(row) === row.containers.length
-                    ? 'border-success-border bg-success-bg text-success'
-                    : 'border-warning-border bg-warning-bg text-warning',
-                )">
-                  {{ readyOf(row) }}<span class="opacity-60">/</span>{{ row.containers.length }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <!-- ponytail: 每个 container 一个状态 dot，比 "1/2" 信息密度高 -->
+                  <div class="flex items-center gap-1" :aria-label="`${readyOf(row)} of ${row.containers.length} containers ready`">
+                    <span
+                      v-for="(c, i) in row.containers"
+                      :key="i"
+                      :title="`${c.name}: ${c.ready ? 'ready' : c.state}${c.reason ? ' (' + c.reason + ')' : ''}`"
+                      :class="cn(
+                        'inline-block w-2 h-2 rounded-full',
+                        c.ready
+                          ? 'bg-success'
+                          : c.state === 'waiting' && c.reason === 'CrashLoopBackOff'
+                            ? 'bg-error'
+                            : 'bg-warning',
+                      )"
+                    />
+                  </div>
+                  <span :class="cn(
+                    'tabular-nums text-[11px]',
+                    readyOf(row) === row.containers.length ? 'text-success' : 'text-warning',
+                  )">{{ readyOf(row) }}/{{ row.containers.length }}</span>
+                </div>
               </td>
               <td class="px-4 py-2.5">
                 <div

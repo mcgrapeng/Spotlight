@@ -28,6 +28,7 @@ const pages = [
   { path: '/events', name: 'Events', expectTitle: /^Events ·/ },
   { path: '/favorites', name: '收藏夹', expectTitle: /^收藏夹$/ },
   { path: '/ai', name: 'AI 模型', expectTitle: /^AI 模型$/ },
+  { path: '/settings', name: '设置', expectTitle: /^设置$/ },
   { path: '/login', name: '登录', expectTitle: /^Fathom$/ },
 ] as const
 

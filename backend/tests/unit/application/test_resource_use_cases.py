@@ -88,6 +88,9 @@ def repo() -> FakeK8sRepo:
         K8sEvent(name="e2", namespace="default", type="Normal", reason="Started",
                  message="started", involved_kind="Pod", involved_name="p-ok",
                  count=1, first_seen=None, last_seen="2024-01-01T00:00:01Z"),
+        K8sEvent(name="e3", namespace="kube-system", type="Warning", reason="FailedMount",
+                 message="Unable to attach volumes", involved_kind="Pod", involved_name="p-search",
+                 count=3, first_seen=None, last_seen="2024-01-01T00:00:00Z"),
     ]
     return repo
 
@@ -145,7 +148,7 @@ def test_dashboard_aggregates(repo):
     assert d.total_pods == 3
     assert d.running == 2
     assert d.failed == 0
-    assert d.warning_events == 1
+    assert d.warning_events == 2  # 2 distinct Warning entries (count field is per-row only)
     assert d.nodes_total == 1
     assert d.nodes_ready == 1
     assert d.namespaces_count == 2

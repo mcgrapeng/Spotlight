@@ -81,7 +81,10 @@ class ResourceUseCases:
             pending=phase_counter.get("Pending", 0),
             failed=phase_counter.get("Failed", 0),
             succeeded=phase_counter.get("Succeeded", 0),
-            warning_events=sum(1 for e in events if e.is_warning),
+            # ponytail: 告警数 = 告警源条目数（与 /events 列表行数一致）。单条 event 的
+# count 字段（重复触发次数）保留在 row 内部显示，全局计数不重复加总 —— 避免
+# badge / Dashboard 与用户实际看到的行数对不上。
+warning_events=sum(1 for e in events if e.is_warning),
             nodes_total=len(nodes),
             nodes_ready=sum(1 for n in nodes if n.is_ready),
             namespaces_count=len(namespaces),
