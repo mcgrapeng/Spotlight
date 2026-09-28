@@ -24,14 +24,25 @@ const search = ref<string>((route.query.search as string) || '')
 const statusFilter = ref<string>('all')
 
 let searchSyncTimer: ReturnType<typeof setTimeout> | null = null
+let lastSyncedSearch = ref<string>(search.value ?? '')
+
+// Sync search -> URL (only after typing stops, longer debounce, post flush to avoid DOM thrashing)
 watch(search, (v) => {
   if (searchSyncTimer) clearTimeout(searchSyncTimer)
   searchSyncTimer = setTimeout(() => {
+    if (v === lastSyncedSearch.value) return  // skip if already synced
     const q: Record<string, string> = { ...route.query as Record<string, string> }
     if (v) q.search = v
     else delete q.search
     router.replace({ query: q })
-  }, 500)
+    lastSyncedSearch.value = v ?? ''
+  }, 1000)
+}, { flush: 'post' })
+
+// Sync URL -> search (for browser back/forward)
+watch(() => route.query.search, (v) => {
+  const next = (v as string) || ''
+  if (next !== search.value) search.value = next
 })
 
 const { data, loading, error, reload } = usePodList({
