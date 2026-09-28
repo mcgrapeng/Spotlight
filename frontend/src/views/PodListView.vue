@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -22,40 +22,6 @@ const cluster = useClusterStore()
 
 const search = ref<string>((route.query.search as string) || '')
 const statusFilter = ref<string>('all')
-
-let searchSyncTimer: ReturnType<typeof setTimeout> | null = null
-let lastSyncedSearch = ref<string>(search.value ?? '')
-
-// Sync search -> URL (only after typing stops, longer debounce, post flush to avoid DOM thrashing)
-watch(search, (v) => {
-  if (searchSyncTimer) clearTimeout(searchSyncTimer)
-  searchSyncTimer = setTimeout(() => {
-    if (v === lastSyncedSearch.value) return  // skip if already synced
-    const q: Record<string, string> = { ...route.query as Record<string, string> }
-    if (v) q.search = v
-    else delete q.search
-    router.replace({ query: q })
-    lastSyncedSearch.value = v ?? ''
-  }, 1000)
-}, { flush: 'post' })
-
-// Sync URL -> search (for browser back/forward)
-watch(() => route.query.search, (v) => {
-  const next = (v as string) || ''
-  if (next !== search.value) search.value = next
-})
-
-onMounted(() => {
-  // Auto-focus search after page settles (skip if user already clicked somewhere else)
-  setTimeout(() => {
-    if (!search.value) {
-      const el = document.querySelector('input[aria-label="搜索"]')
-      if (el && !document.activeElement?.matches('input, button, select, textarea')) {
-        ;(el as HTMLInputElement).focus()
-      }
-    }
-  }, 250)
-})
 
 const { data, loading, error, reload } = usePodList({
   cluster: computed(() => cluster.activeCluster),
