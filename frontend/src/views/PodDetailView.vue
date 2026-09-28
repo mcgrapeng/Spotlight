@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, RefreshCw, Bot, PanelLeft, PanelRight } from '@lucide/vue'
-import { podsApi } from '@/api/endpoints'
+import { ArrowLeft, RefreshCw, Bot, PanelLeft, PanelRight, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
+import { podsApi, eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { usePodLogs } from '@/composables/usePodLogs'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -14,7 +14,20 @@ import LogViewer from '@/components/log/LogViewer.vue'
 import LogAnalyzerDrawer from '@/components/ai/LogAnalyzerDrawer.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
-import type { PodInfo, LogLine } from '@/domain/types'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { cn } from '@/lib/utils'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/zh-cn'
+import type { PodInfo, LogLine, EventInfo } from '@/domain/types'
+
+dayjs.extend(relativeTime)
+dayjs.locale('zh-cn')
+
+function formatRel(iso: string | null) {
+  if (!iso) return '—'
+  return dayjs(iso).fromNow()
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -78,8 +91,29 @@ watch(tab, (v) => {
   logsTabActive.value = v === 'logs'
   // Coming back to the Logs tab means the user is looking — reset unread pill.
   if (v === 'logs') logUnread.value = 0
+  if (v === 'events') loadPodEvents()
 })
 function back() { router.push({ name: 'pods' }) }
+
+const podEvents = ref<EventInfo[]>([])
+const podEventsLoading = ref(false)
+async function loadPodEvents() {
+  if (!pod.value || !cluster.activeCluster) return
+  podEventsLoading.value = true
+  try {
+    const all = await eventsApi.list({
+      cluster: cluster.activeCluster,
+      namespace: pod.value.namespace,
+      limit: 200,
+    })
+    podEvents.value = all.filter(e =>
+      e.involved_kind === 'Pod' && e.involved_name === pod.value!.name,
+    )
+  } catch { /* silent */ }
+  finally {
+    podEventsLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -190,11 +224,45 @@ function back() { router.push({ name: 'pods' }) }
           </TabsContent>
 
           <TabsContent value="events" class="mt-4">
-            <Card class="p-0">
-              <CardContent class="p-4 text-sm text-muted-foreground text-center">
-                Events 通过 EventsView 查看
-              </CardContent>
-            </Card>
+            <LoadingState v-if="podEventsLoading && podEvents.length === 0" message="加载事件…" />
+            <EmptyState
+              v-else-if="!podEventsLoading && podEvents.length === 0"
+              title="该 pod 无事件"
+              description="选择相应的表情请检查"
+            />
+            <div v-else class="space-y-2">
+              <div
+                v-for="ev in podEvents"
+                :key="ev.name"
+                class="flex items-start gap-3 p-3 rounded-lg border border-border bg-card"
+              >
+                <component
+                  :is="ev.type === 'Warning' ? AlertTriangle : AlertCircle"
+                  :size="14"
+                  :stroke-width="1.75"
+                  :class="cn('shrink-0 mt-0.5', ev.type === 'Warning' ? 'text-warning' : 'text-muted-foreground')"
+                />
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap text-sm">
+                    <span :class="cn(
+                      'inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-medium border',
+                      ev.type === 'Warning' ? 'bg-warning-bg text-warning border-warning-border' : 'bg-muted text-muted-foreground border-border',
+                    )">{{ ev.type }}</span>
+                    <span class="inline-flex items-center rounded px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">
+                      {{ ev.reason }}
+                    </span>
+                  </div>
+                  <p class="text-sm text-muted-foreground mt-1">{{ ev.message }}</p>
+                  <div class="text-2xs text-muted-foreground mt-1 flex gap-3">
+                    <span :title="ev.last_seen ?? undefined">
+                      <Clock :size="11" class="inline -mt-0.5" :stroke-width="1.75" />
+                      {{ formatRel(ev.last_seen) }}
+                    </span>
+                    <span>×{{ ev.count }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
