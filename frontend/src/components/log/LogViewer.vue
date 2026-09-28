@@ -285,6 +285,27 @@ function sevBadgeText(s: string): string {
   return SEV_BADGE_TEXT[s.toLowerCase()] ?? '?'
 }
 
+// === Local timezone HH:MM:SS (hover shows UTC + offset) ===
+const localTimeFmt = new Intl.DateTimeFormat(undefined, {
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+})
+const utcTimeFmt = new Intl.DateTimeFormat('en-GB', {
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
+})
+function fmtLocalTime(ts: string): string {
+  try { return localTimeFmt.format(new Date(ts)) } catch { return ts }
+}
+function fmtUtcTime(ts: string): string {
+  try { return utcTimeFmt.format(new Date(ts)) + 'Z' } catch { return ts }
+}
+function tzOffset(): string {
+  const off = -new Date().getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
+  const m = String(Math.abs(off) % 60).padStart(2, '0')
+  return `UTC${sign}${h}:${m}`
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c] as string,
@@ -738,7 +759,12 @@ function truncatedHtml(content: string): string {
                 aria-label="实时"
               />
               <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.severity))">{{ sevBadgeText(group.line.severity) }}</span>
-              <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.line.timestamp }}</span>
+              <span
+                class="shrink-0 w-[88px] text-muted-foreground/80 tabular-nums truncate pt-0.5"
+                :title="`${fmtUtcTime(group.line.timestamp)} · ${tzOffset()}`"
+              >
+                {{ fmtLocalTime(group.line.timestamp) }}
+              </span>
               <span
                 v-if="group.line.container && group.line.container !== '—'"
                 class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
@@ -806,7 +832,12 @@ function truncatedHtml(content: string): string {
                 aria-label="实时"
               />
               <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].severity))">{{ sevBadgeText(group.lines[0].severity) }}</span>
-              <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.lines[0].timestamp }}</span>
+              <span
+                class="shrink-0 w-[88px] text-muted-foreground/80 tabular-nums truncate pt-0.5"
+                :title="`${fmtUtcTime(group.lines[0].timestamp)} · ${tzOffset()}`"
+              >
+                {{ fmtLocalTime(group.lines[0].timestamp) }}
+              </span>
               <span
                 v-if="group.lines[0].container && group.lines[0].container !== '—'"
                 class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
@@ -839,7 +870,12 @@ function truncatedHtml(content: string): string {
                   :style="{ opacity: timeOpacity(line.timestamp) }"
                   v-memo="[line.content, line.severity, jsonExpanded.has(`${group.key + idx + 1}`)]"
                 >
-                  <span class="shrink-0 w-[130px] text-muted-foreground/60 tabular-nums truncate pt-0.5">{{ line.timestamp }}</span>
+                  <span
+                    class="shrink-0 w-[88px] text-muted-foreground/60 tabular-nums truncate pt-0.5"
+                    :title="`${fmtUtcTime(line.timestamp)} · ${tzOffset()}`"
+                  >
+                    {{ fmtLocalTime(line.timestamp) }}
+                  </span>
                   <button
                     v-if="isJson(line.content)"
                     type="button"
