@@ -849,7 +849,7 @@ function truncatedHtml(content: string): string {
       <button
         v-if="!autoFollow && (unreadCount ?? 0) > 0"
         type="button"
-        class="sticky top-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity"
+        class="absolute top-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity"
         @click="toggleAutoFollow"
       >
         <ChevronUp :size="12" :stroke-width="2" />
