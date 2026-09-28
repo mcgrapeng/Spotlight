@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import {
-  Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight,
-  Copy, X, Terminal, Filter, Clock,
+  Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
+  Copy, X, Terminal, Filter, Clock, WrapText,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,20 @@ const emit = defineEmits<{
 // === State ===
 const search = ref('')
 const autoFollow = ref(true)
+const wrapMode = ref<'wrap' | 'nowrap'>(
+  (localStorage.getItem('k8s-viewer:log-wrap') as 'wrap' | 'nowrap') ?? 'wrap',
+)
+watch(wrapMode, (m) => {
+  try { localStorage.setItem('k8s-viewer:log-wrap', m) } catch { /* quota / disabled */ }
+})
+function toggleWrap() {
+  wrapMode.value = wrapMode.value === 'wrap' ? 'nowrap' : 'wrap'
+}
+const wrapClass = computed(() =>
+  wrapMode.value === 'wrap'
+    ? 'whitespace-pre-wrap break-all'
+    : 'whitespace-nowrap overflow-hidden text-ellipsis',
+)
 const scrollEl = ref<HTMLElement | null>(null)
 const searchInput = ref<InstanceType<typeof HTMLInputElement> | null>(null)
 const lastInteraction = ref(Date.now())
@@ -746,6 +760,16 @@ function truncatedHtml(content: string): string {
       <Button
         variant="outline" size="sm"
         class="h-7 px-2"
+        :title="wrapMode === 'wrap' ? '当前：自动换行（点击切换为不换行）' : '当前：不换行（点击切换为换行）'"
+        @click="toggleWrap"
+        aria-label="切换换行"
+      >
+        <WrapText v-if="wrapMode === 'wrap'" :size="13" :stroke-width="1.75" />
+        <ChevronsRight v-else :size="13" :stroke-width="1.75" />
+      </Button>
+      <Button
+        variant="outline" size="sm"
+        class="h-7 px-2"
         @click="togglePause"
         :aria-label="streaming ? '暂停 (K)' : '继续 (K)'"
         :class="cn(!streaming && 'text-warning border-warning/50')"
@@ -887,7 +911,7 @@ function truncatedHtml(content: string): string {
                 <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                 <ChevronUp v-else :size="9" :stroke-width="2.5" />
               </button>
-              <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(group.line.raw.content)" />
+              <span class="flex-1 min-w-0" :class="wrapClass" v-html="truncatedHtml(group.line.raw.content)" />
               <button
                 v-if="group.line.raw.content.length > TRUNCATE_LIMIT"
                 type="button"
@@ -1007,7 +1031,7 @@ function truncatedHtml(content: string): string {
                     <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
                     <ChevronUp v-else :size="9" :stroke-width="2.5" />
                   </button>
-                  <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(line.raw.content)" />
+                  <span class="flex-1 min-w-0" :class="wrapClass" v-html="truncatedHtml(line.raw.content)" />
                   <button
                     v-if="line.raw.content.length > TRUNCATE_LIMIT"
                     type="button"
