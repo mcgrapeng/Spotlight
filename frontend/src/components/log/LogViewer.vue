@@ -455,14 +455,18 @@ function clearFieldFilter() {
     <div class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
       <button
         type="button"
+        :aria-pressed="minSeverity === 0"
         :class="cn(
           'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors text-2xs',
-          minSeverity === 0 ? 'border-foreground/40 bg-foreground/5 text-foreground' : 'border-transparent text-muted-foreground hover:bg-accent',
+          minSeverity === 0
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
         @click="minSeverity = 0"
       >
         <Filter :size="11" :stroke-width="1.75" />
         全部
+        <span class="tabular-nums">{{ lines.length.toLocaleString() }}</span>
       </button>
       <span class="text-muted-foreground/30 mx-0.5">·</span>
       <button
@@ -470,11 +474,16 @@ function clearFieldFilter() {
         :key="sev"
         type="button"
         :disabled="count === 0"
+        :aria-pressed="minSeverity === SEV_RANK[sev]"
         :class="cn(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md transition-colors text-2xs',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors text-2xs',
           'disabled:opacity-30 disabled:cursor-default',
-          minSeverity === SEV_RANK[sev] ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-          minSeverity !== SEV_RANK[sev] ? (SEV_CLASS[sev] ?? 'text-muted-foreground') : '',
+          minSeverity === SEV_RANK[sev]
+            ? 'border-foreground bg-foreground text-background'
+            : cn(
+                'border-transparent hover:bg-accent hover:text-foreground',
+                SEV_CLASS[sev] ?? 'text-muted-foreground',
+              ),
         )"
         @click="setSeverity(SEV_RANK[sev])"
         :title="`${sev} · ${count.toLocaleString()} 行`"
