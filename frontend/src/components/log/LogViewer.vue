@@ -239,6 +239,21 @@ function severityBorderFor(s: string): string {
   return SEV_ERROR_KEYS.has(s.toLowerCase()) ? 'border-l-error' : 'border-l-transparent'
 }
 
+// === Time-gradient opacity (newest=100%, oldest=30%) ===
+function timeOpacity(ts: string): number {
+  const ageMs = Date.now() - new Date(ts).getTime()
+  if (ageMs < 30_000) return 1
+  if (ageMs < 300_000) return 0.95
+  if (ageMs < 3_600_000) return 0.8
+  if (ageMs < 21_600_000) return 0.6
+  if (ageMs < 86_400_000) return 0.45
+  return 0.3
+}
+
+function isNewestLine(idx: number, _totalLines: number): boolean {
+  return props.streaming && idx === 0
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c] as string,
@@ -674,17 +689,23 @@ function truncatedHtml(content: string): string {
         {{ search ? '没有匹配的行' : (streaming ? '等待日志…' : '日志已暂停') }}
       </div>
       <div v-else class="relative">
-        <template v-for="group in groups" :key="group.key">
+        <template v-for="(group, idx) in groups" :key="group.key">
           <template v-if="group.kind === 'single'">
             <div
               :class="cn(
-                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2',
+                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 relative',
                 'hover:bg-muted/40 transition-colors',
                 severityBgFor(group.line.severity),
                 severityBorderFor(group.line.severity),
               )"
+              :style="{ opacity: timeOpacity(group.line.timestamp) }"
               v-memo="[group.line.content, group.line.severity, jsonExpanded.has(`${group.key}`)]"
             >
+              <span
+                v-if="isNewestLine(idx, groups.length)"
+                class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
+                aria-label="实时"
+              />
               <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.line.severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.line.severity.toLowerCase()] ?? '·' }}</span>
               <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.line.timestamp }}</span>
               <span
@@ -737,16 +758,22 @@ function truncatedHtml(content: string): string {
           <template v-else>
             <div
               :class="cn(
-                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 cursor-pointer select-none',
+                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 cursor-pointer select-none relative',
                 'hover:bg-muted/40 transition-colors',
                 severityBgFor(group.lines[0].severity),
                 severityBorderFor(group.lines[0].severity),
               )"
+              :style="{ opacity: timeOpacity(group.lines[0].timestamp) }"
               v-memo="[group.lines.length, group.expanded, group.lines[0].content, jsonExpanded.has(`${group.key}`)]"
               role="button"
               :aria-expanded="group.expanded"
               @click="toggleExpand(group.key)"
             >
+              <span
+                v-if="isNewestLine(idx, groups.length)"
+                class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
+                aria-label="实时"
+              />
               <span :class="cn('shrink-0 mt-[5px] w-3 text-center font-bold tabular-nums', SEV_CLASS[group.lines[0].severity.toLowerCase()] ?? 'text-foreground')" aria-hidden="true">{{ SEV_ICON[group.lines[0].severity.toLowerCase()] ?? '·' }}</span>
               <span class="shrink-0 w-[160px] text-muted-foreground/80 tabular-nums truncate pt-0.5">{{ group.lines[0].timestamp }}</span>
               <span
@@ -778,6 +805,7 @@ function truncatedHtml(content: string): string {
               <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.timestamp}`">
                 <div
                   class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground"
+                  :style="{ opacity: timeOpacity(line.timestamp) }"
                   v-memo="[line.content, line.severity, jsonExpanded.has(`${group.key + idx + 1}`)]"
                 >
                   <span class="shrink-0 w-[130px] text-muted-foreground/60 tabular-nums truncate pt-0.5">{{ line.timestamp }}</span>
