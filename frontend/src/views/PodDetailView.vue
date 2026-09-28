@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, RefreshCw, Bot } from '@lucide/vue'
+import { ArrowLeft, RefreshCw, Bot, PanelLeft, PanelRight } from '@lucide/vue'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { usePodLogs } from '@/composables/usePodLogs'
@@ -25,6 +25,23 @@ const error = ref<string | null>(null)
 const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
 const analyzerOpen = ref(false)
+const metaCollapsed = ref(true)
+const META_LS_KEY = 'k8s-viewer:pod-meta-collapsed'
+
+onMounted(() => {
+  try {
+    const stored = localStorage.getItem(META_LS_KEY)
+    if (stored !== null) metaCollapsed.value = stored === 'true'
+  } catch { /* ignore */ }
+})
+
+watch(metaCollapsed, (v) => {
+  try { localStorage.setItem(META_LS_KEY, String(v)) } catch {}
+})
+
+function toggleMeta() {
+  metaCollapsed.value = !metaCollapsed.value
+}
 
 const name = computed(() => String(route.params.name ?? ''))
 const namespace = computed(() => String(route.params.namespace ?? cluster.activeNamespace))
@@ -69,10 +86,22 @@ function back() { router.push({ name: 'pods' }) }
   <LoadingState v-if="loading && !pod" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <div v-else-if="pod">
-    <Button variant="ghost" size="sm" class="mb-2 -ml-2" @click="back">
-      <ArrowLeft :size="14" :stroke-width="1.75" class="mr-1" />
-      返回 Pods
-    </Button>
+    <div class="flex items-center justify-between mb-2 -ml-2">
+      <Button variant="ghost" size="sm" @click="back">
+        <ArrowLeft :size="14" :stroke-width="1.75" class="mr-1" />
+        返回 Pods
+      </Button>
+      <Button
+        variant="ghost" size="sm"
+        :title="metaCollapsed ? '展开 Pod 元数据' : '收起 Pod 元数据'"
+        :aria-label="metaCollapsed ? '展开元数据' : '收起元数据'"
+        @click="toggleMeta"
+      >
+        <PanelLeft v-if="metaCollapsed" :size="14" :stroke-width="1.75" class="mr-1" />
+        <PanelRight v-else :size="14" :stroke-width="1.75" class="mr-1" />
+        {{ metaCollapsed ? '元数据' : '收起元数据' }}
+      </Button>
+    </div>
 
     <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || '未调度'}`">
       <template #actions>
@@ -85,7 +114,7 @@ function back() { router.push({ name: 'pods' }) }
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <!-- Left: metadata -->
-      <div class="lg:col-span-1 space-y-4">
+      <div v-if="!metaCollapsed" class="lg:col-span-1 space-y-4">
         <Card class="p-0">
           <CardContent class="p-4 space-y-3">
             <div>
@@ -132,7 +161,7 @@ function back() { router.push({ name: 'pods' }) }
       </div>
 
       <!-- Right: tabs -->
-      <div class="lg:col-span-2">
+      <div :class="metaCollapsed ? 'lg:col-span-3' : 'lg:col-span-2'">
         <Tabs v-model="tab" class="w-full">
           <TabsList>
             <TabsTrigger value="logs">Logs</TabsTrigger>
