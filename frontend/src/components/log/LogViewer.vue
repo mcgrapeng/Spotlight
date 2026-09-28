@@ -423,6 +423,57 @@ function prettyJson(content: string): string {
   )
 }
 
+interface JsonLineHtml { num: number; indent: number; html: string }
+const jsonLinesCache = new Map<string, JsonLineHtml[]>()
+
+function tokenizeJsonLine(line: string): string {
+  return line
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(
+      /("(?:\\.|[^"\\])*")(\s*:)?|(\b(?:true|false|null)\b)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+      (m, str, colon, bool, num) => {
+        if (str !== undefined) {
+          return colon !== undefined
+            ? `<span class="text-info">${str}</span>${colon}`
+            : `<span class="text-success">${str}</span>`
+        }
+        if (bool !== undefined) return `<span class="text-error">${bool}</span>`
+        if (num !== undefined) return `<span class="text-warning">${num}</span>`
+        return m
+      },
+    )
+}
+
+function formatJsonLines(content: string): JsonLineHtml[] {
+  const cached = jsonLinesCache.get(content)
+  if (cached) return cached
+  const parsed = parseJson(content)
+  if (parsed === null) return []
+  const text = JSON.stringify(parsed, null, 2)
+  const out: JsonLineHtml[] = []
+  for (const [i, line] of text.split('\n').entries()) {
+    const m = line.match(/^( *)/)
+    const indent = (m?.[1].length ?? 0) / 2
+    const stripped = line.slice(m?.[1].length ?? 0)
+    out.push({ num: i + 1, indent, html: tokenizeJsonLine(stripped) })
+  }
+  jsonLinesCache.set(content, out)
+  return out
+}
+
+// ponytail: 1.2em = 2 monospace chars at our font; gradient draws a 1px line
+// at the right edge of each tile, visually marking indent boundaries without
+// text overlap. Using em so it scales with text size.
+const JSON_GUIDE_STYLE = {
+  backgroundImage:
+    'linear-gradient(to right, transparent 0 calc(1.2em - 1px), rgba(127,127,127,0.18) calc(1.2em - 1px) 1.2em, transparent 1.2em 100%)',
+  backgroundSize: '1.2em 100%',
+  backgroundRepeat: 'repeat-x',
+  backgroundPosition: '0 0',
+} as const
+
 const jsonExpanded = ref(new Set<string>())
 function toggleJson(key: string) {
   const s = new Set(jsonExpanded.value)
@@ -761,11 +812,23 @@ function clearFieldFilter() {
               </button>
               <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(group.line.content)" />
             </div>
-            <pre
+            <div
               v-if="isJson(group.line.content) && jsonExpanded.has(`${group.key}`)"
-              class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono whitespace-pre"
-              v-html="prettyJson(group.line.content)"
-            />
+              class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
+            >
+              <div
+                v-for="jl in formatJsonLines(group.line.content)"
+                :key="jl.num"
+                class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
+              >
+                <span class="shrink-0 w-7 text-right text-muted-foreground/40 tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
+                <span
+                  class="flex-1 min-w-0 whitespace-pre"
+                  :style="JSON_GUIDE_STYLE"
+                  v-html="jl.html"
+                />
+              </div>
+            </div>
           </template>
           <template v-else>
             <div
@@ -829,11 +892,23 @@ function clearFieldFilter() {
                   </button>
                   <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(line.content)" />
                 </div>
-                <pre
+                <div
                   v-if="isJson(line.content) && jsonExpanded.has(`${group.key + idx + 1}`)"
-                  class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono whitespace-pre"
-                  v-html="prettyJson(line.content)"
-                />
+                  class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
+                >
+                  <div
+                    v-for="jl in formatJsonLines(line.content)"
+                    :key="jl.num"
+                    class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
+                  >
+                    <span class="shrink-0 w-7 text-right text-muted-foreground/40 tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
+                    <span
+                      class="flex-1 min-w-0 whitespace-pre"
+                      :style="JSON_GUIDE_STYLE"
+                      v-html="jl.html"
+                    />
+                  </div>
+                </div>
               </template>
             </template>
           </template>
