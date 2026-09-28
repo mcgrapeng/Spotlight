@@ -365,6 +365,24 @@ function toggleJson(key: string) {
   if (s.has(key)) s.delete(key); else s.add(key)
   jsonExpanded.value = s
 }
+
+// === JSON field chips (top-level keys from the first JSON object line) ===
+const jsonFieldChips = computed<string[]>(() => {
+  for (const l of props.lines) {
+    const parsed = parseJson(l.content)
+    if (parsed !== null && !Array.isArray(parsed)) {
+      return Object.keys(parsed as Record<string, unknown>)
+    }
+  }
+  return []
+})
+
+function applyFieldFilter(key: string) {
+  search.value = `${key}=`
+}
+function clearFieldFilter() {
+  search.value = ''
+}
 </script>
 
 <template>
@@ -495,6 +513,34 @@ function toggleJson(key: string) {
       >
         <Copy :size="13" :stroke-width="1.75" />
       </Button>
+    </div>
+
+    <!-- JSON field filter chips (top-level keys from the first JSON object line) -->
+    <div
+      v-if="jsonFieldChips.length > 0"
+      class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap"
+    >
+      <span class="text-2xs text-muted-foreground shrink-0 mr-1">字段</span>
+      <button
+        v-for="key in jsonFieldChips"
+        :key="key"
+        type="button"
+        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors"
+        :title="`过滤 ${key}=`"
+        @click="applyFieldFilter(key)"
+      >
+        {{ key }}
+      </button>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ml-auto"
+        title="清除字段过滤"
+        aria-label="清除字段过滤"
+        @click="clearFieldFilter"
+      >
+        <X :size="11" :stroke-width="1.75" />
+        清除字段过滤
+      </button>
     </div>
 
     <!-- Time histogram (60 bins) -->
