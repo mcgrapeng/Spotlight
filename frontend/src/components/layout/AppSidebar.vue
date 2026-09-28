@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
 } from '@lucide/vue'
 import { cn } from '@/lib/utils'
+import { eventsApi } from '@/api/endpoints'
+import { useClusterStore } from '@/stores/cluster'
 
 const props = withDefaults(defineProps<{
   collapsed?: boolean
@@ -14,15 +17,52 @@ defineEmits<{
 }>()
 
 const route = useRoute()
+const cluster = useClusterStore()
+const eventBadge = ref<number>(0)
+let badgeTimer: ReturnType<typeof setInterval> | null = null
 
-const navItems = [
-  { path: '/dashboard', label: '总览',    icon: LayoutDashboard },
-  { path: '/pods',      label: 'Pods',    icon: Box },
-  { path: '/nodes',     label: 'Nodes',   icon: Server },
-  { path: '/events',    label: 'Events',  icon: Activity, badge: 3 },
-  { path: '/favorites', label: '收藏夹',  icon: Star },
-  { path: '/ai',        label: 'AI 模型', icon: Sparkles },
-]
+async function refreshEventBadge() {
+  if (!cluster.activeCluster) {
+    eventBadge.value = 0
+    return
+  }
+  const cacheKey = `cached:events-badge:${cluster.activeCluster}`
+  try {
+    const cached = localStorage.getItem(cacheKey)
+    if (cached) {
+      const { value, ts } = JSON.parse(cached)
+      if (Date.now() - ts < 30_000) eventBadge.value = value
+    }
+    const events = await eventsApi.list({
+      cluster: cluster.activeCluster,
+      namespace: '_all',
+      limit: 200,
+    })
+    const warns = events.filter(e => e.type === 'Warning').length
+    eventBadge.value = warns
+    localStorage.setItem(cacheKey, JSON.stringify({ value: warns, ts: Date.now() }))
+  } catch {
+    /* silent — badge stays at last known value */
+  }
+}
+
+onMounted(() => {
+  refreshEventBadge()
+  badgeTimer = setInterval(refreshEventBadge, 60_000)
+})
+onUnmounted(() => {
+  if (badgeTimer) clearInterval(badgeTimer)
+})
+watch(() => cluster.activeCluster, refreshEventBadge)
+
+const navItems = computed(() => [
+  { path: '/dashboard', label: '总览',    icon: LayoutDashboard, badge: 0 },
+  { path: '/pods',      label: 'Pods',    icon: Box, badge: 0 },
+  { path: '/nodes',     label: 'Nodes',   icon: Server, badge: 0 },
+  { path: '/events',    label: 'Events',  icon: Activity, badge: eventBadge.value },
+  { path: '/favorites', label: '收藏夹',  icon: Star, badge: 0 },
+  { path: '/ai',        label: 'AI 模型', icon: Sparkles, badge: 0 },
+])
 
 const isActive = (path: string) =>
   route.path === path || route.path.startsWith(path + '/')
