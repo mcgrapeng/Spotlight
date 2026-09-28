@@ -15,6 +15,7 @@ const props = defineProps<{
   lines: ReadonlyArray<LogLine>
   streaming?: boolean
   unreadCount?: number
+  containers?: readonly string[]
 }>()
 
 const emit = defineEmits<{
@@ -188,14 +189,32 @@ function isBinInRange(i: number): boolean {
   return binStart >= r[0] - binMs / 2 && binStart < r[1]
 }
 
-// === Additional filter pipeline: time range + (later) container ===
+// === Additional filter pipeline: container + time range ===
+const selectedContainer = ref<string | null>(null)
+const availableContainers = computed(() => props.containers ?? [])
+
+const containerCounts = computed(() => {
+  const c: Record<string, number> = {}
+  for (const l of props.lines) c[l.container] = (c[l.container] ?? 0) + 1
+  return c
+})
+
+watch(availableContainers, (cs) => {
+  if (selectedContainer.value && !cs.includes(selectedContainer.value)) {
+    selectedContainer.value = null
+  }
+})
+
 const displayedLines = computed(() => {
+  let lines = filtered.value
+  const sc = selectedContainer.value
+  if (sc) lines = lines.filter((l) => l.container === sc)
   const r = histogramRange.value
-  if (!r) return filtered.value
-  return filtered.value.filter((l) => {
+  if (r) lines = lines.filter((l) => {
     const t = parseTs(l.timestamp)
     return Number.isFinite(t) && t >= r[0] && t < r[1]
   })
+  return lines
 })
 
 // === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
@@ -463,6 +482,49 @@ function clearFieldFilter() {
         <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[sev] }}</span>
         <span class="uppercase tracking-wider">{{ sev }}</span>
         <span class="tabular-nums">{{ count.toLocaleString() }}</span>
+      </button>
+    </div>
+
+    <!-- Container tabs (only when pod has multiple containers) -->
+    <div
+      v-if="availableContainers.length > 1"
+      class="flex items-center gap-px px-3 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
+      role="tablist"
+      aria-label="容器选择"
+    >
+      <span class="text-2xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">容器</span>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="selectedContainer === null"
+        :class="cn(
+          'px-3 py-1.5 text-2xs font-medium transition-colors border-b-2',
+          selectedContainer === null
+            ? 'border-foreground text-foreground'
+            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
+        )"
+        @click="selectedContainer = null"
+      >
+        全部
+        <span class="ml-1 tabular-nums text-muted-foreground/60">{{ lines.length.toLocaleString() }}</span>
+      </button>
+      <button
+        v-for="c in availableContainers"
+        :key="c"
+        type="button"
+        role="tab"
+        :aria-selected="selectedContainer === c"
+        :title="c"
+        :class="cn(
+          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors border-b-2 max-w-[180px] truncate',
+          selectedContainer === c
+            ? 'border-foreground text-foreground'
+            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
+        )"
+        @click="selectedContainer = c"
+      >
+        {{ c }}
+        <span class="ml-1 tabular-nums text-muted-foreground/60 shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
       </button>
     </div>
 

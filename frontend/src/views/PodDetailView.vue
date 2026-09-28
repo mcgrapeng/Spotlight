@@ -152,6 +152,7 @@ function back() { router.push({ name: 'pods' }) }
                 :lines="logLines"
                 v-model:streaming="logStreaming"
                 :unread-count="logUnread"
+                :containers="pod.containers.map(c => c.name)"
                 @update:filtered="filteredLogsForAI = $event"
                 @clear="logLines = []"
                 @consume-unread="logUnread = 0"
