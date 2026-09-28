@@ -1,4 +1,4 @@
-import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { getCurrentInstance, onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { logsApi } from '@/api/endpoints'
 import type { LogLine } from '@/domain/types'
 
@@ -31,7 +31,9 @@ const MAX_BACKOFF_STEPS = 8
  * - **Abort guard** — watches no-op after unmount (defense in depth)
  */
 export function useLogStream(opts: UseLogStreamOptions) {
-  const lines = ref<LogLine[]>([])
+  // ponytail: shallowRef — buffer replaced whole on each flush; never mutate inner line
+  // objects, so deep reactivity would waste proxy overhead on every field of every line.
+  const lines = shallowRef<LogLine[]>([])
   const status = ref<'idle' | 'open' | 'closed' | 'error'>('idle')
   const errorMessage = ref<string | null>(null)
 
@@ -57,10 +59,10 @@ export function useLogStream(opts: UseLogStreamOptions) {
       if (!pending.length || !alive) return
       const batch = pending
       pending = []
-      lines.value = [...lines.value, ...batch]
-      if (lines.value.length > max) {
-        lines.value.splice(0, lines.value.length - max)
-      }
+      // ponytail: shallowRef requires reassignment to trigger reactivity; .splice() would
+      // mutate in-place and silently bypass downstream computed re-runs.
+      const next = [...lines.value, ...batch]
+      lines.value = next.length > max ? next.slice(0, max) : next
     })
   }
 

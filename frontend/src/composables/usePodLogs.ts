@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { logsApi, podsApi } from '@/api/endpoints'
 import type { LogLine } from '@/domain/types'
 
@@ -36,7 +36,9 @@ function splitLogLines(raw: string): string[] {
  * while the Logs tab is active) and torn down on view unmount.
  */
 export function usePodLogs(opts: UsePodLogsOptions) {
-  const lines = ref<LogLine[]>([])
+  // ponytail: shallowRef — buffer replaced whole on each flush; never mutate inner line
+  // objects, so deep reactivity would waste proxy overhead on every field of every line.
+  const lines = shallowRef<LogLine[]>([])
   const streaming = ref(false)
   const error = ref<string | null>(null)
   const unreadCount = ref(0)
