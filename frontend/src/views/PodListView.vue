@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -22,6 +22,17 @@ const cluster = useClusterStore()
 
 const search = ref<string>((route.query.search as string) || '')
 const statusFilter = ref<string>('all')
+
+let searchSyncTimer: ReturnType<typeof setTimeout> | null = null
+watch(search, (v) => {
+  if (searchSyncTimer) clearTimeout(searchSyncTimer)
+  searchSyncTimer = setTimeout(() => {
+    const q: Record<string, string> = { ...route.query as Record<string, string> }
+    if (v) q.search = v
+    else delete q.search
+    router.replace({ query: q })
+  }, 500)
+})
 
 const { data, loading, error, reload } = usePodList({
   cluster: computed(() => cluster.activeCluster),
