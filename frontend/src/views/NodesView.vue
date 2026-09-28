@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { nodesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { useCachedFetch } from '@/composables/useCachedFetch'
 import type { NodeInfo } from '@/domain/types'
 
 const cluster = useClusterStore()
@@ -18,8 +19,19 @@ const nodes = ref<NodeInfo[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 
+const nodesCacheKey = computed(() => `nodes:${cluster.activeCluster || 'none'}`)
+const nodesFetch = useCachedFetch<NodeInfo[]>({
+  key: nodesCacheKey.value,
+  fetcher: () => nodesApi.list(cluster.activeCluster!),
+  data: nodes,
+  loading,
+  error,
+  ttlMs: 60_000,
+})
+
 async function load() {
   if (!cluster.activeCluster) return
+  nodesFetch.hydrateFromCache()
   loading.value = true
   error.value = null
   try {
@@ -187,7 +199,7 @@ const MAX_PODS_PER_NODE = 110
       </Card>
     </div>
 
-    <LoadingState v-else-if="loading" message="加载节点…" />
+    <LoadingState v-else-if="!nodes.length && loading" message="加载节点…" />
     <EmptyState v-else title="没有节点" description="当前集群尚未注册任何 Node">
       <template #icon>
         <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />
