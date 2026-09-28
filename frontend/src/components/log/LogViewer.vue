@@ -131,6 +131,7 @@ interface HistogramBin {
 }
 
 const histogramSelection = ref<[number, number] | null>(null)
+const histogramCollapsed = ref(false)
 
 const histogramData = computed(() => {
   if (!filtered.value.length) return { bins: [] as HistogramBin[], minTs: 0, maxTs: 0, total: 0, span: 0 }
@@ -790,7 +791,16 @@ function truncatedHtml(content: string): string {
     >
       <!-- Header strip: total + duration + rate + active range badge + reset -->
       <div class="flex items-center justify-between px-3 py-1.5 text-2xs text-muted-foreground font-sans">
-        <span class="tabular-nums">{{ histogramHeader }}</span>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 hover:text-foreground transition-colors"
+          :title="histogramCollapsed ? '展开图表' : '折叠图表'"
+          @click="histogramCollapsed = !histogramCollapsed"
+        >
+          <ChevronDown v-if="histogramCollapsed" :size="11" :stroke-width="2" />
+          <ChevronUp v-else :size="11" :stroke-width="2" />
+          <span class="tabular-nums">{{ histogramHeader }}</span>
+        </button>
         <div class="flex items-center gap-2">
           <span v-if="histogramSelection" class="text-success font-medium tabular-nums">
             ✓ 范围: {{ Math.round((histogramSelection[1] - histogramSelection[0]) / 1000) }}秒
@@ -806,8 +816,23 @@ function truncatedHtml(content: string): string {
         </div>
       </div>
 
-      <!-- Bar chart area: tall + gridlines + custom tooltip -->
-      <div class="flex items-stretch gap-2 px-3 pb-1 pt-1.5">
+      <!-- Mini sparkline when collapsed -->
+      <div v-if="histogramCollapsed" class="h-7 flex items-end gap-px px-3 pb-1">
+        <div
+          v-for="(bin, i) in histogramData.bins"
+          :key="`spark-${i}`"
+          class="flex-1 rounded-sm"
+          :class="bin.error > 0 ? 'bg-error' : bin.warn > 0 ? 'bg-warning' : bin.info > 0 ? 'bg-foreground/40' : 'bg-border/30'"
+          :style="{ height: bin.count > 0 ? `${(bin.count / histogramMax) * 100}%` : '1px', minHeight: '1px' }"
+          :title="bin.count > 0 ? formatBinTime(i) + ' — ' + bin.count + ' 条' : ''"
+          @click="onBinClick(i)"
+        />
+      </div>
+
+      <!-- Full chart when expanded -->
+      <template v-else>
+        <!-- Bar chart area: tall + gridlines + custom tooltip -->
+        <div class="flex items-stretch gap-2 px-3 pb-1 pt-1.5">
         <!-- Y-axis legend (compact) -->
         <div class="flex flex-col justify-end gap-0.5 text-2xs text-muted-foreground pr-1 font-sans tabular-nums shrink-0 self-stretch">
           <span class="flex items-center gap-1 h-3">
@@ -872,6 +897,10 @@ function truncatedHtml(content: string): string {
                 class="w-full bg-error rounded-sm"
                 :style="{ height: bin.error > 0 ? `${(bin.error / histogramMax) * 100}%` : '0' }"
               />
+              <div
+                v-if="bin.count === 0"
+                class="absolute bottom-0 left-0 right-0 h-px bg-border/40"
+              />
             </div>
           </div>
 
@@ -933,6 +962,7 @@ function truncatedHtml(content: string): string {
         <span v-else>-</span>
         <span>现在</span>
       </div>
+      </template>
     </div>
 
     <!-- Log area (NEWEST AT TOP) - fold groups, no virtualization -->
