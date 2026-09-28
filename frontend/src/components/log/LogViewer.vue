@@ -55,14 +55,38 @@ function normalize(text: string): string {
     .trim()
 }
 
+// === Trace_id extraction + hash → HSL hue (same UUID → same color) ===
+const TRACE_ID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
+function extractTraceId(content: string): string | null {
+  return content.match(TRACE_ID_RE)?.[1] ?? null
+}
+function traceIdColor(tid: string): string {
+  let h = 0
+  for (let i = 0; i < tid.length; i++) {
+    h = ((h << 5) - h + tid.charCodeAt(i)) | 0
+  }
+  return `hsl(${Math.abs(h) % 360} 60% 45%)`
+}
+
+interface DecoratedLine {
+  raw: LogLine
+  traceId: string | null
+}
+const decorated = computed<DecoratedLine[]>(() =>
+  filtered.value.map(line => ({
+    raw: line,
+    traceId: extractTraceId(line.content),
+  })),
+)
+
 interface FoldGroup {
   kind: 'single'
-  line: LogLine
+  line: DecoratedLine
   key: number
 }
 interface FoldRun {
   kind: 'run'
-  lines: LogLine[]
+  lines: DecoratedLine[]
   key: number
   sig: string
   expanded: boolean
@@ -76,9 +100,9 @@ const groups = computed<Group[]>(() => {
   let i = 0
   const arr = displayedLines.value
   while (i < arr.length) {
-    const sig = normalize(arr[i].content)
+    const sig = normalize(arr[i].raw.content)
     let j = i + 1
-    while (j < arr.length && normalize(arr[j].content) === sig) j++
+    while (j < arr.length && normalize(arr[j].raw.content) === sig) j++
     if (j - i >= 3) {
       out.push({
         kind: 'run',
@@ -129,9 +153,9 @@ watch(availableContainers, (cs) => {
 })
 
 const displayedLines = computed(() => {
-  let lines = filtered.value
+  let lines = decorated.value
   const sc = selectedContainer.value
-  if (sc) lines = lines.filter((l) => l.container === sc)
+  if (sc) lines = lines.filter((l) => l.raw.container === sc)
   return lines
 })
 
@@ -141,7 +165,7 @@ function jumpToTop() {
 }
 
 watch(displayedLines, (v) => {
-  emit('update:filtered', v)
+  emit('update:filtered', v.map(d => d.raw))
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
   if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
@@ -200,7 +224,7 @@ function onKey(e: KeyboardEvent) {
 
 async function copyAll() {
   const text = displayedLines.value
-    .map(l => `${l.timestamp} [${l.severity.toUpperCase()}] [${l.container}] ${l.content}`)
+    .map(l => `${l.raw.timestamp} [${l.raw.severity.toUpperCase()}] [${l.raw.container}] ${l.raw.content}`)
     .join('\n')
   try { await navigator.clipboard.writeText(text) } catch (err) { console.error('clipboard', err) }
 }
@@ -747,31 +771,38 @@ function truncatedHtml(content: string): string {
               :class="cn(
                 'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 relative',
                 'hover:bg-muted/40 transition-colors',
-                severityBgFor(group.line.severity),
-                severityBorderFor(group.line.severity),
+                severityBgFor(group.line.raw.severity),
+                severityBorderFor(group.line.raw.severity),
               )"
-              :style="{ opacity: timeOpacity(group.line.timestamp) }"
-              v-memo="[group.line.content, group.line.severity, jsonExpanded.has(`${group.key}`)]"
+              :style="{ opacity: timeOpacity(group.line.raw.timestamp) }"
+              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId]"
             >
+              <span
+                v-if="group.line.traceId"
+                class="absolute left-0 top-0 bottom-0 w-1"
+                :style="{ background: traceIdColor(group.line.traceId) }"
+                :title="`trace_id: ${group.line.traceId}`"
+                aria-hidden="true"
+              />
               <span
                 v-if="isNewestLine(idx, groups.length)"
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
-              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.severity))">{{ sevBadgeText(group.line.severity) }}</span>
+              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.raw.severity))">{{ sevBadgeText(group.line.raw.severity) }}</span>
               <span
                 class="shrink-0 w-[88px] text-muted-foreground/80 tabular-nums truncate pt-0.5"
-                :title="`${fmtUtcTime(group.line.timestamp)} · ${tzOffset()}`"
+                :title="`${fmtUtcTime(group.line.raw.timestamp)} · ${tzOffset()}`"
               >
-                {{ fmtLocalTime(group.line.timestamp) }}
+                {{ fmtLocalTime(group.line.raw.timestamp) }}
               </span>
               <span
-                v-if="group.line.container && group.line.container !== '—'"
+                v-if="group.line.raw.container && group.line.raw.container !== '—'"
                 class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-                :title="group.line.container"
-              >{{ group.line.container }}</span>
+                :title="group.line.raw.container"
+              >{{ group.line.raw.container }}</span>
               <button
-                v-if="isJson(group.line.content)"
+                v-if="isJson(group.line.raw.content)"
                 type="button"
                 @click="toggleJson(`${group.key}`)"
                 class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -783,23 +814,23 @@ function truncatedHtml(content: string): string {
                 <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                 <ChevronUp v-else :size="9" :stroke-width="2.5" />
               </button>
-              <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(group.line.content)" />
+              <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(group.line.raw.content)" />
               <button
-                v-if="group.line.content.length > TRUNCATE_LIMIT"
+                v-if="group.line.raw.content.length > TRUNCATE_LIMIT"
                 type="button"
                 class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                :title="truncatedExpanded.has(group.line.content) ? '收起' : `展开剩余 ${(group.line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
-                @click.stop="toggleTruncate(group.line.content)"
+                :title="truncatedExpanded.has(group.line.raw.content) ? '收起' : `展开剩余 ${(group.line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                @click.stop="toggleTruncate(group.line.raw.content)"
               >
-                {{ truncatedExpanded.has(group.line.content) ? '收起' : `+${(group.line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                {{ truncatedExpanded.has(group.line.raw.content) ? '收起' : `+${(group.line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
               </button>
             </div>
             <div
-              v-if="isJson(group.line.content) && jsonExpanded.has(`${group.key}`)"
+              v-if="isJson(group.line.raw.content) && jsonExpanded.has(`${group.key}`)"
               class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
             >
               <div
-                v-for="jl in formatJsonLines(group.line.content)"
+                v-for="jl in formatJsonLines(group.line.raw.content)"
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
@@ -817,34 +848,41 @@ function truncatedHtml(content: string): string {
               :class="cn(
                 'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 cursor-pointer select-none relative',
                 'hover:bg-muted/40 transition-colors',
-                severityBgFor(group.lines[0].severity),
-                severityBorderFor(group.lines[0].severity),
+                severityBgFor(group.lines[0].raw.severity),
+                severityBorderFor(group.lines[0].raw.severity),
               )"
-              :style="{ opacity: timeOpacity(group.lines[0].timestamp) }"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].content, jsonExpanded.has(`${group.key}`)]"
+              :style="{ opacity: timeOpacity(group.lines[0].raw.timestamp) }"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId]"
               role="button"
               :aria-expanded="group.expanded"
               @click="toggleExpand(group.key)"
             >
               <span
+                v-if="group.lines[0].traceId"
+                class="absolute left-0 top-0 bottom-0 w-1"
+                :style="{ background: traceIdColor(group.lines[0].traceId) }"
+                :title="`trace_id: ${group.lines[0].traceId}`"
+                aria-hidden="true"
+              />
+              <span
                 v-if="isNewestLine(idx, groups.length)"
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
-              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].severity))">{{ sevBadgeText(group.lines[0].severity) }}</span>
+              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <span
                 class="shrink-0 w-[88px] text-muted-foreground/80 tabular-nums truncate pt-0.5"
-                :title="`${fmtUtcTime(group.lines[0].timestamp)} · ${tzOffset()}`"
+                :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
-                {{ fmtLocalTime(group.lines[0].timestamp) }}
+                {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
               <span
-                v-if="group.lines[0].container && group.lines[0].container !== '—'"
+                v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
                 class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-                :title="group.lines[0].container"
-              >{{ group.lines[0].container }}</span>
+                :title="group.lines[0].raw.container"
+              >{{ group.lines[0].raw.container }}</span>
               <button
-                v-if="isJson(group.lines[0].content)"
+                v-if="isJson(group.lines[0].raw.content)"
                 type="button"
                 @click.stop="toggleJson(`${group.key}`)"
                 class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -856,7 +894,7 @@ function truncatedHtml(content: string): string {
                 <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                 <ChevronUp v-else :size="9" :stroke-width="2.5" />
               </button>
-              <span class="flex-1 min-w-0 truncate">{{ group.lines[0].content }}</span>
+              <span class="flex-1 min-w-0 truncate">{{ group.lines[0].raw.content }}</span>
               <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground text-background text-2xs font-semibold tabular-nums">
                 <ChevronDown v-if="group.expanded" :size="10" :stroke-width="2.5" />
                 <ChevronRight v-else :size="10" :stroke-width="2.5" />
@@ -864,20 +902,27 @@ function truncatedHtml(content: string): string {
               </span>
             </div>
             <template v-if="group.expanded">
-              <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.timestamp}`">
+              <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
                 <div
-                  class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground"
-                  :style="{ opacity: timeOpacity(line.timestamp) }"
-                  v-memo="[line.content, line.severity, jsonExpanded.has(`${group.key + idx + 1}`)]"
+                  class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground relative"
+                  :style="{ opacity: timeOpacity(line.raw.timestamp) }"
+                  v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId]"
                 >
                   <span
+                    v-if="line.traceId"
+                    class="absolute left-0 top-0 bottom-0 w-1"
+                    :style="{ background: traceIdColor(line.traceId) }"
+                    :title="`trace_id: ${line.traceId}`"
+                    aria-hidden="true"
+                  />
+                  <span
                     class="shrink-0 w-[88px] text-muted-foreground/60 tabular-nums truncate pt-0.5"
-                    :title="`${fmtUtcTime(line.timestamp)} · ${tzOffset()}`"
+                    :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
-                    {{ fmtLocalTime(line.timestamp) }}
+                    {{ fmtLocalTime(line.raw.timestamp) }}
                   </span>
                   <button
-                    v-if="isJson(line.content)"
+                    v-if="isJson(line.raw.content)"
                     type="button"
                     @click="toggleJson(`${group.key + idx + 1}`)"
                     class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -889,23 +934,23 @@ function truncatedHtml(content: string): string {
                     <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
                     <ChevronUp v-else :size="9" :stroke-width="2.5" />
                   </button>
-                  <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(line.content)" />
+                  <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(line.raw.content)" />
                   <button
-                    v-if="line.content.length > TRUNCATE_LIMIT"
+                    v-if="line.raw.content.length > TRUNCATE_LIMIT"
                     type="button"
                     class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                    :title="truncatedExpanded.has(line.content) ? '收起' : `展开剩余 ${(line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
-                    @click.stop="toggleTruncate(line.content)"
+                    :title="truncatedExpanded.has(line.raw.content) ? '收起' : `展开剩余 ${(line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                    @click.stop="toggleTruncate(line.raw.content)"
                   >
-                    {{ truncatedExpanded.has(line.content) ? '收起' : `+${(line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                    {{ truncatedExpanded.has(line.raw.content) ? '收起' : `+${(line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
                   </button>
                 </div>
                 <div
-                  v-if="isJson(line.content) && jsonExpanded.has(`${group.key + idx + 1}`)"
+                  v-if="isJson(line.raw.content) && jsonExpanded.has(`${group.key + idx + 1}`)"
                   class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
                 >
                   <div
-                    v-for="jl in formatJsonLines(line.content)"
+                    v-for="jl in formatJsonLines(line.raw.content)"
                     :key="jl.num"
                     class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
                   >
