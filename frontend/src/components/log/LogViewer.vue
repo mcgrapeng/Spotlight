@@ -21,6 +21,7 @@ const emit = defineEmits<{
   'update:streaming': [value: boolean]
   'consume-unread': []
   'update:filtered': [value: readonly LogLine[]]
+  'histogram-click': [binIndex: number]
 }>()
 
 // === State ===
@@ -109,6 +110,47 @@ const counts = computed(() => {
   }
   return c
 })
+
+// === Time histogram (60 bins over the full unfiltered set — chips-style stable) ===
+const HISTOGRAM_BINS = 60
+
+function parseTs(s: string): number {
+  const t = new Date(s).getTime()
+  return Number.isFinite(t) ? t : NaN
+}
+
+const histogram = computed(() => {
+  const bins = new Array<number>(HISTOGRAM_BINS).fill(0)
+  let min = Infinity, max = -Infinity, any = false
+  for (const l of props.lines) {
+    const t = parseTs(l.timestamp)
+    if (!Number.isFinite(t)) continue
+    if (t < min) min = t
+    if (t > max) max = t
+    any = true
+  }
+  const range = any ? max - min : 0
+  const binMs = range > 0 ? range / HISTOGRAM_BINS : 0
+  if (any) {
+    for (const l of props.lines) {
+      const t = parseTs(l.timestamp)
+      if (!Number.isFinite(t)) continue
+      const idx = range > 0
+        ? Math.min(HISTOGRAM_BINS - 1, Math.max(0, Math.floor((t - min) / binMs)))
+        : 0
+      bins[idx]++
+    }
+  }
+  return { bins, binMs, minTs: any ? min : 0 }
+})
+
+const histogramMax = computed(() => Math.max(1, ...histogram.value.bins))
+
+function formatBinTime(idx: number): string {
+  const { minTs, binMs } = histogram.value
+  if (!minTs) return ''
+  return new Date(minTs + idx * binMs).toISOString().slice(11, 19)
+}
 
 // === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
 function jumpToTop() {
@@ -341,6 +383,27 @@ function clearSearch() {
       >
         <Copy :size="13" :stroke-width="1.75" />
       </Button>
+    </div>
+
+    <!-- Time histogram (60 bins) -->
+    <div
+      class="flex items-end gap-px h-6 px-3 border-b border-border bg-muted/30 shrink-0"
+      role="group"
+      aria-label="时间分布直方图"
+    >
+      <button
+        v-for="(count, i) in histogram.bins"
+        :key="i"
+        type="button"
+        :class="cn(
+          'flex-1 rounded-sm transition-colors cursor-pointer',
+          count === 0 ? 'invisible pointer-events-none' : 'bg-foreground/30 hover:bg-foreground/70',
+        )"
+        :style="count > 0 ? { height: `${(count / histogramMax) * 100}%` } : undefined"
+        :title="count > 0 ? `${formatBinTime(i)} — ${count.toLocaleString()} 条` : undefined"
+        :aria-label="count > 0 ? `${formatBinTime(i)} ${count} 条` : undefined"
+        @click="emit('histogram-click', i)"
+      />
     </div>
 
     <!-- Log area (NEWEST AT TOP) - fold groups, no virtualization -->
