@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle } from '@lucide/vue'
 import { podsApi, eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { useCachedFetch } from '@/composables/useCachedFetch'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,10 +32,24 @@ const error = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
 
+const statsCacheKey = computed(() => `dashboard:${cluster.activeCluster || 'none'}`)
+const statsFetch = useCachedFetch<DashboardStats>({
+  key: statsCacheKey.value,
+  fetcher: () => podsApi.stats(cluster.activeCluster!),
+  data: stats,
+  loading,
+  error,
+  ttlMs: 30_000,
+})
+
 async function load(silent = false) {
   if (!cluster.activeCluster) return
-  if (silent) refreshing.value = true
-  else loading.value = true
+  if (silent) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+    statsFetch.hydrateFromCache()
+  }
   error.value = null
   try {
     const [s, ev] = await Promise.all([
@@ -149,7 +164,7 @@ const recentActivity = computed(() => {
 </script>
 
 <template>
-  <LoadingState v-if="loading && !stats" />
+  <LoadingState v-if="!stats && loading" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <div v-else-if="stats">
 
