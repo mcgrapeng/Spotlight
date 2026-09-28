@@ -72,6 +72,7 @@ class KubernetesAdapter(K8sRepositoryPort):
                 if q in p.name.lower()
                 or any(q in c.name.lower() for c in p.containers)
                 or (p.node and q in p.node.lower())
+                or q in p.namespace.lower()
             ]
         return pods
 
