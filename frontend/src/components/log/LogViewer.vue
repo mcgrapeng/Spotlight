@@ -498,6 +498,26 @@ function applyFieldFilter(key: string) {
 function clearFieldFilter() {
   search.value = ''
 }
+
+// === Long line truncation (> TRUNCATE_LIMIT chars → show first N + expand) ===
+// ponytail: uses content as key so identical lines share expand state; tradeoff
+// is map/set size scales with unique long lines. 500 chars is enough to render
+// ~6 wrapped lines on the typical viewport.
+const TRUNCATE_LIMIT = 500
+const truncatedExpanded = ref(new Set<string>())
+
+function toggleTruncate(content: string) {
+  const s = new Set(truncatedExpanded.value)
+  if (s.has(content)) s.delete(content); else s.add(content)
+  truncatedExpanded.value = s
+}
+
+function truncatedHtml(content: string): string {
+  if (content.length <= TRUNCATE_LIMIT || truncatedExpanded.value.has(content)) {
+    return highlight(content)
+  }
+  return highlight(content.slice(0, TRUNCATE_LIMIT)) + '<span class="text-muted-foreground/60 select-none">…</span>'
+}
 </script>
 
 <template>
@@ -810,7 +830,16 @@ function clearFieldFilter() {
                 <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                 <ChevronUp v-else :size="9" :stroke-width="2.5" />
               </button>
-              <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(group.line.content)" />
+              <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(group.line.content)" />
+              <button
+                v-if="group.line.content.length > TRUNCATE_LIMIT"
+                type="button"
+                class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                :title="truncatedExpanded.has(group.line.content) ? '收起' : `展开剩余 ${(group.line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                @click.stop="toggleTruncate(group.line.content)"
+              >
+                {{ truncatedExpanded.has(group.line.content) ? '收起' : `+${(group.line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+              </button>
             </div>
             <div
               v-if="isJson(group.line.content) && jsonExpanded.has(`${group.key}`)"
@@ -890,7 +919,16 @@ function clearFieldFilter() {
                     <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
                     <ChevronUp v-else :size="9" :stroke-width="2.5" />
                   </button>
-                  <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="highlight(line.content)" />
+                  <span class="flex-1 min-w-0 whitespace-pre-wrap break-all" v-html="truncatedHtml(line.content)" />
+                  <button
+                    v-if="line.content.length > TRUNCATE_LIMIT"
+                    type="button"
+                    class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                    :title="truncatedExpanded.has(line.content) ? '收起' : `展开剩余 ${(line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                    @click.stop="toggleTruncate(line.content)"
+                  >
+                    {{ truncatedExpanded.has(line.content) ? '收起' : `+${(line.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                  </button>
                 </div>
                 <div
                   v-if="isJson(line.content) && jsonExpanded.has(`${group.key + idx + 1}`)"
