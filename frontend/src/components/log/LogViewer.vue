@@ -784,8 +784,8 @@ function truncatedHtml(content: string): string {
         :aria-label="autoFollow ? '关闭自动跟随 (L)' : '开启自动跟随 (L)'"
         :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
       >
-        <ChevronDown v-if="autoFollow" :size="13" :stroke-width="1.75" />
-        <ChevronUp v-else :size="13" :stroke-width="1.75" />
+        <ChevronUp v-if="autoFollow" :size="13" :stroke-width="1.75" />
+        <ChevronDown v-else :size="13" :stroke-width="1.75" />
       </Button>
       <Button
         variant="outline" size="sm"
