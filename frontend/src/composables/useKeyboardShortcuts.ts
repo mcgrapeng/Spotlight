@@ -53,6 +53,7 @@ export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
       const combined = `${prefix} ${keyOnly}`
       const match = list.find((s) => s.combo.toLowerCase() === combined)
       if (match) {
+        if (isTypingTarget(e.target)) return
         if (match.preventDefault ?? true) e.preventDefault()
         match.handler(e)
       }
@@ -66,6 +67,7 @@ export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
     if (twoKeyMatch && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const first = twoKeyMatch.combo.split(' ')[0].toLowerCase()
       if (first === keyOnly) {
+        if (isTypingTarget(e.target)) return
         if (twoKeyMatch.preventDefault ?? true) e.preventDefault()
         prefix = first
         prefixTimer = setTimeout(() => { prefix = null }, PREFIX_TIMEOUT_MS)
