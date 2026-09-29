@@ -26,10 +26,10 @@ class Settings(BaseSettings):
     # Teleport tsh (optional). When enabled, the backend can authenticate against a
     # Teleport proxy at startup so kubeconfig is already populated when the UI opens.
     # Leave empty to use a host-bound kubeconfig (in-cluster config, or env KUBECONFIG).
-    teleport_proxy: str = ""           # e.g. "gt.internal.zhiman.tech:443"
-    teleport_user: str = ""            # e.g. "zhangpeng"
+    teleport_proxy: str = ""           # e.g. "proxy.example.com:443"
+    teleport_user: str = ""            # your Teleport username
     teleport_auth: str = "local"       # local | password | oidc | ...
-    teleport_cluster: str = ""         # e.g. "pvg1s1-cloud"
+    teleport_cluster: str = ""         # e.g. "cluster-name"
     teleport_insecure: bool = False
     tsh_binary: str = "tsh"
 

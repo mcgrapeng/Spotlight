@@ -1,13 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Dev-server E2E config — targets the running `npm run dev -- --port 7003`
- * instance and the live :8002 backend. No mocks, no preview server, no build.
+ * Dev-server E2E config — targets the running `npm run dev` instance (the
+ * URL/port come from VITE_PORT in frontend/.env) and the live backend.
+ * No mocks, no preview server, no build.
  *
  * Usage:  node_modules/.bin/playwright test --config=playwright.dev.config.ts e2e/logs.spec.ts
  *
- * Assumes the dev server is already running (the Plan F / Task 4 brief
- * provides the exact command).
+ * Assumes the dev server is already running.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -18,7 +18,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:7003',
+    baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
