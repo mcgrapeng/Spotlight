@@ -15,8 +15,6 @@ onMounted(async () => {
 </script>
 
 <template>
-  <a href="#main-content" class="skip-link">跳到主内容</a>
-
   <AppLayout>
     <router-view v-slot="{ Component }">
       <component :is="Component" />

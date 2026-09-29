@@ -52,7 +52,10 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
 </script>
 
 <template>
-  <a class="skip-link" href="#main-content">跳转到主内容</a>
+  <!-- ponytail: skip-link 在 AppLayout 唯一渲染一次，App.vue 旧副本删除
+       (Audit §2.1)。两个目的地：#main-content 给主内容，#sidebar-nav 给导航。 -->
+  <a class="skip-link" href="#main-content">跳到主内容</a>
+  <a class="skip-link" href="#sidebar-nav">跳到导航</a>
 
   <div class="min-h-screen bg-background flex flex-col">
     <header class="shrink-0 border-b border-sidebar-border">
@@ -68,12 +71,20 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
         :class="collapsed ? 'w-16' : 'w-[200px]'"
         aria-label="主导航"
       >
-        <AppSidebar :collapsed="collapsed" @toggle-sidebar="toggleCollapsed" />
+        <nav
+          v-if="!isMobile"
+          id="sidebar-nav"
+          tabindex="-1"
+          class="h-full focus:outline-none"
+          aria-label="主导航"
+        >
+          <AppSidebar :collapsed="collapsed" @toggle-sidebar="toggleCollapsed" />
+        </nav>
       </aside>
 
       <main
         id="main-content"
-        class="flex-1 min-w-0 overflow-x-auto"
+        class="flex-1 min-w-0 overflow-x-auto focus:outline-none"
         tabindex="-1"
       >
         <div class="container py-6 md:py-8">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight } from '@lucide/vue'
+import { useRoute, useRouter } from 'vue-router'
+import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight, Layers } from '@lucide/vue'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -22,12 +23,35 @@ function formatRel(iso: string | null) {
   return dayjs(iso).fromNow()
 }
 
+const route = useRoute()
+const router = useRouter()
 const cluster = useClusterStore()
 const events = ref<EventInfo[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
-const typeFilter = ref<'all' | 'Warning' | 'Normal'>('all')
 const expanded = ref<Set<string>>(new Set())
+
+// ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
+// (Dashboard ?type=Warning 跳转场景)，避免双向 watch 写错循环。
+// set 时正确删除 key 而不是写 undefined —— Vue Router 4 把 undefined
+// 当成字符串 'undefined' 保留在 URL 上，会让 refresh 后读到错值。
+const VALID_TYPES = new Set(['Warning', 'Normal'])
+const typeFilter = computed<'all' | 'Warning' | 'Normal'>({
+  get() {
+    const v = route.query.type as string | undefined
+    if (v && VALID_TYPES.has(v)) return v as 'Warning' | 'Normal'
+    return 'all'
+  },
+  set(v) {
+    const newQuery = { ...route.query }
+    if (v === 'all') {
+      delete newQuery.type
+    } else {
+      newQuery.type = v
+    }
+    router.replace({ query: newQuery })
+  },
+})
 
 function toggleExpand(name: string) {
   const next = new Set(expanded.value)
@@ -130,9 +154,44 @@ const warningEntries = computed(() =>
     </template>
   </PageHeader>
 
+  <!-- ponytail: 顶部 namespace 提示，让用户立刻知道当前在看哪个 namespace，
+       避免 default (0 events) 被误认为"事件丢了"。点 [所有 namespace] 一键切换。 -->
+  <div
+    v-if="cluster.activeNamespace && cluster.activeNamespace !== '_all'"
+    class="mt-3 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-xs text-muted-foreground"
+  >
+    <Layers :size="13" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+    <span>
+      当前筛选 namespace: <span class="font-mono text-foreground">{{ cluster.activeNamespace }}</span> ·
+      切换到
+    </span>
+    <button
+      type="button"
+      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity font-medium"
+      @click="cluster.setNamespace('_all')"
+    >
+      所有 namespace
+    </button>
+    <span>查看全集群事件</span>
+  </div>
+
   <LoadingState v-if="loading && events.length === 0" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
-  <EmptyState v-else-if="filtered.length === 0" title="没有事件" />
+  <EmptyState
+    v-else-if="filtered.length === 0"
+    :title="typeFilter === 'all'
+      ? '该命名空间下没有事件'
+      : `没有 ${typeFilter} 事件`"
+    :description="typeFilter !== 'all'
+      ? `当前过滤：${typeFilter}。点上方「全部」切回完整列表，或切换到更宽松的 namespace。`
+      : '集群在该命名空间内未报告事件。事件保留时间有限，过期后会自动清理。'"
+  >
+    <template v-if="typeFilter !== 'all'" #action>
+      <Button variant="outline" size="sm" @click="typeFilter = 'all'">
+        查看全部
+      </Button>
+    </template>
+  </EmptyState>
 
   <div v-else class="space-y-2">
     <component

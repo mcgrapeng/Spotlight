@@ -13,6 +13,18 @@ vi.mock('@/stores/cluster', () => {
   return { useClusterStore: () => reactiveObj }
 })
 
+// ponytail: SettingsView 现在调用 useAuthStore (登出入口)，mock 一个最小实现
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    required: false,
+    busy: false,
+    error: null,
+    logout: vi.fn(),
+    login: vi.fn(),
+    refreshStatus: vi.fn(),
+  }),
+}))
+
 import SettingsView from '../SettingsView.vue'
 
 beforeEach(() => {
@@ -52,5 +64,27 @@ describe('SettingsView', () => {
       })
       expect(wrapper.text()).toContain('未选择')
     })
+  })
+
+  // 新增：登出入口可见 + 点击触发 logout + 弹确认 Dialog
+  it('exposes a logout entry that opens a confirmation dialog', async () => {
+    // attachTo 让 Teleport 渲染的 Dialog 进入 wrapper 树
+    const wrapper = mount(SettingsView, {
+      attachTo: document.body,
+      global: {
+        stubs: { RouterLink: RouterLinkStub },
+        mocks: {
+          // 防止 router.replace 真跳
+          $router: { replace: vi.fn(), push: vi.fn() },
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('登出')
+    await wrapper.find('button[aria-label="登出"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    // Teleport 把 Dialog 渲染到 body，要从 document 读
+    expect(document.body.textContent).toContain('确认登出')
+    expect(document.body.textContent).toContain('登出后会回到登录页')
+    wrapper.unmount()
   })
 })

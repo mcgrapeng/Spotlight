@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { Plus, Star, Trash2, Pencil } from '@lucide/vue'
+import { Plus, Star, Trash2, Pencil, AlertTriangle } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,10 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const dialogOpen = ref(false)
 const editing = ref<(Partial<AIProviderInput> & { id?: number }) | undefined>()
+
+// ponytail: 删除确认从原生 confirm() 升级为内联 Dialog，与全站设计语言一致 (Audit §10.1)
+const deleteConfirm = ref<{ id: number; name: string } | null>(null)
+const deleting = ref(false)
 
 async function load() {
   loading.value = true
@@ -54,10 +58,20 @@ async function save(data: AIProviderInput) {
   await load()
 }
 
-async function remove(id: number) {
-  if (!confirm('确定删除？')) return
-  await aiApi.deleteProvider(id)
-  providers.value = providers.value.filter(p => p.id !== id)
+function requestRemove(p: AIProvider) {
+  deleteConfirm.value = { id: p.id, name: p.name }
+}
+
+async function confirmRemove() {
+  if (!deleteConfirm.value) return
+  deleting.value = true
+  try {
+    await aiApi.deleteProvider(deleteConfirm.value.id)
+    providers.value = providers.value.filter(p => p.id !== deleteConfirm.value!.id)
+  } finally {
+    deleting.value = false
+    deleteConfirm.value = null
+  }
 }
 
 async function setDefault(p: AIProvider) {
@@ -103,7 +117,7 @@ async function setDefault(p: AIProvider) {
           <Button variant="ghost" size="sm" @click="openEdit(p)" aria-label="编辑">
             <Pencil :size="12" :stroke-width="1.75" />
           </Button>
-          <Button variant="ghost" size="sm" @click="remove(p.id)" aria-label="删除">
+          <Button variant="ghost" size="sm" @click="requestRemove(p)" aria-label="删除">
             <Trash2 :size="12" :stroke-width="1.75" />
           </Button>
         </div>
@@ -112,4 +126,41 @@ async function setDefault(p: AIProvider) {
   </div>
 
   <AIProviderForm v-model:open="dialogOpen" :initial="editing" @save="save" />
+
+  <!-- 内联删除确认 (替代原生 confirm) -->
+  <Teleport to="body">
+    <div
+      v-if="deleteConfirm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-provider-title"
+      @click.self="deleteConfirm = null"
+    >
+      <Card class="w-full max-w-sm p-0">
+        <CardContent class="p-5">
+          <div class="flex items-start gap-3">
+            <span class="inline-flex items-center justify-center size-9 rounded-md shrink-0 bg-error/10 text-error">
+              <AlertTriangle :size="16" :stroke-width="1.75" aria-hidden="true" />
+            </span>
+            <div class="flex-1 min-w-0">
+              <h3 id="delete-provider-title" class="text-base font-semibold">删除 Provider？</h3>
+              <p class="mt-2 text-sm text-muted-foreground">
+                将删除 <span class="font-mono text-foreground">{{ deleteConfirm.name }}</span>。已使用此 Provider 的 AI 分析记录不会被清理，但新增分析将无法选择它。此操作不可撤销。
+              </p>
+            </div>
+          </div>
+          <div class="mt-5 flex justify-end gap-2">
+            <Button variant="outline" size="sm" :disabled="deleting" @click="deleteConfirm = null">
+              取消
+            </Button>
+            <Button variant="destructive" size="sm" :disabled="deleting" @click="confirmRemove">
+              <Trash2 :size="14" :stroke-width="1.75" class="mr-1" />
+              {{ deleting ? '删除中…' : '删除' }}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  </Teleport>
 </template>

@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Sparkles, Server, Layers, ChevronRight, Info } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { Sparkles, Server, Layers, ChevronRight, Info, LogOut } from '@lucide/vue'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useClusterStore } from '@/stores/cluster'
+import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
 const cluster = useClusterStore()
+const auth = useAuthStore()
 const currentCluster = computed(() => cluster.clusters.find(c => c.name === cluster.activeCluster) ?? null)
 
 const settingsItems = [
@@ -23,6 +28,15 @@ const aboutItems = [
   { label: '模式', value: '仅亮色（设计固定）' },
   { label: '存储', value: '侧边栏折叠 + 当前集群 / namespace（localStorage）' },
 ]
+
+const showLogoutConfirm = ref(false)
+
+function confirmLogout() {
+  auth.logout()
+  showLogoutConfirm.value = false
+  // 跳到 /login；router.push 会被全局 beforeEach 拦截再次跳到 /login（required=true）
+  router.replace({ name: 'login' })
+}
 </script>
 
 <template>
@@ -44,7 +58,7 @@ const aboutItems = [
             :key="item.to"
             :to="item.to"
             :class="cn(
-              'flex items-center gap-3 p-4 transition-colors hover:bg-muted/40',
+              'flex items-center gap-3 p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40',
               idx > 0 && 'border-t border-border',
             )"
           >
@@ -99,6 +113,32 @@ const aboutItems = [
       </Card>
     </section>
 
+    <!-- 账号：登出入口 (对应 Audit §11.2 缺失) -->
+    <section aria-labelledby="settings-account-heading">
+      <h2 id="settings-account-heading" class="text-sm font-semibold text-muted-foreground tracking-wide mb-3">
+        账号
+      </h2>
+      <Card class="p-0">
+        <CardContent class="p-0">
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-error/5 focus-visible:outline-none focus-visible:bg-error/5 group"
+            aria-label="登出"
+            @click="showLogoutConfirm = true"
+          >
+            <span class="inline-flex items-center justify-center size-9 rounded-md shrink-0 bg-error/10 text-error">
+              <LogOut :size="16" :stroke-width="1.75" aria-hidden="true" />
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-error">登出</div>
+              <div class="mt-0.5 text-xs text-muted-foreground">清除本地会话，回到登录页</div>
+            </div>
+            <ChevronRight :size="16" :stroke-width="1.75" class="text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+          </button>
+        </CardContent>
+      </Card>
+    </section>
+
     <!-- 关于 -->
     <section aria-labelledby="settings-about-heading">
       <h2 id="settings-about-heading" class="text-sm font-semibold text-muted-foreground tracking-wide mb-3">
@@ -121,5 +161,35 @@ const aboutItems = [
         </CardContent>
       </Card>
     </section>
+
+    <!-- 登出确认 Dialog -->
+    <Teleport to="body">
+      <div
+        v-if="showLogoutConfirm"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logout-dialog-title"
+        @click.self="showLogoutConfirm = false"
+      >
+        <Card class="w-full max-w-sm p-0">
+          <CardContent class="p-5">
+            <h3 id="logout-dialog-title" class="text-base font-semibold">确认登出？</h3>
+            <p class="mt-2 text-sm text-muted-foreground">
+              登出后会回到登录页，本地会话将被清除。
+            </p>
+            <div class="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" @click="showLogoutConfirm = false">
+                取消
+              </Button>
+              <Button variant="destructive" size="sm" @click="confirmLogout">
+                <LogOut :size="14" :stroke-width="1.75" class="mr-1" />
+                登出
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </Teleport>
   </div>
 </template>

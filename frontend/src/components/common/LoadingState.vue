@@ -11,6 +11,7 @@ withDefaults(defineProps<{
 </script>
 
 <template>
+  <!-- ponytail: LoadingState 视觉容器与 EmptyState/ErrorState 对齐 (Audit §12.5) -->
   <div
     :class="[
       'flex flex-col items-center justify-center gap-3',
@@ -19,7 +20,9 @@ withDefaults(defineProps<{
     role="status"
     aria-live="polite"
   >
-    <Loader2 :size="32" class="animate-spin text-muted-foreground" :stroke-width="1.5" />
+    <div class="rounded-full bg-muted p-4">
+      <Loader2 :size="32" class="animate-spin text-muted-foreground" :stroke-width="1.5" aria-hidden="true" />
+    </div>
     <p class="text-sm text-muted-foreground">{{ message }}</p>
   </div>
 </template>

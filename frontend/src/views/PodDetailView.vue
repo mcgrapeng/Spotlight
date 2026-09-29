@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, RefreshCw, Bot, PanelLeft, PanelRight, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
+import { ArrowLeft, RefreshCw, Bot, PanelLeftClose, PanelLeftOpen, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
 import { podsApi, eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { usePodLogs } from '@/composables/usePodLogs'
@@ -125,14 +125,16 @@ async function loadPodEvents() {
         <ArrowLeft :size="14" :stroke-width="1.75" class="mr-1" />
         返回 Pods
       </Button>
+      <!-- ponytail: 触摸目标 32px+，Lucide PanelLeftClose/Open 比 PanelLeft/Right 语义更准 -->
       <Button
         variant="ghost" size="sm"
+        class="min-h-[32px]"
         :title="metaCollapsed ? '展开 Pod 元数据' : '收起 Pod 元数据'"
         :aria-label="metaCollapsed ? '展开元数据' : '收起元数据'"
         @click="toggleMeta"
       >
-        <PanelLeft v-if="metaCollapsed" :size="14" :stroke-width="1.75" class="mr-1" />
-        <PanelRight v-else :size="14" :stroke-width="1.75" class="mr-1" />
+        <PanelLeftClose v-if="metaCollapsed" :size="14" :stroke-width="1.75" class="mr-1" />
+        <PanelLeftOpen v-else :size="14" :stroke-width="1.75" class="mr-1" />
         {{ metaCollapsed ? '元数据' : '收起元数据' }}
       </Button>
     </div>
@@ -210,7 +212,9 @@ async function loadPodEvents() {
                 AI 分析
               </Button>
             </div>
-            <div class="h-[600px]">
+            <!-- ponytail: 600px 在 1080p 屏会被 tabs/padding 挤压；改成 60vh 自适应。
+                 min-h 保证日志行有基本可读高度，max-h 防超大屏无限拉长。 -->
+            <div class="h-[60vh] min-h-[400px] max-h-[1200px]">
               <LogViewer
                 :lines="logLines"
                 v-model:streaming="logStreaming"
@@ -227,8 +231,8 @@ async function loadPodEvents() {
             <LoadingState v-if="podEventsLoading && podEvents.length === 0" message="加载事件…" />
             <EmptyState
               v-else-if="!podEventsLoading && podEvents.length === 0"
-              title="该 pod 无事件"
-              description="选择相应的表情请检查"
+              title="该 Pod 无相关事件"
+              description="Kubernetes 集群里没有报告与该 Pod 相关的事件。事件保留时间有限，短暂的事件（如调度成功）可能已过期。"
             />
             <div v-else class="space-y-2">
               <div

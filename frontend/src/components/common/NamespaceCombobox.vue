@@ -17,6 +17,8 @@ const label = computed(() => {
   return value.value || '所有 namespace'
 })
 
+// ponytail: 让 namespace 关闭后用户能直接看到 namespace 是否 Active / Terminating
+// (Audit §12.7)
 const options = computed(() => [
   { value: '_all', label: '所有 namespace', hint: null as string | null },
   ...cluster.namespaces.map((n) => ({

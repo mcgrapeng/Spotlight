@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -21,7 +21,27 @@ const router = useRouter()
 const cluster = useClusterStore()
 
 const search = ref<string>((route.query.search as string) || '')
-const statusFilter = ref<string>('all')
+
+// ponytail: 用 computed + setter 双向同步 ?status= ... (Dashboard action items 跳转场景)。
+// 避免双向 watch 写法：Vue Router 4 把 query 中 undefined 当字符串 'undefined' 保留，
+// 必须显式 delete 才会真正清除。
+const VALID_STATUSES = new Set(['Running', 'Pending', 'Failed', 'Succeeded'])
+const statusFilter = computed<string>({
+  get() {
+    const v = route.query.status as string | undefined
+    if (v && VALID_STATUSES.has(v)) return v
+    return 'all'
+  },
+  set(v) {
+    const newQuery = { ...route.query }
+    if (v === 'all') {
+      delete newQuery.status
+    } else {
+      newQuery.status = v
+    }
+    router.replace({ query: newQuery })
+  },
+})
 
 const { data, loading, error, reload } = usePodList({
   cluster: computed(() => cluster.activeCluster),
@@ -140,16 +160,17 @@ const pagedPods = computed(() => {
           </Button>
         </template>
       </EmptyState>
-      <div v-else class="overflow-auto max-h-[70vh]">
+      <!-- 桌面 / 大屏: 表格 -->
+      <div v-else class="overflow-auto max-h-[70vh] hidden md:block">
         <table class="w-full text-sm">
           <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
             <tr>
-              <th class="text-left font-medium px-4 py-2.5 min-w-[280px]">Pod</th>
-              <th class="text-left font-medium px-4 py-2.5">Namespace</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[180px]">Status</th>
+              <th class="text-left font-medium px-4 py-2.5 min-w-[240px]">Pod</th>
+              <th class="text-left font-medium px-4 py-2.5 hidden lg:table-cell">Namespace</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[160px]">Status</th>
               <th class="text-left font-medium px-4 py-2.5 w-[110px]">Containers</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[110px]">Restarts</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[180px]">Node</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[100px]">Restarts</th>
+              <th class="text-left font-medium px-4 py-2.5 w-[140px] hidden lg:table-cell">Node</th>
               <th class="text-left font-medium px-4 py-2.5 w-[80px]">Age</th>
             </tr>
           </thead>
@@ -174,11 +195,11 @@ const pagedPods = computed(() => {
                   <span class="font-mono text-[13px] text-foreground truncate">{{ row.name }}</span>
                   <span
                     v-if="row.owner_kind"
-                    class="text-[10.5px] text-muted-foreground font-mono truncate"
+                    class="text-2xs text-muted-foreground font-mono truncate"
                   >{{ row.owner_kind }}/{{ row.owner_name }}</span>
                 </div>
               </td>
-              <td class="px-4 py-2.5">
+              <td class="px-4 py-2.5 hidden lg:table-cell">
                 <span class="inline-flex items-center rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                   {{ row.namespace }}
                 </span>
@@ -194,7 +215,6 @@ const pagedPods = computed(() => {
               </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center gap-2">
-                  <!-- ponytail: 每个 container 一个状态 dot，比 "1/2" 信息密度高 -->
                   <div class="flex items-center gap-1" :aria-label="`${readyOf(row)} of ${row.containers.length} containers ready`">
                     <span
                       v-for="(c, i) in row.containers"
@@ -219,7 +239,7 @@ const pagedPods = computed(() => {
               <td class="px-4 py-2.5">
                 <div
                   v-if="row.restart_count > 0"
-                  class="flex items-center gap-1 tabular-nums text-[12.5px]"
+                  class="flex items-center gap-1 tabular-nums text-sm"
                   :aria-label="`${row.restart_count} 次重启`"
                 >
                   <AlertCircle
@@ -240,17 +260,17 @@ const pagedPods = computed(() => {
                     {{ row.restart_count.toLocaleString() }}
                   </span>
                 </div>
-                <span v-else class="text-muted-foreground/60 tabular-nums text-[12.5px]">0</span>
+                <span v-else class="text-muted-foreground tabular-nums text-sm">0</span>
               </td>
-              <td class="px-4 py-2.5 max-w-[180px]">
+              <td class="px-4 py-2.5 max-w-[140px] hidden lg:table-cell">
                 <span
                   v-if="nodeShort(row)"
-                  class="inline-block max-w-full truncate font-mono text-[11.5px] text-muted-foreground align-bottom"
+                  class="inline-block max-w-full truncate font-mono text-xs text-muted-foreground align-bottom"
                   :title="row.node ?? undefined"
                 >{{ nodeShort(row) }}</span>
-                <span v-else class="text-muted-foreground/60">—</span>
+                <span v-else class="text-muted-foreground">—</span>
               </td>
-              <td class="px-4 py-2.5 tabular-nums text-[11.5px] text-muted-foreground whitespace-nowrap">{{ row.age ?? '—' }}</td>
+              <td class="px-4 py-2.5 tabular-nums text-xs text-muted-foreground whitespace-nowrap">{{ row.age ?? '—' }}</td>
             </tr>
             <tr v-if="loading && data.items.length === 0">
               <td colspan="7" class="px-4 py-2">
@@ -259,6 +279,40 @@ const pagedPods = computed(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 平板 / 手机: 卡片列表 (Audit §14.1) -->
+      <div v-if="!loading && data.items.length > 0" class="md:hidden divide-y divide-border">
+        <button
+          v-for="row in pagedPods"
+          :key="`${row.namespace}/${row.name}`"
+          type="button"
+          class="w-full text-left p-3 active:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none transition-colors"
+          :class="rowClass(row)"
+          :aria-label="`查看 ${row.name} 详情`"
+          @click="open(row)"
+        >
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <div class="min-w-0 flex-1">
+              <div class="font-mono text-sm text-foreground truncate">{{ row.name }}</div>
+              <div v-if="row.owner_kind" class="text-2xs text-muted-foreground font-mono truncate">
+                {{ row.owner_kind }}/{{ row.owner_name }}
+              </div>
+            </div>
+            <PodStatusPill :phase="row.phase" />
+          </div>
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+            <span class="font-mono">{{ row.namespace }}</span>
+            <span v-if="nodeShort(row)" class="font-mono truncate max-w-[140px]">{{ nodeShort(row) }}</span>
+            <span class="tabular-nums">{{ row.age ?? '—' }}</span>
+            <span v-if="row.restart_count > 0"
+              :class="cn(
+                'tabular-nums',
+                restartSeverity(row) === 'critical' && 'text-error font-semibold',
+                restartSeverity(row) === 'warn' && 'text-warning',
+              )">↻{{ row.restart_count }}</span>
+          </div>
+        </button>
       </div>
 
       <!-- Pagination footer -->

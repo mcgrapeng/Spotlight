@@ -28,7 +28,11 @@ async function refreshEventBadge() {
     eventBadge.value = 0
     return
   }
-  const cacheKey = `cached:events-badge:${cluster.activeCluster}`
+  // ponytail: badge namespace 跟随顶部 combobox，与 Events 页面对齐。
+  // 否则用户在 default namespace 看到 badge 24 但页面 0 条，怀疑事件丢了。
+  // (Audit §2.3 + 用户实测反馈)
+  const ns = cluster.activeNamespace || '_all'
+  const cacheKey = `cached:events-badge:${cluster.activeCluster}:${ns}`
   try {
     const cached = localStorage.getItem(cacheKey)
     if (cached) {
@@ -37,11 +41,9 @@ async function refreshEventBadge() {
     }
     const events = await eventsApi.list({
       cluster: cluster.activeCluster,
-      namespace: '_all',
+      namespace: ns,
       limit: 500,
     })
-    // ponytail: count = 告警源数量（与 /events 列表行数一致）。每条 event 的
-    // count 字段（重复触发次数）只在 row 内部显示，避免 badge 与列表对不上。
     const warns = events.filter(e => e.type === 'Warning').length
     eventBadge.value = warns
     localStorage.setItem(cacheKey, JSON.stringify({ value: warns, ts: Date.now() }))
@@ -58,6 +60,7 @@ onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
 })
 watch(() => cluster.activeCluster, refreshEventBadge)
+watch(() => cluster.activeNamespace, refreshEventBadge)
 
 const navItems = computed(() => [
   { path: '/dashboard', label: '总览',    icon: LayoutDashboard, badge: 0 },

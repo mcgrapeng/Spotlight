@@ -341,6 +341,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKey)
+  // ponytail: 清理 search history debounce timer，避免 unmount 后还写 localStorage
+  if (searchHistoryTimer) {
+    clearTimeout(searchHistoryTimer)
+    searchHistoryTimer = null
+  }
 })
 
 // === Visual helpers ===
@@ -670,7 +675,7 @@ function truncatedHtml(content: string): string {
         @click="selectedContainer = null"
       >
         全部
-        <span class="ml-1 tabular-nums text-muted-foreground/60">{{ lines.length.toLocaleString() }}</span>
+        <span class="ml-1 tabular-nums text-muted-foreground">{{ lines.length.toLocaleString() }}</span>
       </button>
       <button
         v-for="c in availableContainers"
@@ -688,7 +693,7 @@ function truncatedHtml(content: string): string {
         @click="selectedContainer = c"
       >
         {{ c }}
-        <span class="ml-1 tabular-nums text-muted-foreground/60 shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
+        <span class="ml-1 tabular-nums text-muted-foreground shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
       </button>
     </div>
 
@@ -920,7 +925,7 @@ function truncatedHtml(content: string): string {
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
-                <span class="shrink-0 w-7 text-right text-muted-foreground/40 tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
+                    <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
                 <span
                   class="flex-1 min-w-0 whitespace-pre"
                   :style="JSON_GUIDE_STYLE"
@@ -1002,7 +1007,7 @@ function truncatedHtml(content: string): string {
                     aria-hidden="true"
                   />
                   <span
-                    class="shrink-0 w-[88px] text-muted-foreground/60 tabular-nums truncate pt-0.5"
+                    class="shrink-0 w-[88px] text-muted-foreground tabular-nums truncate pt-0.5"
                     :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
@@ -1040,7 +1045,7 @@ function truncatedHtml(content: string): string {
                     :key="jl.num"
                     class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
                   >
-                    <span class="shrink-0 w-7 text-right text-muted-foreground/40 tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
+                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
                     <span
                       class="flex-1 min-w-0 whitespace-pre"
                       :style="JSON_GUIDE_STYLE"

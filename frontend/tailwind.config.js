@@ -79,11 +79,14 @@ export default {
         },
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
+        // ponytail: 默认档 = Button/Pill/Badge (8px); Card 用 'card' (12px) 单独覆写
+        DEFAULT: 'var(--radius)',
         sm: 'calc(var(--radius) - 4px)',
+        md: 'var(--radius)',
+        lg: 'calc(var(--radius) + 2px)',
         xl: 'calc(var(--radius) + 6px)',
         '2xl': 'calc(var(--radius) + 12px)',
+        card: 'var(--radius-card)',
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', 'sans-serif'],
