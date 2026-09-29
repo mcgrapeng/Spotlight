@@ -17,6 +17,12 @@ export interface CachedFetchOptions<T> {
 export interface CachedFetchHandle<T> {
   load: () => Promise<void>
   refresh: () => Promise<void>
+  /**
+   * Smart loader: returns cached value if fresh, otherwise hits the
+   * network. Use this for on-mount / page-entry fetches where stale data
+   * is acceptable when the network is slow.
+   */
+  loadOrHydrate: () => Promise<void>
   hydrateFromCache: () => boolean
   loadedAt: Ref<number>
 }
@@ -75,9 +81,16 @@ export function useCachedFetch<T>(opts: CachedFetchOptions<T>): CachedFetchHandl
     return true
   }
 
+  async function loadOrHydrate(): Promise<void> {
+    // Fast path: fresh cache means no network round-trip.
+    if (hydrateFromCache()) return
+    await load()
+  }
+
   return {
     load,
     refresh: load,
+    loadOrHydrate,
     hydrateFromCache,
     loadedAt,
   }

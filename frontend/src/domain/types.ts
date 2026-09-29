@@ -48,6 +48,9 @@ export interface DashboardStats {
   warning_events: number; nodes_total: number; nodes_ready: number;
   namespaces_count: number;
   restart_top: { pod: string; restarts: number }[];
+  // Inlined from /events by the backend so DashboardView can render the
+  // recent-activity list without a second K8s round-trip.
+  recent_warns: EventInfo[];
 }
 
 export interface NamespaceInfo {

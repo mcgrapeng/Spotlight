@@ -1,6 +1,9 @@
 """Outbound ports: interfaces the application needs.
 
-All async-native — avoids the awkward sync/async split.
+All async-native — K8s SDK is sync, so adapter methods run the actual
+SDK call via `run_in_threadpool` and stay non-blocking. `stream_logs`
+keeps its sync iterator signature because the SSE route already wraps
+it in `run_in_executor` for keepalive-racing.
 """
 from __future__ import annotations
 
@@ -14,22 +17,22 @@ from app.domain.value_objects.primitives import LabelSelector, ResourceRef
 
 @runtime_checkable
 class K8sRepositoryPort(Protocol):
-    def list_clusters(self) -> list[Cluster]: ...
+    async def list_clusters(self) -> list[Cluster]: ...
     def current_cluster(self) -> str | None: ...
 
-    def list_namespaces(self, cluster: str | None) -> list[Namespace]: ...
-    def list_pods(
+    async def list_namespaces(self, cluster: str | None) -> list[Namespace]: ...
+    async def list_pods(
         self, cluster: str | None, namespace: str | None,
         label_selector: LabelSelector, search: str | None, status: str | None,
     ) -> list[Pod]: ...
-    def get_pod(self, ref: ResourceRef) -> Pod: ...
-    def list_events(
+    async def get_pod(self, ref: ResourceRef) -> Pod: ...
+    async def list_events(
         self, cluster: str | None, namespace: str | None,
         involved_name: str | None, limit: int,
     ) -> list[K8sEvent]: ...
-    def list_nodes(self, cluster: str | None) -> list[Node]: ...
+    async def list_nodes(self, cluster: str | None) -> list[Node]: ...
 
-    def read_logs(
+    async def read_logs(
         self, ref: ResourceRef, container: str | None,
         tail_lines: int, since: str | None,
     ) -> list[LogEntry]: ...

@@ -1,6 +1,11 @@
 """Inbound ports: use cases invoked by the interface layer.
 
 Each use case is a Protocol — implementations live in `application/use_cases/`.
+
+All K8s-touching use cases are async — the underlying repository wraps
+sync SDK calls in `run_in_threadpool`. The K8s cluster itself has to
+respond to the apiserver, which is real wall-clock time, so we want to
+await that I/O rather than hold a threadpool worker for it.
 """
 from __future__ import annotations
 
@@ -23,30 +28,31 @@ from app.domain.value_objects.primitives import LogFilter, ResourceRef
 
 @runtime_checkable
 class ClusterUseCases(Protocol):
-    def list_clusters(self) -> list[dict]: ...
+    async def list_clusters(self) -> list[dict]: ...
     def current_cluster(self) -> str | None: ...
 
 
 @runtime_checkable
 class NamespaceUseCases(Protocol):
-    def list_namespaces(self, cluster: str | None) -> list[NamespaceDTO]: ...
+    async def list_namespaces(self, cluster: str | None) -> list[NamespaceDTO]: ...
 
 
 @runtime_checkable
 class PodUseCases(Protocol):
-    def list_pods(
+    async def list_pods(
         self, cluster: str | None, namespace: str | None,
         status: str | None, search: str | None,
         label_selector: str | None,
     ) -> PodListDTO: ...
-    def get_pod(self, ref: ResourceRef) -> PodDTO: ...
-    def dashboard(self, cluster: str | None) -> DashboardDTO: ...
+    async def get_pod(self, ref: ResourceRef) -> PodDTO: ...
+    async def dashboard(self, cluster: str | None) -> DashboardDTO: ...
 
 
 @runtime_checkable
 class LogUseCases(Protocol):
-    def read_history(
+    async def read_history(
         self, ref: ResourceRef, container: str | None, tail: int,
+        since: str | None = None,
     ) -> list[LogStreamParams]: ...
     def stream(
         self, ref: ResourceRef, container: str | None, tail: int,
@@ -55,7 +61,7 @@ class LogUseCases(Protocol):
 
 @runtime_checkable
 class EventUseCases(Protocol):
-    def list_events(
+    async def list_events(
         self, cluster: str | None, namespace: str | None,
         involved: str | None, limit: int,
     ) -> list[EventDTO]: ...
@@ -63,14 +69,14 @@ class EventUseCases(Protocol):
 
 @runtime_checkable
 class NodeUseCases(Protocol):
-    def list_nodes(self, cluster: str | None) -> list[NodeDTO]: ...
+    async def list_nodes(self, cluster: str | None) -> list[NodeDTO]: ...
 
 
 @runtime_checkable
 class FavoriteUseCases(Protocol):
-    def list(self) -> list[FavoriteDTO]: ...
-    def add(self, payload: dict) -> FavoriteDTO: ...
-    def remove(self, fav_id: int) -> None: ...
+    async def list(self) -> list[FavoriteDTO]: ...
+    async def add(self, payload: dict) -> FavoriteDTO: ...
+    async def remove(self, fav_id: int) -> None: ...
 
 
 @runtime_checkable

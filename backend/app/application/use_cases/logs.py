@@ -16,11 +16,11 @@ class LogUseCases:
         self._repo = repo
         self._classifier = get_classifier()
 
-    def read_history(
+    async def read_history(
         self, ref: ResourceRef, container: str | None, tail: int,
         since: str | None = None,
     ) -> list[LogStreamParams]:
-        entries = self._repo.read_logs(ref, container, tail, since=since)
+        entries = await self._repo.read_logs(ref, container, tail, since=since)
         return [self._enrich(e) for e in entries]
 
     def stream(

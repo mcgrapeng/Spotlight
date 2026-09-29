@@ -11,7 +11,11 @@ const SIDEBAR_COLLAPSED_KEY = 'spotlight-sidebar-collapsed'
 
 const route = useRoute()
 const router = useRouter()
-const key = computed(() => route.fullPath)
+// ponytail: key on path (not fullPath) — query changes (e.g. ?search=foo → ?search=bar)
+// would force a full RouterView remount, destroying Pinia-less state and
+// re-fetching everything. Path-only key preserves child state across
+// query-only nav (filter changes, pagination).
+const key = computed(() => route.path)
 
 const collapsed = ref(false)
 const mobileOpen = ref(false)
@@ -37,8 +41,14 @@ useKeyboardShortcuts(() => [
 ])
 
 function onGlobalKey(e: KeyboardEvent) {
-  const tag = (e.target as HTMLElement)?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+  const el = e.target as HTMLElement | null
+  if (!el) return
+  // Skip if user is typing in any text-input surface. isContentEditable also
+  // catches rich-text editors (cmdk, contenteditable divs) that aren't
+  // INPUT/TEXTAREA/SELECT — without this, typing 'd' inside cmdk would
+  // trigger navigation to /dashboard.
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return
+  if (el.isContentEditable) return
   if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
   const routes: Record<string, string> = {
     d: 'dashboard', p: 'pods', n: 'nodes', e: 'events', f: 'favorites', a: 'ai',

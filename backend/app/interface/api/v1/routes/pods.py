@@ -12,7 +12,7 @@ router = APIRouter(tags=["pods"])
 
 
 @router.get("/pods", response_model=PodListOut)
-def list_pods(
+async def list_pods(
     cluster: str | None = Query(default=None),
     namespace: str | None = Query(default=None, description="namespace name or '_all'"),
     status: str = Query(default="all"),
@@ -20,25 +20,27 @@ def list_pods(
     label_selector: str | None = Query(default=None),
     uc: ResourceUseCases = Depends(resource_uc),
 ):
-    return uc.list_pods(cluster, namespace, status, search, label_selector)
+    return await uc.list_pods(cluster, namespace, status, search, label_selector)
 
 
 @router.get("/pods/stats", response_model=DashboardOut)
-def stats(
+async def stats(
     cluster: str | None = Query(default=None),
     uc: ResourceUseCases = Depends(resource_uc),
 ):
-    return uc.dashboard(cluster)
+    return await uc.dashboard(cluster)
 
 
 @router.get("/pods/{namespace}/{name}", response_model=PodOut)
-def get_pod(
+async def get_pod(
     namespace: str,
     name: str,
     cluster: str | None = Query(default=None),
     uc: ResourceUseCases = Depends(resource_uc),
 ):
     try:
-        return uc.get_pod(ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name))
+        return await uc.get_pod(
+            ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
+        )
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

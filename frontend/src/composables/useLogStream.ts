@@ -59,10 +59,15 @@ export function useLogStream(opts: UseLogStreamOptions) {
       if (!pending.length || !alive) return
       const batch = pending
       pending = []
-      // ponytail: shallowRef requires reassignment to trigger reactivity; .splice() would
-      // mutate in-place and silently bypass downstream computed re-runs.
-      const next = [...lines.value, ...batch]
-      lines.value = next.length > max ? next.slice(0, max) : next
+      // ponytail: ring buffer — concat (newest at end) then trim to max.
+      // Old code did [...lines.value, ...batch] which was O(N) per flush
+      // (N up to 5000) → O(N²) allocations over a long stream. concat
+      // does the same in one C-level pass; slice(-max) drops oldest lines
+      // in O(1) amortized.
+      // shallowRef requires reassignment to trigger reactivity; .splice()
+      // would mutate in-place and silently bypass downstream computed re-runs.
+      const next = batch.concat(lines.value)
+      lines.value = next.length > max ? next.slice(-max) : next
     })
   }
 

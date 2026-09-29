@@ -8,6 +8,7 @@ import {
 import { cn } from '@/lib/utils'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { useCachedFetch } from '@/composables/useCachedFetch'
 
 const props = withDefaults(defineProps<{
   collapsed?: boolean
@@ -23,38 +24,47 @@ const cluster = useClusterStore()
 const eventBadge = ref<number>(0)
 let badgeTimer: ReturnType<typeof setInterval> | null = null
 
+// ponytail: badge namespace 跟随顶部 combobox，与 Events 页面对齐。
+// 否则用户在 default namespace 看到 badge 24 但页面 0 条，怀疑事件丢了。
+// (Audit §2.3 + 用户实测反馈)
+const badgeKey = computed(() =>
+  `events-badge:${cluster.activeCluster ?? 'none'}:${cluster.activeNamespace || '_all'}`,
+)
+const badgeFetch = useCachedFetch<number>({
+  key: badgeKey.value,
+  fetcher: async () => {
+    const events = await eventsApi.list({
+      cluster: cluster.activeCluster,
+      namespace: cluster.activeNamespace || '_all',
+      limit: 500,
+    })
+    return events.filter(e => e.type === 'Warning').length
+  },
+  data: ref<number | null>(null) as unknown as import('vue').Ref<number | null>,
+  loading: ref(false) as unknown as import('vue').Ref<boolean>,
+  error: ref<string | null>(null) as unknown as import('vue').Ref<string | null>,
+  ttlMs: 30_000,
+})
+// ponytail: hydrate from cache on mount and watch keys — useCachedFetch handles
+// the localStorage TTL check, so this stays the only path that actually hits
+// the network every 5 min (vs. 1 min before). 5 min is fine for a sidebar
+// badge — the user clicks /events to see the live list anyway.
 async function refreshEventBadge() {
   if (!cluster.activeCluster) {
     eventBadge.value = 0
     return
   }
-  // ponytail: badge namespace 跟随顶部 combobox，与 Events 页面对齐。
-  // 否则用户在 default namespace 看到 badge 24 但页面 0 条，怀疑事件丢了。
-  // (Audit §2.3 + 用户实测反馈)
-  const ns = cluster.activeNamespace || '_all'
-  const cacheKey = `cached:events-badge:${cluster.activeCluster}:${ns}`
   try {
-    const cached = localStorage.getItem(cacheKey)
-    if (cached) {
-      const { value, ts } = JSON.parse(cached)
-      if (Date.now() - ts < 30_000) eventBadge.value = value
-    }
-    const events = await eventsApi.list({
-      cluster: cluster.activeCluster,
-      namespace: ns,
-      limit: 500,
-    })
-    const warns = events.filter(e => e.type === 'Warning').length
-    eventBadge.value = warns
-    localStorage.setItem(cacheKey, JSON.stringify({ value: warns, ts: Date.now() }))
-  } catch {
-    /* silent — badge stays at last known value */
-  }
+    const v = await badgeFetch.loadOrHydrate()
+    if (typeof v === 'number') eventBadge.value = v
+  } catch { /* keep last value */ }
 }
 
 onMounted(() => {
   refreshEventBadge()
-  badgeTimer = setInterval(refreshEventBadge, 60_000)
+  // 5min — the page-level events view is the source of truth; the sidebar
+  // badge is a "there's something to look at" hint, not a real-time counter.
+  badgeTimer = setInterval(refreshEventBadge, 5 * 60_000)
 })
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)

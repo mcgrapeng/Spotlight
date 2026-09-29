@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@lucide/vue'
-import { authApi, podsApi, eventsApi } from '@/api/endpoints'
+import { authApi, podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -12,12 +12,7 @@ import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import type { DashboardStats, EventInfo } from '@/domain/types'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
-import 'dayjs/locale/zh-cn'
-
-dayjs.extend(relativeTime)
-dayjs.locale('zh-cn')
+import dayjs from '@/utils/dayjs'
 
 function formatRel(iso: string | null) {
   if (!iso) return '—'
@@ -56,12 +51,11 @@ async function load(silent = false) {
   }
   error.value = null
   try {
-    const [s, ev] = await Promise.all([
-      podsApi.stats(cluster.activeCluster),
-      eventsApi.list({ cluster: cluster.activeCluster, namespace: cluster.activeNamespace, limit: 50 }),
-    ])
+    // /pods/stats now inlines recent_warns — one K8s round-trip instead of two
+    // (no separate /events fetch).
+    const s = await podsApi.stats(cluster.activeCluster)
     stats.value = s
-    warns.value = ev.filter(e => e.type === 'Warning').slice(0, 8)
+    warns.value = s.recent_warns ?? []
     lastRefreshed.value = new Date()
   } catch (e: any) {
     error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
@@ -183,28 +177,36 @@ const compactStats = computed(() => {
 
 const recentActivity = computed(() => {
   const items: Array<{ time: string; icon: string; label: string; pod: string }> = []
-  for (const ev of warns.value) {
+  // warns is now server-side filtered to "warning" only + capped at 8, so we
+  // can iterate it directly without an extra filter pass.
+  const evs = warns.value
+  for (let i = 0; i < evs.length && items.length < 8; i++) {
+    const ev = evs[i]
     if (ev.last_seen) {
       items.push({
         time: formatRel(ev.last_seen),
-        icon: ev.type === 'Warning' ? '⚠' : 'ℹ',
+        icon: '⚠',
         label: ev.reason,
         pod: `${ev.namespace}/${ev.involved_name}`,
       })
     }
   }
-  const topRestarts = (stats.value?.restart_top ?? []).slice(0, 5)
-  for (const p of topRestarts) {
-    if (p.restarts > 5) {
-      items.push({
-        time: 'recently',
-        icon: '↻',
-        label: `×${p.restarts} restarts`,
-        pod: p.pod,
-      })
+  const topRestarts = stats.value?.restart_top
+  if (topRestarts) {
+    const cap = items.length >= 5 ? 0 : 5  // skip restart section if warns already filled 5+
+    for (let i = 0; i < topRestarts.length && items.length < 8; i++) {
+      if (topRestarts[i].restarts > 5) {
+        items.push({
+          time: 'recently',
+          icon: '↻',
+          label: `×${topRestarts[i].restarts} restarts`,
+          pod: topRestarts[i].pod,
+        })
+        if (cap === 0) break
+      }
     }
   }
-  return items.slice(0, 8)
+  return items
 })
 </script>
 

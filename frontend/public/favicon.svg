@@ -1,8 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="7" fill="#18181B"/>
-  <g transform="translate(4 4)" fill="none">
-    <circle cx="12" cy="12" r="9.5" stroke="#FAFAFA" stroke-width="1.6"/>
-    <circle cx="12" cy="12" r="5" stroke="#FAFAFA" stroke-width="1.6"/>
-    <circle cx="9.2" cy="9.2" r="1.6" fill="#FAFAFA"/>
+
+  <g fill="none" stroke="#FAFAFA" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="16,6 23.82,9.77 25.75,18.23 20.34,25.01 11.66,25.01 6.25,18.23 8.18,9.77"/>
+    <line x1="16" y1="16" x2="16" y2="6"/>
+    <line x1="16" y1="16" x2="23.82" y2="9.77"/>
+    <line x1="16" y1="16" x2="25.75" y2="18.23"/>
+    <line x1="16" y1="16" x2="20.34" y2="25.01"/>
+    <line x1="16" y1="16" x2="11.66" y2="25.01"/>
+    <line x1="16" y1="16" x2="6.25" y2="18.23"/>
+    <line x1="16" y1="16" x2="8.18" y2="9.77"/>
   </g>
+
+  <circle cx="16" cy="16" r="2.8" fill="#18181B" stroke="#FAFAFA" stroke-width="1.3"/>
+  <circle cx="16" cy="16" r="1.2" fill="#326CE5"/>
 </svg>

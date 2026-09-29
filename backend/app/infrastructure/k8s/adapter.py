@@ -1,11 +1,19 @@
-"""Adapter: implements K8sRepositoryPort by delegating to the kubernetes SDK + mappers."""
+"""Adapter: implements K8sRepositoryPort by delegating to the kubernetes SDK + mappers.
+
+The kubernetes SDK is sync — every call into `api.list_*` blocks for the
+duration of the apiserver round-trip. Wrapping them in `run_in_threadpool`
+keeps the FastAPI event loop free to handle other requests (especially the
+SSE log stream, which must keep ticking).
+"""
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from typing import Iterator, Optional
 
 from dateutil import parser as dtparser
+from fastapi.concurrency import run_in_threadpool
 from kubernetes import watch
 
 from app.application.ports.outbound import K8sRepositoryPort
@@ -28,26 +36,31 @@ class KubernetesAdapter(K8sRepositoryPort):
         self._timeout = get_settings().k8s_request_timeout
 
     # ── cluster ──────────────────────────────────────────────
-    def list_clusters(self) -> list[Cluster]:
+    async def list_clusters(self) -> list[Cluster]:
+        # No K8s SDK call — reads the cached kubeconfig. Safe sync wrapped
+        # in async for interface uniformity.
+        contexts = await run_in_threadpool(self._pool.list_contexts)
         return [
             Cluster(
                 name=c["name"], server=c.get("server", ""), user=c["user"],
                 default_namespace=c["namespace"], is_current=c["is_current"],
             )
-            for c in self._pool.list_contexts()
+            for c in contexts
         ]
 
     def current_cluster(self) -> str | None:
         return self._pool.current()
 
     # ── namespaces ───────────────────────────────────────────
-    def list_namespaces(self, cluster: Optional[str]) -> list[Namespace]:
+    async def list_namespaces(self, cluster: Optional[str]) -> list[Namespace]:
         api, ctx = self._pool.get(cluster)
-        result = api.list_namespace(_request_timeout=self._timeout)
+        result = await run_in_threadpool(
+            lambda: api.list_namespace(_request_timeout=self._timeout)
+        )
         return [map_namespace(n, cluster=ctx) for n in result.items]
 
     # ── pods ─────────────────────────────────────────────────
-    def list_pods(
+    async def list_pods(
         self, cluster: Optional[str], namespace: Optional[str],
         label_selector: LabelSelector, search: Optional[str], status: Optional[str],
     ) -> list[Pod]:
@@ -58,13 +71,18 @@ class KubernetesAdapter(K8sRepositoryPort):
         if label_selector.pairs:
             kw["label_selector"] = label_selector.to_query()
         if namespace and namespace != "_all":
-            items = api.list_namespaced_pod(**kw).items
+            items = await run_in_threadpool(
+                lambda: api.list_namespaced_pod(**kw).items
+            )
         else:
-            items = api.list_pod_for_all_namespaces(**kw).items
+            items = await run_in_threadpool(
+                lambda: api.list_pod_for_all_namespaces(**kw).items
+            )
 
         pods = [map_pod(p, cluster=ctx) for p in items]
         if status and status.lower() != "all":
-            pods = [p for p in pods if p.phase.lower() == status.lower()]
+            target = status.lower()
+            pods = [p for p in pods if p.phase.lower() == target]
         if search:
             q = search.lower()
             pods = [
@@ -76,40 +94,55 @@ class KubernetesAdapter(K8sRepositoryPort):
             ]
         return pods
 
-    def get_pod(self, ref: ResourceRef) -> Pod:
+    async def get_pod(self, ref: ResourceRef) -> Pod:
         api, ctx = self._pool.get(ref.cluster or None)
-        obj = api.read_namespaced_pod(name=ref.name, namespace=ref.namespace, _request_timeout=self._timeout)
+        obj = await run_in_threadpool(
+            lambda: api.read_namespaced_pod(
+                name=ref.name, namespace=ref.namespace,
+                _request_timeout=self._timeout,
+            )
+        )
         return map_pod(obj, cluster=ctx)
 
     # ── events ───────────────────────────────────────────────
-    def list_events(
+    async def list_events(
         self, cluster: Optional[str], namespace: Optional[str],
         involved_name: Optional[str], limit: int,
     ) -> list[K8sEvent]:
         api, _ = self._pool.get(cluster)
         kw = {"_request_timeout": self._timeout, "limit": limit}
         if namespace and namespace != "_all":
-            items = api.list_namespaced_event(namespace=namespace, **kw).items
+            items = await run_in_threadpool(
+                lambda: api.list_namespaced_event(namespace=namespace, **kw).items
+            )
         else:
-            items = api.list_event_for_all_namespaces(**kw).items
+            items = await run_in_threadpool(
+                lambda: api.list_event_for_all_namespaces(**kw).items
+            )
         events = [map_event(e) for e in items]
         if involved_name:
             events = [e for e in events if e.involved_name == involved_name]
         return events
 
     # ── nodes ────────────────────────────────────────────────
-    def list_nodes(self, cluster: Optional[str]) -> list[Node]:
+    async def list_nodes(self, cluster: Optional[str]) -> list[Node]:
         api, ctx = self._pool.get(cluster)
-        nodes = api.list_node(_request_timeout=self._timeout).items
-        pods = api.list_pod_for_all_namespaces(_request_timeout=self._timeout).items
+        # Run the two K8s calls in parallel — both are bound by network RTT.
+        nodes, pods = await asyncio.gather(
+            run_in_threadpool(lambda: api.list_node(_request_timeout=self._timeout)),
+            run_in_threadpool(lambda: api.list_pod_for_all_namespaces(_request_timeout=self._timeout)),
+        )
         pod_count: dict[str, int] = {}
-        for p in pods:
+        for p in pods.items:
             if p.spec.node_name:
                 pod_count[p.spec.node_name] = pod_count.get(p.spec.node_name, 0) + 1
-        return [map_node(n, pod_count=pod_count.get(n.metadata.name, 0), cluster=ctx) for n in nodes]
+        return [
+            map_node(n, pod_count=pod_count.get(n.metadata.name, 0), cluster=ctx)
+            for n in nodes.items
+        ]
 
     # ── logs ─────────────────────────────────────────────────
-    def read_logs(
+    async def read_logs(
         self, ref: ResourceRef, container: Optional[str],
         tail_lines: int, since: Optional[str],
     ) -> list[LogEntry]:
@@ -122,11 +155,15 @@ class KubernetesAdapter(K8sRepositoryPort):
         if since:
             kw["since_seconds"] = _since_to_seconds(since)
         try:
-            content = api.read_namespaced_pod_log(**kw)
+            content = await run_in_threadpool(
+                lambda: api.read_namespaced_pod_log(**kw)
+            )
         except TypeError:
             # Old kubernetes SDK without since_seconds support
             kw.pop("since_seconds", None)
-            content = api.read_namespaced_pod_log(**kw)
+            content = await run_in_threadpool(
+                lambda: api.read_namespaced_pod_log(**kw)
+            )
         # Use the timestamp parser so downstream code can sort/filter by ISO time.
         # Content stripping happens in the use-case layer so we preserve the raw line.
         return [

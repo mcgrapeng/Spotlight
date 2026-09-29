@@ -10,13 +10,8 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { cn } from '@/lib/utils'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
-import 'dayjs/locale/zh-cn'
+import dayjs from '@/utils/dayjs'
 import type { EventInfo } from '@/domain/types'
-
-dayjs.extend(relativeTime)
-dayjs.locale('zh-cn')
 
 function formatRel(iso: string | null) {
   if (!iso) return '—'

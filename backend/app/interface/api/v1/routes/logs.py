@@ -19,7 +19,7 @@ log = get_logger("api.logs")
 
 
 @router.get("/pods/{namespace}/{name}/logs", response_model=dict)
-def read_history(
+async def read_history(
     namespace: str,
     name: str,
     cluster: Optional[str] = Query(default=None),
@@ -30,7 +30,7 @@ def read_history(
     ),
     uc: LogUseCases = Depends(log_uc),
 ):
-    items = uc.read_history(
+    items = await uc.read_history(
         ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name),
         container, tail_lines, since,
     )

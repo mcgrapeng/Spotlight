@@ -83,15 +83,31 @@ function allocRatio(alloc: string, cap: string, parser: (s: string) => number): 
   if (!total) return 0
   return Math.round((parser(alloc) / total) * 100)
 }
-const cpuAllocRatio = (n: NodeInfo) => allocRatio(n.cpu_allocatable, n.cpu_capacity, cpuMc)
-const memAllocRatio = (n: NodeInfo) => allocRatio(n.memory_allocatable, n.memory_capacity, memMib)
 
-function cpuDisplay(alloc: string, cap: string) {
-  return { alloc: formatMillicores(cpuMc(alloc)), cap: formatMillicores(cpuMc(cap)) }
-}
-function memDisplay(alloc: string, cap: string) {
-  return { alloc: formatMiB(memMib(alloc)), cap: formatMiB(memMib(cap)) }
-}
+// Pre-parse all the strings once per nodes change — was 2 regex parses per
+// node per render before; with 50+ nodes and 4 re-renders per refresh
+// that's 400+ useless parse calls. Now O(N) per refresh.
+const nodeDisplays = computed(() =>
+  nodes.value.map((n) => {
+    const cpuAllocMc = cpuMc(n.cpu_allocatable)
+    const cpuCapMc = cpuMc(n.cpu_capacity)
+    const memAllocMib = memMib(n.memory_allocatable)
+    const memCapMib = memMib(n.memory_capacity)
+    return {
+      node: n,
+      cpu: {
+        alloc: formatMillicores(cpuAllocMc),
+        cap: formatMillicores(cpuCapMc),
+        allocRatio: cpuCapMc ? Math.round((cpuAllocMc / cpuCapMc) * 100) : 0,
+      },
+      mem: {
+        alloc: formatMiB(memAllocMib),
+        cap: formatMiB(memCapMib),
+        allocRatio: memCapMib ? Math.round((memAllocMib / memCapMib) * 100) : 0,
+      },
+    }
+  }),
+)
 
 // 把每个 Node 的主要告警信息抽象出来，卡片顶部一行 banner 用
 type Issue =
@@ -99,10 +115,10 @@ type Issue =
   | { kind: 'warning'; label: string }
   | null
 
-function nodeIssue(n: NodeInfo): Issue {
-  if (n.status !== 'Ready') return { kind: 'critical', label: 'NotReady · 节点离线' }
-  if (cpuAllocRatio(n) < 20) return { kind: 'warning', label: `CPU 预留过高 · 可分配仅 ${cpuAllocRatio(n)}%` }
-  if (memAllocRatio(n) < 20) return { kind: 'warning', label: `内存预留过高 · 可分配仅 ${memAllocRatio(n)}%` }
+function nodeIssue(d: typeof nodeDisplays.value[number]): Issue {
+  if (d.node.status !== 'Ready') return { kind: 'critical', label: 'NotReady · 节点离线' }
+  if (d.cpu.allocRatio < 20) return { kind: 'warning', label: `CPU 预留过高 · 可分配仅 ${d.cpu.allocRatio}%` }
+  if (d.mem.allocRatio < 20) return { kind: 'warning', label: `内存预留过高 · 可分配仅 ${d.mem.allocRatio}%` }
   return null
 }
 
@@ -139,37 +155,37 @@ function podOverloaded(n: NodeInfo): boolean {
     <ErrorState v-if="error" :message="error" @retry="load" />
 
     <div
-      v-else-if="!loading && nodes.length"
+      v-else-if="!loading && nodeDisplays.length"
       class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
     >
       <Card
-        v-for="n in nodes"
-        :key="n.name"
+        v-for="d in nodeDisplays"
+        :key="d.node.name"
         :class="cn(
           'p-0 overflow-hidden',
-          n.status === 'Ready' ? '' : 'border-error/40',
+          d.node.status === 'Ready' ? '' : 'border-error/40',
         )"
       >
         <CardContent class="p-5 space-y-4">
           <!-- Attention banner: 节点的核心告警，远高于其他视觉噪音 -->
           <div
-            v-if="nodeIssue(n)"
+            v-if="nodeIssue(d)"
             :class="cn(
               'flex items-center gap-2 -mx-5 -mt-5 px-5 py-2 text-xs font-medium border-b',
-              nodeIssue(n)!.kind === 'critical'
+              nodeIssue(d)!.kind === 'critical'
                 ? 'bg-error/10 text-error border-error/30'
                 : 'bg-warning/10 text-warning border-warning/30',
             )"
           >
             <AlertCircle
-              v-if="nodeIssue(n)!.kind === 'critical'"
+              v-if="nodeIssue(d)!.kind === 'critical'"
               :size="14" :stroke-width="2" aria-hidden="true"
             />
             <AlertTriangle
               v-else
               :size="14" :stroke-width="2" aria-hidden="true"
             />
-            <span>{{ nodeIssue(n)!.label }}</span>
+            <span>{{ nodeIssue(d)!.label }}</span>
           </div>
 
           <!-- Hero: 节点名 + 状态 pill -->
@@ -177,27 +193,27 @@ function podOverloaded(n: NodeInfo): boolean {
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <Server :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
-                <h3 class="text-base font-semibold font-mono truncate">{{ n.name }}</h3>
+                <h3 class="text-base font-semibold font-mono truncate">{{ d.node.name }}</h3>
               </div>
               <div class="mt-1 flex items-center gap-2 text-2xs text-muted-foreground">
-                <span v-if="n.roles.length" class="font-mono">{{ n.roles.join(', ') }}</span>
-                <span v-if="n.roles.length" class="opacity-30">·</span>
-                <span class="font-mono">v{{ n.kubelet_version }}</span>
+                <span v-if="d.node.roles.length" class="font-mono">{{ d.node.roles.join(', ') }}</span>
+                <span v-if="d.node.roles.length" class="opacity-30">·</span>
+                <span class="font-mono">v{{ d.node.kubelet_version }}</span>
                 <span class="opacity-30">·</span>
-                <span class="tabular-nums">{{ n.age ?? '—' }}</span>
+                <span class="tabular-nums">{{ d.node.age ?? '—' }}</span>
               </div>
             </div>
             <span :class="cn(
               'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border shrink-0',
-              n.status === 'Ready'
+              d.node.status === 'Ready'
                 ? 'bg-success-bg text-success border-success-border'
                 : 'bg-error-bg text-error border-error-border',
             )">
               <span :class="cn(
                 'inline-block w-1.5 h-1.5 rounded-full',
-                n.status === 'Ready' ? 'bg-success' : 'bg-error',
+                d.node.status === 'Ready' ? 'bg-success' : 'bg-error',
               )"></span>
-              {{ n.status }}
+              {{ d.node.status }}
             </span>
           </div>
 
@@ -211,17 +227,17 @@ function podOverloaded(n: NodeInfo): boolean {
             <div class="mt-1 flex items-baseline gap-2">
               <span :class="cn(
                 'text-3xl font-bold tabular-nums leading-none',
-                podOverloaded(n) ? 'text-warning' : 'text-foreground',
+                podOverloaded(d.node) ? 'text-warning' : 'text-foreground',
               )">
-                {{ n.pod_count }}
+                {{ d.node.pod_count }}
               </span>
               <span
                 class="text-sm text-muted-foreground tabular-nums"
                 :title="`kubelet 默认单节点最大 Pod 数 = ${MAX_PODS_PER_NODE}（可通过 --max-pods 配置）`"
               >/ {{ MAX_PODS_PER_NODE }} 上限</span>
             </div>
-            <div v-if="podOverloaded(n)" class="mt-1 text-2xs text-warning">
-              超出节点上限 {{ n.pod_count - MAX_PODS_PER_NODE }} 个，调度器会拒接新 Pod
+            <div v-if="podOverloaded(d.node)" class="mt-1 text-2xs text-warning">
+              超出节点上限 {{ d.node.pod_count - MAX_PODS_PER_NODE }} 个，调度器会拒接新 Pod
             </div>
             <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
               <div
@@ -240,33 +256,33 @@ function podOverloaded(n: NodeInfo): boolean {
               <Cpu :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="text-muted-foreground w-14 shrink-0">CPU</span>
               <span class="font-mono tabular-nums">
-                <span :class="cpuAllocRatio(n) < 20 ? 'text-warning font-medium' : 'text-foreground'">
-                  {{ cpuDisplay(n.cpu_allocatable, n.cpu_capacity).alloc }}
+                <span :class="d.cpu.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
+                  {{ d.cpu.alloc }}
                 </span>
                 <span class="text-muted-foreground"> 可分配</span>
                 <span class="text-muted-foreground"> / </span>
-                <span class="text-muted-foreground">{{ cpuDisplay(n.cpu_allocatable, n.cpu_capacity).cap }} 总</span>
+                <span class="text-muted-foreground">{{ d.cpu.cap }} 总</span>
               </span>
               <span :class="cn(
                 'ml-auto tabular-nums text-2xs',
-                cpuAllocRatio(n) < 20 ? 'text-warning' : 'text-muted-foreground',
-              )">{{ cpuAllocRatio(n) }}%</span>
+                d.cpu.allocRatio < 20 ? 'text-warning' : 'text-muted-foreground',
+              )">{{ d.cpu.allocRatio }}%</span>
             </div>
             <div class="flex items-center gap-2 text-xs">
               <MemoryStick :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="text-muted-foreground w-14 shrink-0">内存</span>
               <span class="font-mono tabular-nums">
-                <span :class="memAllocRatio(n) < 20 ? 'text-warning font-medium' : 'text-foreground'">
-                  {{ memDisplay(n.memory_allocatable, n.memory_capacity).alloc }}
+                <span :class="d.mem.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
+                  {{ d.mem.alloc }}
                 </span>
                 <span class="text-muted-foreground"> 可分配</span>
                 <span class="text-muted-foreground"> / </span>
-                <span class="text-muted-foreground">{{ memDisplay(n.memory_allocatable, n.memory_capacity).cap }} 总</span>
+                <span class="text-muted-foreground">{{ d.mem.cap }} 总</span>
               </span>
               <span :class="cn(
                 'ml-auto tabular-nums text-2xs',
-                memAllocRatio(n) < 20 ? 'text-warning' : 'text-muted-foreground',
-              )">{{ memAllocRatio(n) }}%</span>
+                d.mem.allocRatio < 20 ? 'text-warning' : 'text-muted-foreground',
+              )">{{ d.mem.allocRatio }}%</span>
             </div>
           </div>
         </CardContent>

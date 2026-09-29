@@ -11,8 +11,8 @@ router = APIRouter(tags=["clusters"])
 
 
 @router.get("/clusters", response_model=list[ClusterOut])
-def list_clusters(uc: ResourceUseCases = Depends(resource_uc)):
-    return uc.list_clusters()
+async def list_clusters(uc: ResourceUseCases = Depends(resource_uc)):
+    return await uc.list_clusters()
 
 
 @router.get("/clusters/current")
@@ -21,16 +21,16 @@ def current_cluster(uc: ResourceUseCases = Depends(resource_uc)):
 
 
 @router.get("/namespaces", response_model=list[NamespaceOut])
-def list_namespaces(
+async def list_namespaces(
     cluster: str | None = Query(default=None),
     uc: ResourceUseCases = Depends(resource_uc),
 ):
-    return uc.list_namespaces(cluster)
+    return await uc.list_namespaces(cluster)
 
 
 @router.get("/nodes", response_model=list[NodeOut])
-def list_nodes(
+async def list_nodes(
     cluster: str | None = Query(default=None),
     uc: ResourceUseCases = Depends(resource_uc),
 ):
-    return uc.list_nodes(cluster)
+    return await uc.list_nodes(cluster)

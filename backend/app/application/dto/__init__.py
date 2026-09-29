@@ -95,6 +95,9 @@ class DashboardDTO:
     nodes_ready: int
     namespaces_count: int
     restart_top: list[dict[str, str | int]] = field(default_factory=list)
+    # Reuse the events fetch — frontend previously pulled this twice
+    # (once for /pods/stats, once for /events). Inline it here.
+    recent_warns: list["EventDTO"] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

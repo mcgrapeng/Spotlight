@@ -129,6 +129,9 @@ class DashboardOut(BaseModel):
     nodes_ready: int
     namespaces_count: int
     restart_top: list[dict] = Field(default_factory=list)
+    # Inlined from /events?limit=500 — the dashboard's "recent activity"
+    # list previously triggered a second K8s API call.
+    recent_warns: list[EventOut] = Field(default_factory=list)
 
 
 class FavoriteCreate(BaseModel):
