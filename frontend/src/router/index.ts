@@ -30,7 +30,7 @@ router.beforeEach(async (to) => {
 })
 
 router.afterEach((to) => {
-  document.title = `${to.meta.title ?? ''} · Fathom`
+  document.title = `${to.meta.title ?? ''} · Spotlight`
 })
 
 export default router

@@ -30,13 +30,13 @@ defineEmits<{
         'group flex items-center gap-2 mr-1 md:mr-2 rounded-md py-1 pr-1',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )"
-      aria-label="Fathom 首页"
+      aria-label="Spotlight 首页"
     >
       <span class="inline-flex items-center justify-center size-7 md:size-8 text-foreground">
         <LogoMark :size="28" />
       </span>
       <span class="hidden sm:flex flex-col leading-none">
-        <span class="text-sm font-semibold tracking-tight text-foreground">Fathom</span>
+        <span class="text-sm font-semibold tracking-tight text-foreground">Spotlight</span>
         <span class="text-[10px] font-medium tracking-wide text-muted-foreground mt-0.5">集群驾驶舱</span>
       </span>
     </router-link>

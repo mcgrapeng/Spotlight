@@ -18,6 +18,32 @@ class ClusterOut(BaseModel):
     is_current: bool = False
 
 
+class LoginIn(BaseModel):
+    password: str = Field(min_length=1, max_length=512)
+    # Optional MFA TOTP. Only needed if the cluster has MFA enforced for
+    # this user — otherwise leave empty.
+    otp: str = Field(default="", max_length=16)
+
+
+class LoginOut(BaseModel):
+    ok: bool
+    proxy: str
+    user: str
+    cluster: str                            # Teleport cluster (== proxy host)
+    kube_clusters: list[str] = []           # K8s clusters available after auth
+    message: str = ""
+
+
+class KubeLoginIn(BaseModel):
+    cluster: str = Field(min_length=1, max_length=128)
+
+
+class KubeLoginOut(BaseModel):
+    ok: bool
+    cluster: str
+    message: str = ""
+
+
 class NamespaceOut(BaseModel):
     name: str
     status: str

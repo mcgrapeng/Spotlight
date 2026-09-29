@@ -4,9 +4,12 @@ withDefaults(defineProps<{ size?: number | string }>(), { size: 24 })
 
 <template>
   <!--
-    Brand mark: three concentric hexagons. The repeated hex form embodies
-    "Fathom" (depth / going inward toward understanding) without resorting to
-    a biological eye metaphor.
+    Brand mark — Spotlight.
+    Two concentric rings with an off-axis focal dot. The rings represent the
+    illumination cone (outer) and focus depth (middle); the offset dot is
+    the light source. The deliberate asymmetry (rings concentric, dot not)
+    carries the meaning: precise framing, lit from an angle.
+    Single-color (`currentColor`) so it adapts to any theme.
   -->
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -16,25 +19,27 @@ withDefaults(defineProps<{ size?: number | string }>(), { size: 24 })
     :width="size"
     :height="size"
   >
-    <!-- Outer hex (cluster boundary) -->
-    <path
-      d="M12 2.5L20.5 7.25V16.75L12 21.5L3.5 16.75V7.25L12 2.5Z"
-      stroke="currentColor"
-      stroke-width="1.9"
-      stroke-linejoin="round"
-      fill="none"
-    />
-    <!-- Middle hex (first depth layer) -->
-    <path
-      d="M12 7L17 9.85V14.15L12 17L7 14.15V9.85L12 7Z"
+    <!-- Outer ring: the cone of light -->
+    <circle
+      cx="12"
+      cy="12"
+      r="9.5"
       stroke="currentColor"
       stroke-width="1.4"
-      stroke-linejoin="round"
-      fill="none"
     />
-    <!-- Inner hex (the fathom point — filled) -->
-    <path
-      d="M12 10L14 11.25V13.5L12 14.75L10 13.5V11.25L12 10Z"
+    <!-- Middle ring: the focus boundary -->
+    <circle
+      cx="12"
+      cy="12"
+      r="5"
+      stroke="currentColor"
+      stroke-width="1.4"
+    />
+    <!-- Focal point: the spotlight source, offset to break the symmetry -->
+    <circle
+      cx="9.2"
+      cy="9.2"
+      r="1.6"
       fill="currentColor"
     />
   </svg>

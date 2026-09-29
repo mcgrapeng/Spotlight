@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle } from '@lucide/vue'
+import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle, ShieldOff } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -9,7 +9,7 @@ import StatCard from '@/components/common/StatCard.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, parseCPU, parseMemory, formatMillicores, formatMiB } from '@/lib/utils'
-import { nodesApi } from '@/api/endpoints'
+import { authApi, nodesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import type { NodeInfo } from '@/domain/types'
@@ -18,6 +18,10 @@ const cluster = useClusterStore()
 const nodes = ref<NodeInfo[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+// RBAC probe — null until fetched. When `nodes` is empty AND `nodes: false`
+// here, we know it's a Teleport role config issue, not a genuinely empty
+// cluster.
+const permissions = ref<Record<string, boolean> | null>(null)
 
 const nodesCacheKey = computed(() => `nodes:${cluster.activeCluster || 'none'}`)
 const nodesFetch = useCachedFetch<NodeInfo[]>({
@@ -27,6 +31,11 @@ const nodesFetch = useCachedFetch<NodeInfo[]>({
   loading,
   error,
   ttlMs: 60_000,
+})
+
+const blockedByRbac = computed(() => {
+  if (permissions.value === null) return null  // unknown yet
+  return permissions.value.nodes === false
 })
 
 async function load() {
@@ -42,8 +51,16 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
-watch(() => cluster.activeCluster, load)
+
+async function probePerms() {
+  try {
+    permissions.value = await authApi.permissions()
+  } catch {
+    permissions.value = null
+  }
+}
+onMounted(() => { load(); probePerms() })
+watch(() => cluster.activeCluster, () => { load(); probePerms() })
 
 const ready = computed(() => nodes.value.filter((n) => n.status === 'Ready').length)
 const notReady = computed(() => nodes.value.length - ready.value)
@@ -257,6 +274,20 @@ function podOverloaded(n: NodeInfo): boolean {
     </div>
 
     <LoadingState v-else-if="!nodes.length && loading" message="加载节点…" />
+    <EmptyState
+      v-else-if="blockedByRbac === true"
+      title="节点访问被 Teleport RBAC 拒绝"
+      description="你的 Teleport 角色没有在 kubernetes_resources 中声明 nodes 资源。请求集群管理员在角色 YAML 中加入以下配置,然后重新登录。"
+    >
+      <template #icon>
+        <ShieldOff :size="40" :stroke-width="1.5" class="text-warning" />
+      </template>
+      <pre class="text-left text-2xs font-mono bg-muted/40 border border-border rounded-md px-3 py-2 mt-3 overflow-x-auto whitespace-pre">kubernetes_resources:
+- kind: nodes
+  name: '*'
+  verbs: ['*']
+  api_group: '*'</pre>
+    </EmptyState>
     <EmptyState v-else title="没有节点" description="当前集群尚未注册任何 Node">
       <template #icon>
         <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />

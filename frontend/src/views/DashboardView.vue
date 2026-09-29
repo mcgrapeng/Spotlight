@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@lucide/vue'
-import { podsApi, eventsApi } from '@/api/endpoints'
+import { authApi, podsApi, eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -31,6 +31,10 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
+// RBAC probe — when nodes count is 0 because of denied access, show a
+// "blocked by Teleport role" hint next to the 节点 stat card.
+const permissions = ref<Record<string, boolean> | null>(null)
+const nodesBlocked = computed(() => permissions.value?.nodes === false)
 
 const statsCacheKey = computed(() => `dashboard:${cluster.activeCluster || 'none'}`)
 const statsFetch = useCachedFetch<DashboardStats>({
@@ -67,8 +71,16 @@ async function load(silent = false) {
   }
 }
 
-onMounted(load)
-watch(() => cluster.activeCluster, () => load())
+async function probePerms() {
+  try {
+    permissions.value = await authApi.permissions()
+  } catch {
+    permissions.value = null
+  }
+}
+
+onMounted(() => { load(); probePerms() })
+watch(() => cluster.activeCluster, () => { load(); probePerms() })
 watch(() => cluster.activeNamespace, () => load(true))
 
 // ponytail: 健康度只统计"长生命周期" Pod 阶段（Succeeded 是 Job 完成态，不算健康也不算故障）。
@@ -288,7 +300,10 @@ const recentActivity = computed(() => {
           <div class="text-2xl font-bold tabular-nums" :class="stats.nodes_ready < stats.nodes_total ? 'text-error' : ''">
             {{ stats.nodes_ready }}<span class="text-xs text-muted-foreground">/{{ stats.nodes_total }}</span>
           </div>
-          <div class="text-2xs text-muted-foreground mt-1">就绪</div>
+          <div class="text-2xs text-muted-foreground mt-1">
+            <template v-if="nodesBlocked">Teleport RBAC 拒绝 · 见 Nodes 页</template>
+            <template v-else>就绪</template>
+          </div>
         </CardContent>
       </Card>
     </div>

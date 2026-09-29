@@ -8,7 +8,7 @@ vi.mock('@/api/endpoints', () => ({
   namespacesApi: { list: vi.fn() },
 }))
 
-const STORAGE_KEY = 'fathom.selection.v2'
+const STORAGE_KEY = 'spotlight.selection.v2'
 
 describe('cluster store', () => {
   beforeEach(() => {

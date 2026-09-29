@@ -1,62 +1,128 @@
-"""Auth routes: Teleport tsh login endpoint."""
+"""Auth routes: Teleport tsh login + kube cluster fetch.
+
+Three-step login (mirrors the operator's terminal flow):
+
+  1. POST /auth/login         → `tsh login` (auth only)
+  2. POST /auth/kube-login    → `tsh kube login <cluster>` (per chosen cluster)
+  3. GET  /api/v1/clusters    → reads the kubeconfig written by step 2
+"""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+import os
+from pathlib import Path
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from app.infrastructure.auth.teleport import kube_login, list_kube_clusters
 from app.infrastructure.auth.teleport import login as tsh_login
-from app.infrastructure.auth.teleport import tsh_available
+from app.infrastructure.auth.teleport import probe_rbac, tsh_available
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.logging import get_logger
+from app.interface.api.v1.schemas import KubeLoginIn, KubeLoginOut, LoginIn, LoginOut
 
 router = APIRouter(tags=["auth"])
 log = get_logger("api.auth")
 
 
-class LoginIn(BaseModel):
-    password: str = Field(min_length=1, max_length=512)
-
-
-class LoginOut(BaseModel):
-    ok: bool
-    proxy: str
-    user: str
-    cluster: str
-    message: str = ""
-
-
 class StatusOut(BaseModel):
-    configured: bool
-    available: bool
+    configured: bool          # Teleport auth is set up on the server
+    available: bool           # `tsh` binary is on PATH
     proxy: str
     user: str
     cluster: str
+    # True when there's a kubeconfig on disk that the pool can read.
+    # Frontend uses this to decide whether to show the login form on page
+    # refresh: even though Teleport may be configured, an existing
+    # kubeconfig means we already have a working session.
+    session_valid: bool
+
+
+def _kubeconfig_path() -> Path:
+    """Where the in-process kube pool would read from. Mirror of
+    `k8s.client.pool._resolve_path()` plus our tsh default.
+    """
+    s = get_settings()
+    return Path(
+        s.kubeconfig_path
+        or os.environ.get("KUBECONFIG")
+        or (Path.home() / "teleport-kubeconfig.yaml")
+    )
 
 
 @router.get("/auth/status", response_model=StatusOut)
 def status() -> StatusOut:
     s = get_settings()
+    kube_path = _kubeconfig_path()
+    # session_valid is true iff a kubeconfig exists at the expected path.
+    # The cert inside may still be expired (tsh writes 12h certs) but the
+    # next API call will surface that as a 401 — at which point the
+    # frontend can prompt for re-login. For the page-refresh case this
+    # gives the right answer: don't bounce to /login just because we
+    # booted up without a cached /auth/status.
+    session_valid = kube_path.exists()
     return StatusOut(
         configured=s.teleport_configured,
         available=tsh_available(s.tsh_binary),
         proxy=s.teleport_proxy,
         user=s.teleport_user,
         cluster=s.teleport_cluster,
+        session_valid=session_valid,
     )
 
 
 @router.post("/auth/login", response_model=LoginOut)
 async def post_login(payload: LoginIn) -> LoginOut:
+    """Authenticate against the Teleport proxy and return the K8s clusters
+    the user has access to. Does NOT fetch kube creds — that's a separate
+    call so the UI can show a dropdown.
+    """
     s = get_settings()
     if not s.teleport_configured:
         raise HTTPException(status_code=503, detail="Teleport proxy not configured on server")
     if not tsh_available(s.tsh_binary):
         raise HTTPException(status_code=503, detail=f"'{s.tsh_binary}' not found on PATH")
-    res = await tsh_login(payload.password)
+    res = await tsh_login(payload.password, otp=payload.otp)
     if not res.ok:
-        # 401 keeps the UX consistent with "wrong password", but we log the
-        # real cause server-side (operator can debug without user confusion).
         raise HTTPException(status_code=401, detail=res.message or "login failed")
     return LoginOut(
-        ok=True, proxy=res.proxy, user=res.user, cluster=res.cluster, message=res.message,
+        ok=True,
+        proxy=res.proxy,
+        user=res.user,
+        cluster=res.cluster,
+        kube_clusters=res.kube_clusters,
+        message=res.message,
     )
+
+
+@router.get("/auth/kube-clusters", response_model=list[str])
+async def get_kube_clusters() -> list[str]:
+    """Re-list K8s clusters available to the current tsh session. Useful
+    when the frontend wants to refresh the dropdown without re-entering
+    password.
+    """
+    return await list_kube_clusters()
+
+
+@router.post("/auth/kube-login", response_model=KubeLoginOut)
+async def post_kube_login(payload: KubeLoginIn) -> KubeLoginOut:
+    """Run `tsh kube login <cluster>` against the existing tsh session and
+    reload the in-process kubeconfig.
+    """
+    res = await kube_login(payload.cluster)
+    if not res.ok:
+        raise HTTPException(status_code=401, detail=res.message or "kube login failed")
+    return KubeLoginOut(ok=True, cluster=res.cluster, message=res.message)
+
+
+@router.get("/auth/permissions", response_model=dict[str, bool])
+async def get_permissions() -> dict[str, bool]:
+    """For each common K8s resource, ask `kubectl auth can-i list <res>` and
+    return whether the current Teleport role allows it.
+
+    The frontend uses this to distinguish "no data because the cluster is
+    empty" from "no data because RBAC denied access" — most commonly the
+    latter for `nodes` and `persistentvolumes` when a Teleport role wasn't
+    given an explicit `kubernetes_resources` entry.
+    """
+    return await probe_rbac()

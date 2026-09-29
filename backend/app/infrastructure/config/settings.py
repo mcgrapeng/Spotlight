@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "fathom"
+    app_name: str = "spotlight"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     debug: bool = True

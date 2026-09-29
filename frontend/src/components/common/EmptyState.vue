@@ -21,6 +21,9 @@ withDefaults(defineProps<{
     </div>
     <h3 class="text-base font-semibold text-foreground mb-1">{{ title }}</h3>
     <p v-if="description" class="text-sm text-muted-foreground max-w-md">{{ description }}</p>
+    <div v-if="$slots.default" class="mt-4 w-full max-w-md">
+      <slot />
+    </div>
     <div v-if="$slots.action" class="mt-6">
       <slot name="action" />
     </div>

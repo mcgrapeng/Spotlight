@@ -1,4 +1,4 @@
-# Fathom 前端 (v6)
+# Spotlight 前端 (v6)
 
 ## 设计系统
 

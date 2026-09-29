@@ -39,7 +39,7 @@ const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
 const analyzerOpen = ref(false)
 const metaCollapsed = ref(true)
-const META_LS_KEY = 'fathom:pod-meta-collapsed'
+const META_LS_KEY = 'spotlight:pod-meta-collapsed'
 
 onMounted(() => {
   try {

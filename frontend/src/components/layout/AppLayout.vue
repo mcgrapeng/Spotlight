@@ -7,7 +7,7 @@ import AppSidebar from './AppSidebar.vue'
 import MobileDrawer from './MobileDrawer.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 
-const SIDEBAR_COLLAPSED_KEY = 'fathom-sidebar-collapsed'
+const SIDEBAR_COLLAPSED_KEY = 'spotlight-sidebar-collapsed'
 
 const route = useRoute()
 const router = useRouter()

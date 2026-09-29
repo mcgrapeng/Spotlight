@@ -9,14 +9,41 @@ const ctx = (c?: string | null) => ({ params: { context: c || undefined } })
 export interface AuthStatus {
   configured: boolean; available: boolean;
   proxy: string; user: string; cluster: string;
+  session_valid: boolean;
+}
+
+export interface LoginResult {
+  ok: boolean;
+  proxy: string;
+  user: string;
+  cluster: string;
+  kube_clusters: string[];
+  message: string;
+}
+
+export interface KubeLoginResult {
+  ok: boolean;
+  cluster: string;
+  message: string;
 }
 
 export const authApi = {
   status: () => http.get<AuthStatus>('/auth/status').then((r) => r.data),
-  login: (password: string) =>
-    http.post<{ ok: boolean; proxy: string; user: string; cluster: string; message: string }>(
-      '/auth/login', { password },
+  // Login can take a while when the cluster enforces MFA (we feed password +
+  // OTP + wait for tsh to negotiate certs) — override the 30s default with
+  // 60s so the user gets a real error rather than an axios timeout.
+  login: (password: string, otp = '') =>
+    http.post<LoginResult>(
+      '/auth/login', { password, otp }, { timeout: 60_000 },
     ).then((r) => r.data),
+  kubeLogin: (cluster: string) =>
+    http.post<KubeLoginResult>('/auth/kube-login', { cluster }, { timeout: 60_000 })
+      .then((r) => r.data),
+  kubeClusters: () =>
+    http.get<string[]>('/auth/kube-clusters', { timeout: 15_000 }).then((r) => r.data),
+  permissions: () =>
+    http.get<Record<string, boolean>>('/auth/permissions', { timeout: 15_000 })
+      .then((r) => r.data),
 }
 
 export const clustersApi = {

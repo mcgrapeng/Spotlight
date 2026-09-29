@@ -24,7 +24,7 @@ const settingsItems = [
 ]
 
 const aboutItems = [
-  { label: '应用', value: 'Fathom · 集群驾驶舱' },
+  { label: '应用', value: 'Spotlight · 集群驾驶舱' },
   { label: '模式', value: '仅亮色（设计固定）' },
   { label: '存储', value: '侧边栏折叠 + 当前集群 / namespace（localStorage）' },
 ]
@@ -43,7 +43,7 @@ function confirmLogout() {
   <div class="space-y-5">
     <header class="border-b border-border pb-4">
       <h1 class="text-2xl font-bold tracking-tight">设置</h1>
-      <p class="mt-1 text-sm text-muted-foreground">配置 Fathom 集群驾驶舱</p>
+      <p class="mt-1 text-sm text-muted-foreground">配置 Spotlight 集群驾驶舱</p>
     </header>
 
     <!-- 配置项：当前只有 AI 模型，点击进入 AISettingsView -->
