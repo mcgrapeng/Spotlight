@@ -1,9 +1,9 @@
-"""Logs routes: history (JSON) + SSE stream."""
+"""Logs routes: history (JSON) + SSE stream (batch-encoded)."""
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, List, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from sse_starlette.sse import EventSourceResponse
@@ -11,7 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.application.use_cases.logs import LogUseCases
 from app.domain.value_objects.primitives import ResourceRef
 from app.interface.api.v1.dependencies import log_uc
-from app.interface.api.v1.schemas import LogLineOut
+from app.application.dto import LogStreamParams
 from app.infrastructure.logging import get_logger
 
 router = APIRouter(tags=["logs"])
@@ -36,13 +36,7 @@ async def read_history(
     )
     return {
         "total": len(items),
-        "items": [
-            LogLineOut(
-                timestamp=i.timestamp, content=i.content,
-                container=i.container, severity=i.severity,
-            ).model_dump()
-            for i in items
-        ],
+        "items": [i.model_dump() for i in items],
     }
 
 
@@ -57,54 +51,101 @@ async def stream(
     keepalive_seconds: int = Query(default=15, ge=5, le=60),
     uc: LogUseCases = Depends(log_uc),
 ) -> EventSourceResponse:
-    """SSE log stream with heartbeat.
+    """SSE log stream — single executor hop + 1 encode per flush.
 
-    Production hardening vs. the v1 implementation:
-    - **Heartbeat** — yield a `: ping` SSE comment every `keepalive_seconds`
-      so reverse proxies (nginx default 60s) don't silently drop the
-      connection during quiet periods.
-    - **Cancellation on disconnect** — `run_in_executor` does not honor
-      cooperative cancellation, so we explicitly poll `request.is_disconnected()`
-      and break the loop when the client goes away.
-    - **End-of-stream always emitted** in the `finally` block so clients
-      see a clean termination instead of a half-flushed buffer.
+    Ponytail: previous version called `loop.run_in_executor(None, next, sync_iter)`
+    per line — 100 lines/sec = 100 executor tasks + 100 json.dumps calls.
+    New version drives the blocking generator via asyncio.to_thread (one
+    concurrent task per stream), pushes entries into an asyncio.Queue, and
+    flushes them as a JSON array — N lines collapse to 1 encode per window.
+    Wire format: `{"event": "log", "data": "<json-array-of-entries>"}` —
+    frontend handles both array and single-object payloads.
     """
     ref = ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=10_000)
+
+    async def producer() -> None:
+        # ONE blocking reader task. Drains the sync generator in a worker thread
+        # and bulk-pushes to the asyncio queue. Producer-side errors end the stream.
+        try:
+            await asyncio.to_thread(_drain, uc, ref, container, tail_lines, queue)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("sse.stream.producer_error", error=str(exc))
+        finally:
+            await queue.put(None)  # sentinel = stream ended
 
     async def event_gen() -> AsyncIterator[dict]:
-        log.info("sse.open", pod=f"{namespace}/{name}", container=container)
-        loop = asyncio.get_running_loop()
-        sync_iter = iter(uc.stream(ref, container, tail_lines))
+        asyncio.create_task(producer())
+        last_flush = asyncio.get_event_loop().time()
+        FLUSH_INTERVAL = 0.1
+        BATCH_MAX = 100
         try:
             while True:
-                if await request.is_disconnected():
-                    log.info("sse.client.disconnected", pod=f"{namespace}/{name}")
-                    break
-                # Race the next() against the keepalive timeout. If the
-                # upstream goes silent for too long we emit a ping so the
-                # proxy doesn't close the connection.
+                # Short get timeout so the keepalive + disconnect check fires
+                # even when the upstream is silent.
                 try:
-                    entry = await asyncio.wait_for(
-                        loop.run_in_executor(None, next, sync_iter),
-                        timeout=keepalive_seconds,
-                    )
+                    batch = await asyncio.wait_for(queue.get(), timeout=min(keepalive_seconds, 1.0))
                 except asyncio.TimeoutError:
+                    if await request.is_disconnected():
+                        log.info("sse.client.disconnected", pod=f"{namespace}/{name}")
+                        break
                     yield {"event": "ping", "data": ""}
+                    last_flush = asyncio.get_event_loop().time()
                     continue
-                except StopIteration:
+
+                if batch is None:  # stream ended
                     break
-                except Exception as exc:
-                    log.exception("sse.stream.error", error=str(exc))
-                    yield {"event": "error", "data": json.dumps({"message": str(exc)})}
-                    return
+
+                # Yield each line as its own SSE event for frontend compatibility,
+                # but use one bulk JSON-array string per flush. Frontend splits.
                 yield {
                     "event": "log",
-                    "data": json.dumps({
-                        "timestamp": entry.timestamp, "content": entry.content,
-                        "container": entry.container, "severity": entry.severity,
-                    }, ensure_ascii=False),
+                    "data": json.dumps(batch, ensure_ascii=False),
                 }
+                last_flush = asyncio.get_event_loop().time()
+
+                # If a big batch came in, keep flushing until the queue drains
+                # to keep latency low under burst load.
+                while not queue.empty():
+                    try:
+                        next_batch = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    if next_batch is None:
+                        break
+                    yield {
+                        "event": "log",
+                        "data": json.dumps(next_batch, ensure_ascii=False),
+                    }
+                    last_flush = asyncio.get_event_loop().time()
         finally:
             yield {"event": "end", "data": "[DONE]"}
 
     return EventSourceResponse(event_gen())
+
+
+def _drain(
+    uc: LogUseCases,
+    ref: ResourceRef,
+    container: Optional[str],
+    tail_lines: int,
+    queue: asyncio.Queue,
+) -> None:
+    """Sync helper: drive the blocking sync generator in a worker thread.
+
+    Buffers up to BATCH_MAX entries per push so each queue item is a JSON-array
+    payload — N line yields collapse to 1 queue.put (and 1 json.dumps in the
+    consumer).
+    """
+    BATCH_MAX = 100
+    batch: list[dict] = []
+    for entry in uc.stream(ref, container, tail_lines):
+        batch.append({
+            "timestamp": entry.timestamp, "content": entry.content,
+            "container": entry.container, "severity": entry.severity,
+        })
+        if len(batch) >= BATCH_MAX:
+            queue.put_nowait(batch)
+            batch = []
+    if batch:
+        queue.put_nowait(batch)

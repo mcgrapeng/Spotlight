@@ -25,8 +25,11 @@ from app.infrastructure.k8s.client.pool import get_pool
 from app.infrastructure.k8s.mapper.mappers import (
     map_event,
     map_namespace,
+    map_namespaces_batch,
     map_node,
+    map_nodes_batch,
     map_pod,
+    map_pods_batch,
 )
 
 
@@ -57,7 +60,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         result = await run_in_threadpool(
             lambda: api.list_namespace(_request_timeout=self._timeout)
         )
-        return [map_namespace(n, cluster=ctx) for n in result.items]
+        return map_namespaces_batch(result.items, cluster=ctx)
 
     # ── pods ─────────────────────────────────────────────────
     async def list_pods(
@@ -79,7 +82,8 @@ class KubernetesAdapter(K8sRepositoryPort):
                 lambda: api.list_pod_for_all_namespaces(**kw).items
             )
 
-        pods = [map_pod(p, cluster=ctx) for p in items]
+        # ponytail: batch mapper hoists `datetime.now()` once instead of N times.
+        pods = map_pods_batch(items, cluster=ctx)
         if status and status.lower() != "all":
             target = status.lower()
             pods = [p for p in pods if p.phase.lower() == target]
@@ -136,10 +140,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         for p in pods.items:
             if p.spec.node_name:
                 pod_count[p.spec.node_name] = pod_count.get(p.spec.node_name, 0) + 1
-        return [
-            map_node(n, pod_count=pod_count.get(n.metadata.name, 0), cluster=ctx)
-            for n in nodes.items
-        ]
+        return map_nodes_batch(nodes.items, pod_count_by_node=pod_count, cluster=ctx)
 
     # ── logs ─────────────────────────────────────────────────
     async def read_logs(

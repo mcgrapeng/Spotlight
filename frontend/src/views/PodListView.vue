@@ -63,6 +63,10 @@ const subtitle = computed(() => {
   return `${data.value.total.toLocaleString()} 个 · ${ns}`
 })
 
+// ponytail: per-row helpers memoized in two Map<string, ...> lookups keyed by
+// "namespace/name". Previous version called restartSeverity(row) up to 4
+// times per row inside the template — for 100 rows × 4 = 400 calls/render.
+// Now: 2 calls per row in computed, 0 in template.
 function readyOf(p: PodOut) { return p.containers.filter(c => c.ready).length }
 function restartSeverity(p: PodOut) {
   if (p.restart_count > 100) return 'critical'
@@ -81,6 +85,19 @@ const PHASE_TONE: Record<string, string> = {
 function rowClass(p: PodOut) {
   return PHASE_TONE[p.phase] ?? 'hover:bg-muted/40'
 }
+
+const severityMap = computed(() => {
+  const m = new Map<string, 'critical' | 'warn' | 'normal'>()
+  for (const p of data.value.items) m.set(`${p.namespace}/${p.name}`, restartSeverity(p))
+  return m
+})
+const rowClassMap = computed(() => {
+  const m = new Map<string, string>()
+  for (const p of data.value.items) m.set(`${p.namespace}/${p.name}`, rowClass(p))
+  return m
+})
+function sevOf(p: PodOut) { return severityMap.value.get(`${p.namespace}/${p.name}`) ?? 'normal' }
+function clsOf(p: PodOut) { return rowClassMap.value.get(`${p.namespace}/${p.name}`) ?? 'hover:bg-muted/40' }
 
 function open(p: PodOut) {
   router.push({ name: 'pod-detail', params: { namespace: p.namespace, name: p.name } })
@@ -181,7 +198,7 @@ const pagedPods = computed(() => {
               style="content-visibility: auto; contain-intrinsic-size: auto 44px;"
               :class="cn(
                 'border-b border-border last:border-0 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none transition-colors',
-                rowClass(row),
+                clsOf(row),
               )"
               tabindex="0"
               role="button"
@@ -243,19 +260,19 @@ const pagedPods = computed(() => {
                   :aria-label="`${row.restart_count} 次重启`"
                 >
                   <AlertCircle
-                    v-if="restartSeverity(row) === 'critical'"
+                    v-if="sevOf(row) === 'critical'"
                     :size="12" class="text-error shrink-0" :stroke-width="1.75"
                     aria-hidden="true"
                   />
                   <AlertTriangle
-                    v-else-if="restartSeverity(row) === 'warn'"
+                    v-else-if="sevOf(row) === 'warn'"
                     :size="12" class="text-warning shrink-0" :stroke-width="1.75"
                     aria-hidden="true"
                   />
                   <span :class="cn(
-                    restartSeverity(row) === 'critical' && 'text-error font-semibold',
-                    restartSeverity(row) === 'warn' && 'text-warning',
-                    restartSeverity(row) === 'normal' && 'text-muted-foreground',
+                    sevOf(row) === 'critical' && 'text-error font-semibold',
+                    sevOf(row) === 'warn' && 'text-warning',
+                    sevOf(row) === 'normal' && 'text-muted-foreground',
                   )">
                     {{ row.restart_count.toLocaleString() }}
                   </span>
@@ -288,7 +305,7 @@ const pagedPods = computed(() => {
           :key="`${row.namespace}/${row.name}`"
           type="button"
           class="w-full text-left p-3 active:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none transition-colors"
-          :class="rowClass(row)"
+          :class="clsOf(row)"
           :aria-label="`查看 ${row.name} 详情`"
           @click="open(row)"
         >
@@ -308,8 +325,8 @@ const pagedPods = computed(() => {
             <span v-if="row.restart_count > 0"
               :class="cn(
                 'tabular-nums',
-                restartSeverity(row) === 'critical' && 'text-error font-semibold',
-                restartSeverity(row) === 'warn' && 'text-warning',
+                sevOf(row) === 'critical' && 'text-error font-semibold',
+                sevOf(row) === 'warn' && 'text-warning',
               )">↻{{ row.restart_count }}</span>
           </div>
         </button>

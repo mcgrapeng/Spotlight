@@ -1,34 +1,44 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@lucide/vue'
-import { authApi, podsApi } from '@/api/endpoints'
+import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { usePermissionsStore } from '@/stores/permissions'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn, formatPercent, formatNumber } from '@/lib/utils'
+import { cn, formatNumber } from '@/lib/utils'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
-import type { DashboardOut, EventOut } from '@/api/types'
+import type { DashboardOut } from '@/api/types'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import dayjs from '@/utils/dayjs'
 
+// ponytail: formatRel memoized per 60s bucket — events page renders 500 rows
+// each parsing dayjs. Bucket keeps the string identical between rows on the
+// same minute so 500 calls in 1s = 1 dayjs() + 500 Map hits.
+const _relCache = new Map<string, string>()
 function formatRel(iso: string | null) {
   if (!iso) return '—'
-  return dayjs(iso).fromNow()
+  const bucket = Math.floor(Date.now() / 60_000)
+  const key = `${bucket}:${iso}`
+  let v = _relCache.get(key)
+  if (v === undefined) {
+    v = dayjs(iso).fromNow()
+    _relCache.set(key, v)
+    if (_relCache.size > 1000) _relCache.clear()
+  }
+  return v
 }
 
 const cluster = useClusterStore()
 const stats = ref<DashboardOut | null>(null)
-const warns = ref<EventOut[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
-// Shared RBAC probe — see stores/permissions.ts. Refreshes lazily; cached
-// for 5min, so navigating Dashboard → Nodes doesn't re-probe.
+
 const perms = usePermissionsStore()
 const nodesBlocked = computed(() => perms.isBlocked('nodes') === true)
 
@@ -36,40 +46,45 @@ const statsCacheKey = computed(() => `dashboard:${cluster.activeCluster || 'none
 const statsFetch = useCachedFetch<DashboardOut>({
   key: statsCacheKey.value,
   fetcher: () => podsApi.stats(cluster.activeCluster!),
-  data: stats,
+  data: stats as unknown as import('vue').Ref<DashboardOut | null>,
   loading,
   error,
   ttlMs: 30_000,
 })
 
+// ponytail: load() now ACTUALLY USES useCachedFetch. Cache hit → 0 network,
+// miss → fetch + cache. silent=true → bypass cache (user wants fresh).
 async function load(silent = false) {
   if (!cluster.activeCluster) return
+  error.value = null
   if (silent) {
     refreshing.value = true
+    try {
+      const fresh = await statsFetch.refresh()
+      if (fresh) {
+        stats.value = fresh
+        lastRefreshed.value = new Date()
+      }
+    } catch (e: any) {
+      error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+    } finally {
+      refreshing.value = false
+    }
   } else {
     loading.value = true
-    statsFetch.hydrateFromCache()
-  }
-  error.value = null
-  try {
-    // /pods/stats now inlines recent_warns — one K8s round-trip instead of two
-    // (no separate /events fetch).
-    const s = await podsApi.stats(cluster.activeCluster)
-    stats.value = s
-    warns.value = s.recent_warns ?? []
-    lastRefreshed.value = new Date()
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
-  } finally {
-    loading.value = false
-    refreshing.value = false
+    try {
+      const v = await statsFetch.loadOrHydrate()
+      if (v) stats.value = v
+      lastRefreshed.value = new Date()
+    } catch (e: any) {
+      error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+    } finally {
+      loading.value = false
+    }
   }
 }
 
 async function probePerms() {
-  // Delegates to the shared store. The store handles the 5min cache and
-  // dedupes concurrent requests across views, so a Dashboard→Nodes nav
-  // only hits /api/v1/auth/permissions once.
   await perms.refresh()
 }
 
@@ -78,7 +93,6 @@ watch(() => cluster.activeCluster, () => { load(); probePerms() })
 watch(() => cluster.activeNamespace, () => load(true))
 
 // ponytail: 健康度只统计"长生命周期" Pod 阶段（Succeeded 是 Job 完成态，不算健康也不算故障）。
-// Failed > 0 时即使百分比高也要降级显示，对应 Audit §4.2。
 const healthScore = computed(() => {
   if (!stats.value) return 0
   const s = stats.value
@@ -98,8 +112,14 @@ const phaseCounts = computed(() => {
   }
 })
 
-// ponytail: 每条 action item 自带跳转 + 筛选 query，落点页面直接看到对应资源，
-// 不让用户自己再点一次 filter (对应 Audit §4.1)。critical 在前，按严重度排序。
+// ponytail: noisyRestarts hoisted out of template. Previous version ran
+// `stats.restart_top.filter(p => p.restarts > 5).slice(0, 5)` twice per render
+// (once for v-if, once for v-for) — now computed once.
+const noisyRestarts = computed(() => {
+  const all = stats.value?.restart_top ?? []
+  return all.filter(p => p.restarts > 5).slice(0, 5)
+})
+
 type ActionLink =
   | { name: 'pods'; query?: Record<string, string> }
   | { name: 'events'; query?: Record<string, string> }
@@ -155,7 +175,6 @@ const actionItems = computed<Array<{
     })
   }
 
-  // 排序：critical 在前，按告警源数量降序
   return items.sort((a, b) => {
     if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1
     return 0
@@ -177,9 +196,9 @@ const compactStats = computed(() => {
 
 const recentActivity = computed(() => {
   const items: Array<{ time: string; icon: string; label: string; pod: string }> = []
-  // warns is now server-side filtered to "warning" only + capped at 8, so we
-  // can iterate it directly without an extra filter pass.
-  const evs = warns.value
+  // server now inlines recent_warns in /pods/stats (warning-only, cap 8) —
+  // iterate directly, no extra client-side filter.
+  const evs = stats.value?.recent_warns ?? []
   for (let i = 0; i < evs.length && items.length < 8; i++) {
     const ev = evs[i]
     if (ev.last_seen) {
@@ -189,21 +208,6 @@ const recentActivity = computed(() => {
         label: ev.reason,
         pod: `${ev.namespace}/${ev.involved_name}`,
       })
-    }
-  }
-  const topRestarts = stats.value?.restart_top
-  if (topRestarts) {
-    const cap = items.length >= 5 ? 0 : 5  // skip restart section if warns already filled 5+
-    for (let i = 0; i < topRestarts.length && items.length < 8; i++) {
-      if (topRestarts[i].restarts > 5) {
-        items.push({
-          time: 'recently',
-          icon: '↻',
-          label: `×${topRestarts[i].restarts} restarts`,
-          pod: topRestarts[i].pod,
-        })
-        if (cap === 0) break
-      }
     }
   }
   return items
@@ -352,12 +356,12 @@ const recentActivity = computed(() => {
             <AlertTriangle :size="15" :stroke-width="1.75" />
             频繁重启
           </h3>
-          <div v-if="!stats.restart_top || stats.restart_top.filter(p => p.restarts > 5).length === 0" class="text-sm text-muted-foreground py-4 text-center">
+          <div v-if="noisyRestarts.length === 0" class="text-sm text-muted-foreground py-4 text-center">
             无
           </div>
           <ol v-else class="space-y-1.5">
             <li
-              v-for="(p, i) in stats.restart_top.filter(p => p.restarts > 5).slice(0, 5)"
+              v-for="(p, i) in noisyRestarts"
               :key="p.pod"
               class="flex items-center gap-2 text-sm py-0.5"
             >

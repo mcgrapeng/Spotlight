@@ -27,13 +27,13 @@ def _parse_dt(raw: str | datetime | None) -> datetime | None:
         return None
 
 
-def _age_seconds(raw: str | datetime | None) -> int | None:
+def _age_seconds(raw: str | datetime | None, now: datetime) -> int | None:
     dt = _parse_dt(raw)
     if dt is None:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return max(0, int((datetime.now(timezone.utc) - dt).total_seconds()))
+    return max(0, int((now - dt).total_seconds()))
 
 
 def _container_state(cstatus) -> tuple[str, str | None, str | None]:
@@ -47,7 +47,8 @@ def _container_state(cstatus) -> tuple[str, str | None, str | None]:
     return ContainerState.UNKNOWN.value, None, None
 
 
-def map_pod(pod_obj, *, cluster: str = "") -> Pod:
+def map_pod(pod_obj, *, cluster: str = "", now: datetime | None = None) -> Pod:
+    """Map a single Pod. `now` is hoisted by callers doing batch maps."""
     cs = pod_obj.status.container_statuses or []
     containers: list[Container] = []
     for c in cs:
@@ -73,13 +74,15 @@ def map_pod(pod_obj, *, cluster: str = "") -> Pod:
                 reason, message = cond.reason, cond.message
                 break
 
+    # ponytail: `now` hoisted — for a 5000-pod list this saves 5000 syscalls.
+    age = _age_seconds(pod_obj.metadata.creation_timestamp, now or datetime.now(timezone.utc))
     return Pod(
         name=pod_obj.metadata.name,
         namespace=pod_obj.metadata.namespace,
         phase=phase,
         node=pod_obj.spec.node_name,
         pod_ip=pod_obj.status.pod_ip,
-        age_seconds=_age_seconds(pod_obj.metadata.creation_timestamp),
+        age_seconds=age,
         created_at=str(pod_obj.metadata.creation_timestamp) if pod_obj.metadata.creation_timestamp else None,
         reason=reason,
         message=message,
@@ -90,17 +93,17 @@ def map_pod(pod_obj, *, cluster: str = "") -> Pod:
     )
 
 
-def map_namespace(ns_obj, *, cluster: str = "") -> Namespace:
+def map_namespace(ns_obj, *, cluster: str = "", now: datetime | None = None) -> Namespace:
     return Namespace(
         name=ns_obj.metadata.name,
         status=ns_obj.status.phase or "Active",
         labels=dict(ns_obj.metadata.labels or {}),
-        age_seconds=_age_seconds(ns_obj.metadata.creation_timestamp),
+        age_seconds=_age_seconds(ns_obj.metadata.creation_timestamp, now or datetime.now(timezone.utc)),
         cluster=cluster,
     )
 
 
-def map_node(node_obj, *, pod_count: int = 0, cluster: str = "") -> Node:
+def map_node(node_obj, *, pod_count: int = 0, cluster: str = "", now: datetime | None = None) -> Node:
     status = NodeStatus.UNKNOWN.value
     for c in node_obj.status.conditions or []:
         if c.type == "Ready":
@@ -126,7 +129,7 @@ def map_node(node_obj, *, pod_count: int = 0, cluster: str = "") -> Node:
         cpu_allocatable=alloc.get("cpu", ""),
         memory_allocatable=alloc.get("memory", ""),
         pod_count=pod_count,
-        age_seconds=_age_seconds(node_obj.metadata.creation_timestamp),
+        age_seconds=_age_seconds(node_obj.metadata.creation_timestamp, now or datetime.now(timezone.utc)),
         cluster=cluster,
     )
 
@@ -145,3 +148,26 @@ def map_event(ev_obj) -> K8sEvent:
         first_seen=str(ev_obj.first_timestamp) if ev_obj.first_timestamp else None,
         last_seen=str(ev_obj.last_timestamp) if ev_obj.last_timestamp else None,
     )
+
+
+def map_pods_batch(items, *, cluster: str = "") -> list:
+    """Convenience: hoist `now` once for a list of pods."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    return [map_pod(p, cluster=cluster, now=now) for p in items]
+
+
+def map_nodes_batch(items, *, pod_count_by_node: dict | None = None, cluster: str = "") -> list:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    pod_count_by_node = pod_count_by_node or {}
+    return [
+        map_node(n, pod_count=pod_count_by_node.get(n.metadata.name, 0), cluster=cluster, now=now)
+        for n in items
+    ]
+
+
+def map_namespaces_batch(items, *, cluster: str = "") -> list:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    return [map_namespace(ns, cluster=cluster, now=now) for ns in items]
