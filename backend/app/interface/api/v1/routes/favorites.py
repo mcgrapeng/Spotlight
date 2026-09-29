@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.application.dto import FavoriteCreate, FavoriteOut
 from app.application.use_cases.favorites import FavoriteUseCases
 from app.interface.api.v1.dependencies import favorite_uc
-from app.interface.api.v1.schemas import FavoriteCreate, FavoriteOut
 
 router = APIRouter(tags=["favorites"])
 

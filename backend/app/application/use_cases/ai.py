@@ -10,10 +10,11 @@ Business rules (single source of truth):
 """
 from __future__ import annotations
 
+from app.application.dto import AIAnalyzeOut
 from app.application.ports.outbound import AIRepositoryPort
 from app.domain.entities.ai import AIAnalysisRequest, AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
-from app.interface.api.v1.schemas import AIAnalyzeOut
+
 
 class SingleActiveProviderError(ValueError):
     """Raised when an operation would result in >1 enabled providers."""

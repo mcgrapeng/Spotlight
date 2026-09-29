@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.application.use_cases.resources import ResourceUseCases
-from app.interface.api.v1.dependencies import resource_uc
-from app.interface.api.v1.schemas import EventOut
+from app.application.dto import EventOut
+from app.application.use_cases.events import EventUseCases
+from app.interface.api.v1.dependencies import event_uc
 
 router = APIRouter(tags=["events"])
 
@@ -16,6 +16,6 @@ async def list_events(
     namespace: str | None = Query(default=None),
     involved: str | None = Query(default=None),
     limit: int = Query(default=200, le=1000),
-    uc: ResourceUseCases = Depends(resource_uc),
+    uc: EventUseCases = Depends(event_uc),
 ):
     return await uc.list_events(cluster, namespace, involved, limit)

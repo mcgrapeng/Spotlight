@@ -1,14 +1,15 @@
 """Log use case: read & stream pod logs with severity classification + filtering."""
 from __future__ import annotations
 
+import re
 from typing import Iterator
 
+from app.application.dto import LogStreamParams
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.services.log_classifier import get_classifier
 from app.domain.services.log_parser import parse_log_line
 from app.domain.value_objects.enums import LogSeverity
 from app.domain.value_objects.primitives import LogFilter, ResourceRef
-from app.interface.api.v1.schemas import LogLineOut
 
 
 class LogUseCases:
@@ -19,25 +20,25 @@ class LogUseCases:
     async def read_history(
         self, ref: ResourceRef, container: str | None, tail: int,
         since: str | None = None,
-    ) -> list[LogLineOut]:
+    ) -> list[LogStreamParams]:
         entries = await self._repo.read_logs(ref, container, tail, since=since)
         return [self._enrich(e) for e in entries]
 
     def stream(
         self, ref: ResourceRef, container: str | None, tail: int,
-    ) -> Iterator[LogLineOut]:
+    ) -> Iterator[LogStreamParams]:
         for entry in self._repo.stream_logs(ref, container, tail):
             yield self._enrich(entry)
 
-    def _enrich(self, entry) -> LogLineOut:
+    def _enrich(self, entry) -> LogStreamParams:
         ts, content = parse_log_line(entry.content, entry.container)
-        return LogLineOut(
+        return LogStreamParams(
             timestamp=ts, content=content, container=entry.container,
             severity=self._classifier.classify(content).value,
         )
 
 
-def apply_filter(entry: LogLineOut, flt: LogFilter) -> bool:
+def apply_filter(entry: LogStreamParams, flt: LogFilter) -> bool:
     """Apply a LogFilter to a classified entry. Pure."""
     if not flt.is_active():
         return True
@@ -57,8 +58,6 @@ def apply_filter(entry: LogLineOut, flt: LogFilter) -> bool:
         haystack = entry.content.lower() if flt.case_insensitive else entry.content
         needle = flt.keyword.lower() if flt.case_insensitive else flt.keyword
         if flt.regex:
-            import re
-
             if not re.search(needle, haystack):
                 return False
         elif needle not in haystack:

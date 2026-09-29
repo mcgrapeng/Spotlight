@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.application.use_cases.resources import ResourceUseCases
+from app.application.dto import DashboardOut, PodListOut, PodOut
+from app.application.use_cases.dashboard import DashboardUseCases
+from app.application.use_cases.pods import PodUseCases
 from app.domain.value_objects.primitives import ResourceRef
-from app.interface.api.v1.dependencies import resource_uc
-from app.interface.api.v1.schemas import DashboardOut, PodListOut, PodOut
+from app.interface.api.v1.dependencies import dashboard_uc, pod_uc
 
 router = APIRouter(tags=["pods"])
 
@@ -18,7 +19,7 @@ async def list_pods(
     status: str = Query(default="all"),
     search: str | None = Query(default=None),
     label_selector: str | None = Query(default=None),
-    uc: ResourceUseCases = Depends(resource_uc),
+    uc: PodUseCases = Depends(pod_uc),
 ):
     return await uc.list_pods(cluster, namespace, status, search, label_selector)
 
@@ -26,9 +27,9 @@ async def list_pods(
 @router.get("/pods/stats", response_model=DashboardOut)
 async def stats(
     cluster: str | None = Query(default=None),
-    uc: ResourceUseCases = Depends(resource_uc),
+    uc: DashboardUseCases = Depends(dashboard_uc),
 ):
-    return await uc.dashboard(cluster)
+    return await uc.build(cluster)
 
 
 @router.get("/pods/{namespace}/{name}", response_model=PodOut)
@@ -36,7 +37,7 @@ async def get_pod(
     namespace: str,
     name: str,
     cluster: str | None = Query(default=None),
-    uc: ResourceUseCases = Depends(resource_uc),
+    uc: PodUseCases = Depends(pod_uc),
 ):
     try:
         return await uc.get_pod(

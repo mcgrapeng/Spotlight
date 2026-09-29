@@ -1,14 +1,27 @@
-"""Tests for the K8s resource use cases — using a hand-rolled fake repository.
+"""Tests for the focused K8s use cases — using hand-rolled fake repositories.
+
+After the god-class split:
+- PodUseCases owns list_pods + get_pod
+- NamespaceUseCases owns list_namespaces
+- EventUseCases owns list_events
+- DashboardUseCases owns dashboard aggregation
 
 No K8s SDK calls → fast, deterministic.
 """
 import pytest
 
-from app.application.use_cases.resources import ResourceUseCases
+from app.application.use_cases.dashboard import DashboardUseCases
+from app.application.use_cases.events import EventUseCases
+from app.application.use_cases.namespaces import NamespaceUseCases
+from app.application.use_cases.pods import PodUseCases
 from app.domain.entities.resources import (
-    Container, K8sEvent, Namespace, Node, Pod,
+    Container,
+    K8sEvent,
+    Namespace,
+    Node,
+    Pod,
 )
-from app.domain.value_objects.primitives import LabelSelector, ResourceRef
+from app.domain.value_objects.primitives import ResourceRef
 
 
 class FakeK8sRepo:
@@ -20,11 +33,11 @@ class FakeK8sRepo:
         self.events: list[K8sEvent] = []
         self.namespaces: list[Namespace] = []
 
-    def list_clusters(self): return []
+    async def list_clusters(self): return []
     def current_cluster(self): return None
-    def list_namespaces(self, cluster): return list(self.namespaces)
+    async def list_namespaces(self, cluster): return list(self.namespaces)
 
-    def list_pods(self, cluster, namespace, label_selector, search, status):
+    async def list_pods(self, cluster, namespace, label_selector, search, status):
         items = self.pods
         if namespace and namespace != "_all":
             items = [p for p in items if p.namespace == namespace]
@@ -35,17 +48,17 @@ class FakeK8sRepo:
             items = [p for p in items if p.phase.lower() == status.lower()]
         return items
 
-    def get_pod(self, ref):
+    async def get_pod(self, ref):
         for p in self.pods:
             if p.name == ref.name and p.namespace == ref.namespace:
                 return p
         raise KeyError(ref.name)
 
-    def list_events(self, cluster, namespace, involved_name, limit):
+    async def list_events(self, cluster, namespace, involved_name, limit):
         return list(self.events)[:limit]
 
-    def list_nodes(self, cluster): return list(self.nodes)
-    def read_logs(self, *a, **kw): return []
+    async def list_nodes(self, cluster): return list(self.nodes)
+    async def read_logs(self, *a, **kw): return []
     def stream_logs(self, *a, **kw):
         return iter([])
 
@@ -77,8 +90,10 @@ def repo() -> FakeK8sRepo:
         ),
     ]
     repo.nodes = [
-        Node(name="n1", status="Ready", roles=("worker",), version="v1.30", os_image="Ubuntu 22.04",
-             cpu_capacity="4", memory_capacity="8Gi", cpu_allocatable="3.5", memory_allocatable="7Gi",
+        Node(name="n1", status="Ready", roles=("worker",),
+             kubelet_version="v1.30", os_image="Ubuntu 22.04",
+             cpu_capacity="4", memory_capacity="8Gi",
+             cpu_allocatable="3.5", memory_allocatable="7Gi",
              pod_count=2, age_seconds=86400),
     ]
     repo.events = [
@@ -95,60 +110,58 @@ def repo() -> FakeK8sRepo:
     return repo
 
 
-# ── list_pods ───────────────────────────────────────────────────────────────
-def test_list_pods_all(repo):
-    uc = ResourceUseCases(repo)
-    result = uc.list_pods(None, None, "all", None, None)
+# ── PodUseCases ──────────────────────────────────────────────────────────
+async def test_list_pods_all(repo):
+    uc = PodUseCases(repo)
+    result = await uc.list_pods(None, None, "all", None, None)
     assert result.total == 3
-    # sorted by namespace then name
     assert result.items[0].namespace == "default"
     assert result.items[0].name == "p-crash"
 
 
-def test_list_pods_filter_namespace(repo):
-    uc = ResourceUseCases(repo)
-    result = uc.list_pods(None, "kube-system", "all", None, None)
+async def test_list_pods_filter_namespace(repo):
+    uc = PodUseCases(repo)
+    result = await uc.list_pods(None, "kube-system", "all", None, None)
     assert result.total == 1
     assert result.items[0].name == "p-search"
 
 
-def test_list_pods_filter_search(repo):
-    uc = ResourceUseCases(repo)
-    result = uc.list_pods(None, None, "all", "crash", None)
+async def test_list_pods_filter_search(repo):
+    uc = PodUseCases(repo)
+    result = await uc.list_pods(None, None, "all", "crash", None)
     assert result.total == 1
     assert result.items[0].name == "p-crash"
 
 
-def test_list_pods_filter_status(repo):
-    uc = ResourceUseCases(repo)
-    result = uc.list_pods(None, None, "Running", None, None)
+async def test_list_pods_filter_status(repo):
+    uc = PodUseCases(repo)
+    result = await uc.list_pods(None, None, "Running", None, None)
     assert result.total == 2
 
 
-# ── get_pod ─────────────────────────────────────────────────────────────────
-def test_get_pod_success(repo):
-    uc = ResourceUseCases(repo)
+async def test_get_pod_success(repo):
+    uc = PodUseCases(repo)
     ref = ResourceRef(cluster="", namespace="default", kind="Pod", name="p-ok")
-    p = uc.get_pod(ref)
+    p = await uc.get_pod(ref)
     assert p.name == "p-ok"
     assert p.phase == "Running"
 
 
-def test_get_pod_not_found(repo):
-    uc = ResourceUseCases(repo)
+async def test_get_pod_not_found(repo):
+    uc = PodUseCases(repo)
     ref = ResourceRef(cluster="", namespace="default", kind="Pod", name="missing")
     with pytest.raises(KeyError):
-        uc.get_pod(ref)
+        await uc.get_pod(ref)
 
 
-# ── dashboard ───────────────────────────────────────────────────────────────
-def test_dashboard_aggregates(repo):
-    uc = ResourceUseCases(repo)
-    d = uc.dashboard(None)
+# ── DashboardUseCases ───────────────────────────────────────────────────
+async def test_dashboard_aggregates(repo):
+    uc = DashboardUseCases(repo)
+    d = await uc.build(None)
     assert d.total_pods == 3
     assert d.running == 2
     assert d.failed == 0
-    assert d.warning_events == 2  # 2 distinct Warning entries (count field is per-row only)
+    assert d.warning_events == 2
     assert d.nodes_total == 1
     assert d.nodes_ready == 1
     assert d.namespaces_count == 2
@@ -156,16 +169,16 @@ def test_dashboard_aggregates(repo):
     assert d.restart_top[0]["pod"] == "default/p-crash"
 
 
-# ── events ─────────────────────────────────────────────────────────────────
-def test_events_sorted_by_recency(repo):
-    uc = ResourceUseCases(repo)
-    out = uc.list_events(None, None, None, 10)
+# ── EventUseCases ───────────────────────────────────────────────────────
+async def test_events_sorted_by_recency(repo):
+    uc = EventUseCases(repo)
+    out = await uc.list_events(None, None, None, 10)
     assert out[0].type == "Normal"  # more recent
     assert out[1].type == "Warning"
 
 
-# ── namespaces ─────────────────────────────────────────────────────────────
-def test_list_namespaces(repo):
-    uc = ResourceUseCases(repo)
-    ns = uc.list_namespaces(None)
+# ── NamespaceUseCases ───────────────────────────────────────────────────
+async def test_list_namespaces(repo):
+    uc = NamespaceUseCases(repo)
+    ns = await uc.list_namespaces(None)
     assert [n.name for n in ns] == ["default", "kube-system"]

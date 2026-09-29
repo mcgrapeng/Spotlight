@@ -12,7 +12,7 @@ class FakeLogRepo:
         self._history = lines
         self._follow = follow_extra or []
 
-    def read_logs(self, ref, container, tail_lines, since):
+    async def read_logs(self, ref, container, tail_lines, since):
         return [LogEntry(timestamp="", content=l, container=container or "") for l in self._history[:tail_lines]]
 
     def stream_logs(self, ref, container, tail_lines):
@@ -39,9 +39,9 @@ def ref() -> ResourceRef:
 
 
 # ── classification ──────────────────────────────────────────────────────────
-def test_history_is_classified(repo, ref):
+async def test_history_is_classified(repo, ref):
     uc = LogUseCases(repo)
-    out = uc.read_history(ref, "app", 100)
+    out = await uc.read_history(ref, "app", 100)
     assert [e.severity for e in out] == ["info", "debug", "error", "warn"]
 
 

@@ -3,16 +3,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.application.use_cases.ai import AIUseCases, SingleActiveProviderError
-from app.domain.entities.ai import AIProviderConfig
-from app.domain.value_objects.primitives import ResourceRef
-from app.interface.api.v1.dependencies import ai_uc
-from app.interface.api.v1.schemas import (
+from app.application.dto import (
     AIAnalyzeIn,
     AIAnalyzeOut,
     AIProviderIn,
     AIProviderOut,
 )
+from app.application.use_cases.ai import AIUseCases, SingleActiveProviderError
+from app.domain.entities.ai import AIProviderConfig
+from app.domain.value_objects.primitives import ResourceRef
+from app.interface.api.v1.dependencies import ai_uc
 
 router = APIRouter(tags=["ai"])
 

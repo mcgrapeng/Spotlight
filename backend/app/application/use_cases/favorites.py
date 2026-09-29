@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+from app.application.dto import FavoriteOut
 from app.application.ports.outbound import FavoriteRepositoryPort
 from app.domain.entities.ai import Favorite
-from app.interface.api.v1.schemas import FavoriteOut
 
 
 class FavoriteUseCases:

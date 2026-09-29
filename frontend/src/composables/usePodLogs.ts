@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { logsApi, podsApi } from '@/api/endpoints'
+import { splitLogLines } from '@/domain/services/logFormat'
 import type { LogLineOut } from '@/api/types'
 
 export interface UsePodLogsOptions {
@@ -15,15 +16,6 @@ export interface UsePodLogsOptions {
 
 const MAX_BUFFERED_DEFAULT = 10000
 const TAIL_LINES_DEFAULT = 500
-
-const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_RE, '')
-}
-
-function splitLogLines(raw: string): string[] {
-  return stripAnsi(raw).split('\n').filter(l => l.length > 0)
-}
 
 /**
  * Pod logs composable.
@@ -72,8 +64,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       if (!alive) return
       const flat: LogLineOut[] = []
       for (const item of items.slice(-max)) {
-        const lines_ = splitLogLines(item.content)
-        for (const content of lines_) {
+        for (const content of splitLogLines(item.content)) {
           flat.push({
             timestamp: item.timestamp,
             content,
@@ -123,8 +114,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         const raw = JSON.parse((e as MessageEvent).data) as LogLineOut
         const container = raw.container || '—'
         const severity = raw.severity || 'info'
-        const chunks = splitLogLines(raw.content)
-        for (const content of chunks) {
+        for (const content of splitLogLines(raw.content)) {
           pending.push({ timestamp: raw.timestamp, content, container, severity })
         }
         if (!flushTimer) {
