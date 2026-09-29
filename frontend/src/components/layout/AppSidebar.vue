@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
+import { STORAGE_KEYS } from '@/storage-keys'
 
 const props = withDefaults(defineProps<{
   collapsed?: boolean
@@ -28,7 +29,9 @@ let badgeTimer: ReturnType<typeof setInterval> | null = null
 // 否则用户在 default namespace 看到 badge 24 但页面 0 条，怀疑事件丢了。
 // (Audit §2.3 + 用户实测反馈)
 const badgeKey = computed(() =>
-  `events-badge:${cluster.activeCluster ?? 'none'}:${cluster.activeNamespace || '_all'}`,
+  STORAGE_KEYS.cacheEventsBadgeFor(
+    cluster.activeCluster ?? 'none', cluster.activeNamespace || '_all',
+  ),
 )
 const badgeFetch = useCachedFetch<number>({
   key: badgeKey.value,

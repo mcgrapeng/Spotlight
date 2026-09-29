@@ -1,6 +1,6 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { logsApi, podsApi } from '@/api/endpoints'
-import type { LogLine } from '@/domain/types'
+import type { LogLineOut } from '@/api/types'
 
 export interface UsePodLogsOptions {
   /* Pinia store (or anything exposing activeCluster) — read reactively. */
@@ -38,7 +38,7 @@ function splitLogLines(raw: string): string[] {
 export function usePodLogs(opts: UsePodLogsOptions) {
   // ponytail: shallowRef — buffer replaced whole on each flush; never mutate inner line
   // objects, so deep reactivity would waste proxy overhead on every field of every line.
-  const lines = shallowRef<LogLine[]>([])
+  const lines = shallowRef<LogLineOut[]>([])
   const streaming = ref(false)
   const error = ref<string | null>(null)
   const unreadCount = ref(0)
@@ -70,7 +70,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         null, tail,
       )
       if (!alive) return
-      const flat: LogLine[] = []
+      const flat: LogLineOut[] = []
       for (const item of items.slice(-max)) {
         const lines_ = splitLogLines(item.content)
         for (const content of lines_) {
@@ -100,7 +100,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     es = new EventSource(url)
     streaming.value = true
 
-    let pending: LogLine[] = []
+    let pending: LogLineOut[] = []
     let flushTimer: ReturnType<typeof setTimeout> | null = null
 
     function flush() {
@@ -120,7 +120,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     es.addEventListener('log', (e) => {
       if (!alive) return
       try {
-        const raw = JSON.parse((e as MessageEvent).data) as LogLine
+        const raw = JSON.parse((e as MessageEvent).data) as LogLineOut
         const container = raw.container || '—'
         const severity = raw.severity || 'info'
         const chunks = splitLogLines(raw.content)

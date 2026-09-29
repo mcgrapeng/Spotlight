@@ -1,4 +1,4 @@
-import type { LogLine, LogSeverity } from '@/domain/types'
+import type { LogLineOut, LogSeverity } from '@/api/types'
 
 /**
  * Stack-trace grouping: consecutive lines at ERROR-or-higher collapse into a
@@ -9,8 +9,8 @@ import type { LogLine, LogSeverity } from '@/domain/types'
  * (e.g. backend noise vs a real stack trace).
  */
 export type LineEntry =
-  | { kind: 'line'; line: LogLine; index: number }
-  | { kind: 'group'; lines: LogLine[]; firstIndex: number }
+  | { kind: 'line'; line: LogLineOut; index: number }
+  | { kind: 'group'; lines: LogLineOut[]; firstIndex: number }
 
 const STACK_DELIMS: ReadonlySet<LogSeverity> = new Set<LogSeverity>([
   'warn', 'error', 'critical', 'fatal',
@@ -21,10 +21,10 @@ export interface GroupOptions {
   minGroupSize?: number
 }
 
-export function groupStackTraces(lines: LogLine[], opts: GroupOptions = {}): LineEntry[] {
+export function groupStackTraces(lines: LogLineOut[], opts: GroupOptions = {}): LineEntry[] {
   const minGroup = Math.max(2, opts.minGroupSize ?? 3)
   const out: LineEntry[] = []
-  let buf: LogLine[] = []
+  let buf: LogLineOut[] = []
   let bufStart = 0
   const flush = () => {
     if (buf.length >= minGroup) {
@@ -81,7 +81,7 @@ export interface ClientFilter {
   minSeverity: LogSeverity | null
 }
 
-export function applyClientFilter(lines: LogLine[], f: ClientFilter): LogLine[] {
+export function applyClientFilter(lines: LogLineOut[], f: ClientFilter): LogLineOut[] {
   let l = lines
   if (f.minSeverity) {
     const minRank = (sev: LogSeverity) =>

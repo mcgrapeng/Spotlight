@@ -103,56 +103,78 @@ async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
     `inter_line_delay` is the pause between successive lines so the child
     has time to consume each one before the next arrives.
     """
+    # Ponytail: master_fd must be released on EVERY exit path — including
+    # asyncio.create_subprocess_exec throwing (FileNotFoundError on a bad
+    # binary, PermissionError on a non-executable, etc.). We openpty() FIRST,
+    # then wrap the rest in try/finally. Previous versions only had
+    # try/finally around the post-spawn phase, which leaked the fd whenever
+    # the binary itself was missing.
     master_fd, slave_fd = pty.openpty()
     full_env = os.environ.copy()
     if env:
         full_env.update(env)
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdin=slave_fd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=full_env,
-    )
-    # Parent no longer needs the slave fd; the child owns it now.
-    os.close(slave_fd)
 
     loop = asyncio.get_event_loop()
     try:
-        await asyncio.wait_for(
-            loop.run_in_executor(None, _feed_lines, master_fd, lines, inter_line_delay),
-            timeout=max(10.0, inter_line_delay * (len(lines) + 1)),
-        )
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=slave_fd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=full_env,
+            )
+        finally:
+            # Always close the slave fd from the parent — child inherited
+            # its own copy via fork(). If subprocess creation threw, this
+            # is the only cleanup needed for the slave side.
+            try:
+                os.close(slave_fd)
+            except OSError:
+                pass
+
+        # ponytail: master_fd leaks were the single biggest production risk
+        # here. Any non-TimeoutError on the executor / communicate path
+        # (executor shutdown, ProcessLookupError on already-dead proc, etc.)
+        # used to skip the os.close entirely. Over a day of failed logins
+        # that exhausts ulimit -n and the whole backend goes EMFILE. Always
+        # close the master fd, regardless of how we exit.
+        try:
+            try:
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, _feed_lines, master_fd, lines, inter_line_delay),
+                    timeout=max(10.0, inter_line_delay * (len(lines) + 1)),
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return (124, "", "timeout")
+
+            try:
+                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return (124, "", "timeout")
+
+            return (
+                proc.returncode or 0,
+                stdout_b.decode("utf-8", "replace"),
+                stderr_b.decode("utf-8", "replace"),
+            )
+        finally:
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+    except BaseException:
+        # If subprocess creation itself threw, we still need to close master_fd
+        # — try/finally above only ran the slave-close branch.
         try:
             os.close(master_fd)
         except OSError:
             pass
-        return (124, "", "timeout")
-
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        try:
-            os.close(master_fd)
-        except OSError:
-            pass
-        return (124, "", "timeout")
-
-    try:
-        os.close(master_fd)
-    except OSError:
-        pass
-
-    return (
-        proc.returncode or 0,
-        stdout_b.decode("utf-8", "replace"),
-        stderr_b.decode("utf-8", "replace"),
-    )
+        raise
 
 
 def _feed_lines(fd: int, lines: list[bytes], delay: float) -> None:
@@ -310,15 +332,20 @@ async def probe_rbac(*, timeout: float = 15.0) -> dict[str, bool]:
     return whether the current Teleport role allows it. Lets the frontend
     distinguish "no data because RBAC denied" from "no data because the
     cluster is genuinely empty" without leaking Teleport internals.
+
+    Ponytail: previous version did 6 sequential subprocess calls (~1.2-3s
+    blocking the event loop). Now all 6 fire in parallel via
+    `asyncio.gather`; each individual probe runs in the default threadpool
+    via `run_in_threadpool` so the event loop stays free. Worst case is
+    now max(single probe) ≈ 200-500ms.
     """
+    import asyncio
+    from fastapi.concurrency import run_in_threadpool
+
     s = get_settings()
     if not tsh_available("kubectl"):
-        # No kubectl — fall back to tsh (the `tsh proxy-kube` flow is
-        # unrelated; assume allowed since we can't probe).
         return {res: True for res, _ in _RBAC_PROBES}
 
-    # Find the active kubeconfig path the pool is using so the probe shares
-    # the same credential set as actual API calls.
     kubeconfig = (
         s.kubeconfig_path
         or os.environ.get("KUBECONFIG")
@@ -327,18 +354,32 @@ async def probe_rbac(*, timeout: float = 15.0) -> dict[str, bool]:
     if not Path(kubeconfig).exists():
         return {res: False for res, _ in _RBAC_PROBES}
 
-    results: dict[str, bool] = {}
-    for resource, verb in _RBAC_PROBES:
-        rc, out, _ = await _run(
-            ["kubectl", "auth", "can-i", verb, resource,
-             f"--kubeconfig={kubeconfig}"],
-            timeout=5.0,
-        )
-        # `kubectl auth can-i` prints "yes" or "no" plus optional warning
-        # text on stderr. Treat "yes" anywhere in stdout as allowed.
-        allowed = rc == 0 and "yes" in out.lower().split("\n")[0]
-        results[resource] = allowed
-    return results
+    def run_kubectl(resource: str, verb: str) -> bool:
+        """Sync probe — runs in the threadpool."""
+        import subprocess
+        try:
+            r = subprocess.run(
+                ["kubectl", "auth", "can-i", verb, resource,
+                 f"--kubeconfig={kubeconfig}"],
+                capture_output=True, text=True, timeout=4.0,
+            )
+        except Exception:
+            return False
+        # `kubectl auth can-i` prints "yes" or "no" plus optional warning text
+        # on stderr. Treat "yes" anywhere in stdout's first line as allowed.
+        return r.returncode == 0 and "yes" in r.stdout.lower().split("\n")[0]
+
+    async def probe_one(resource: str, verb: str) -> bool:
+        try:
+            return await asyncio.wait_for(
+                run_in_threadpool(run_kubectl, resource, verb),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
+            return False
+
+    pairs = await asyncio.gather(*(probe_one(r, v) for r, v in _RBAC_PROBES))
+    return dict(zip([r for r, _ in _RBAC_PROBES], pairs))
 
 
 async def kube_login(cluster: str, *,

@@ -5,6 +5,7 @@ import { ArrowLeft, RefreshCw, Bot, PanelLeftClose, PanelLeftOpen, AlertCircle, 
 import { podsApi, eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { usePodLogs } from '@/composables/usePodLogs'
+import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -17,7 +18,8 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { cn } from '@/lib/utils'
 import dayjs from '@/utils/dayjs'
-import type { PodInfo, LogLine, EventInfo } from '@/domain/types'
+import { STORAGE_KEYS } from '@/storage-keys'
+import type { PodOut, LogLineOut, EventOut } from '@/api/types'
 
 function formatRel(iso: string | null) {
   if (!iso) return '—'
@@ -27,14 +29,11 @@ function formatRel(iso: string | null) {
 const route = useRoute()
 const router = useRouter()
 const cluster = useClusterStore()
-const pod = ref<PodInfo | null>(null)
-const loading = ref(true)
-const error = ref<string | null>(null)
 const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
 const analyzerOpen = ref(false)
 const metaCollapsed = ref(true)
-const META_LS_KEY = 'spotlight:pod-meta-collapsed'
+const META_LS_KEY = STORAGE_KEYS.appPodMetaCollapsed
 
 onMounted(() => {
   try {
@@ -61,54 +60,43 @@ const { lines: logLines, unreadCount } = usePodLogs({
   streaming: logStreaming,
 })
 
-const filteredLogsForAI = ref<readonly LogLine[]>([])
-onMounted(() => { logUnread.value = unreadCount.value })
-
+const filteredLogsForAI = ref<readonly LogLineOut[]>([])
 // Keep logUnread in sync with composable (it owns the count via SSR appends).
+// Module-level watch (not onMounted) so it survives HMR and the page-load
+// race between component setup and log stream startup.
 watch(unreadCount, (v) => { logUnread.value = v }, { immediate: true })
 
-async function load() {
-  if (!name.value) return
-  loading.value = true
-  error.value = null
-  try {
-    pod.value = await podsApi.get(cluster.activeCluster!, namespace.value, name.value)
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
+// Ponytail: 把 load() + onMounted + name/namespace watch 替换成 useResource。
+const { data: pod, loading, error, reload: load } = useResource<PodOut>(
+  () => podsApi.get(cluster.activeCluster!, namespace.value, name.value),
+  {
+    watch: () => [name.value, namespace.value],
+    skip: () => !name.value,
+  },
+)
 
-onMounted(load)
-watch(() => `${name.value}/${namespace.value}`, load)
+// Pod events fetched lazily on tab switch. Separate resource so switching to
+// Events tab triggers a fetch (not blocked by the pod fetch).
+const podNs = computed(() => pod.value?.namespace ?? namespace.value)
+const {
+  data: podEventsRaw,
+  loading: podEventsLoading,
+} = useResource<EventOut[]>(
+  () => eventsApi.list({
+    cluster: cluster.activeCluster, namespace: podNs.value, limit: 200,
+  }).then((all) => all.filter(e =>
+    e.involved_kind === 'Pod' && e.involved_name === pod.value?.name,
+  )),
+  { watch: () => [podNs.value, pod.value?.name], skip: () => !podNs.value || !pod.value },
+)
+const podEvents = computed(() => podEventsRaw.value ?? [])
+
 watch(tab, (v) => {
   logsTabActive.value = v === 'logs'
   // Coming back to the Logs tab means the user is looking — reset unread pill.
   if (v === 'logs') logUnread.value = 0
-  if (v === 'events') loadPodEvents()
 })
 function back() { router.push({ name: 'pods' }) }
-
-const podEvents = ref<EventInfo[]>([])
-const podEventsLoading = ref(false)
-async function loadPodEvents() {
-  if (!pod.value || !cluster.activeCluster) return
-  podEventsLoading.value = true
-  try {
-    const all = await eventsApi.list({
-      cluster: cluster.activeCluster,
-      namespace: pod.value.namespace,
-      limit: 200,
-    })
-    podEvents.value = all.filter(e =>
-      e.involved_kind === 'Pod' && e.involved_name === pod.value!.name,
-    )
-  } catch { /* silent */ }
-  finally {
-    podEventsLoading.value = false
-  }
-}
 </script>
 
 <template>

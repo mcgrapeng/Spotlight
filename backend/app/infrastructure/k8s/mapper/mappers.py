@@ -119,7 +119,7 @@ def map_node(node_obj, *, pod_count: int = 0, cluster: str = "") -> Node:
         name=node_obj.metadata.name,
         status=status,
         roles=roles,
-        version=node_obj.status.node_info.kubelet_version,
+        kubelet_version=node_obj.status.node_info.kubelet_version,
         os_image=node_obj.status.node_info.os_image,
         cpu_capacity=cap.get("cpu", ""),
         memory_capacity=cap.get("memory", ""),

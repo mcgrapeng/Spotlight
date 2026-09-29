@@ -9,33 +9,29 @@ import StatCard from '@/components/common/StatCard.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, parseCPU, parseMemory, formatMillicores, formatMiB } from '@/lib/utils'
-import { authApi, nodesApi } from '@/api/endpoints'
+import { nodesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { usePermissionsStore } from '@/stores/permissions'
 import { useCachedFetch } from '@/composables/useCachedFetch'
-import type { NodeInfo } from '@/domain/types'
+import type { NodeOut } from '@/api/types'
 
 const cluster = useClusterStore()
-const nodes = ref<NodeInfo[]>([])
+const nodes = ref<NodeOut[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
-// RBAC probe — null until fetched. When `nodes` is empty AND `nodes: false`
-// here, we know it's a Teleport role config issue, not a genuinely empty
-// cluster.
-const permissions = ref<Record<string, boolean> | null>(null)
+// Shared RBAC probe — see stores/permissions.ts. The 5min cache means
+// navigating Dashboard → Nodes doesn't re-probe (Dashboard already did it).
+const perms = usePermissionsStore()
+const blockedByRbac = computed(() => perms.isBlocked('nodes') === true)
 
 const nodesCacheKey = computed(() => `nodes:${cluster.activeCluster || 'none'}`)
-const nodesFetch = useCachedFetch<NodeInfo[]>({
+const nodesFetch = useCachedFetch<NodeOut[]>({
   key: nodesCacheKey.value,
   fetcher: () => nodesApi.list(cluster.activeCluster!),
   data: nodes,
   loading,
   error,
   ttlMs: 60_000,
-})
-
-const blockedByRbac = computed(() => {
-  if (permissions.value === null) return null  // unknown yet
-  return permissions.value.nodes === false
 })
 
 async function load() {
@@ -53,11 +49,8 @@ async function load() {
 }
 
 async function probePerms() {
-  try {
-    permissions.value = await authApi.permissions()
-  } catch {
-    permissions.value = null
-  }
+  // Delegates to the shared store; cheap hit on cache, else single probe.
+  await perms.refresh()
 }
 onMounted(() => { load(); probePerms() })
 watch(() => cluster.activeCluster, () => { load(); probePerms() })
@@ -123,11 +116,11 @@ function nodeIssue(d: typeof nodeDisplays.value[number]): Issue {
 }
 
 const MAX_PODS_PER_NODE = 110
-function podPct(n: NodeInfo): number {
+function podPct(n: NodeOut): number {
   if (n.pod_count <= MAX_PODS_PER_NODE) return Math.round((n.pod_count / MAX_PODS_PER_NODE) * 100)
   return 100  // 超载 bar 顶到 100%，靠颜色提示
 }
-function podOverloaded(n: NodeInfo): boolean {
+function podOverloaded(n: NodeOut): boolean {
   return n.pod_count > MAX_PODS_PER_NODE
 }
 // ponytail: 仅 Pod 利用率有真实数据（pod_count / MAX），保留 bar；

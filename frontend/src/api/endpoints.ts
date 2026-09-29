@@ -1,8 +1,8 @@
 import { http } from './client'
 import type {
-  AIAnalysisResult, AIProvider, AIProviderInput, ClusterInfo, DashboardStats,
-  EventInfo, Favorite, LogLine, NamespaceInfo, NodeInfo, PodInfo, PodListResponse,
-} from '@/domain/types'
+  AIAnalyzeOut, AIProviderOut, AIProviderIn, ClusterOut, DashboardOut,
+  EventOut, FavoriteOut, LogLineOut, NamespaceOut, NodeOut, PodOut, PodListOut,
+} from '@/api/types'
 
 const ctx = (c?: string | null) => ({ params: { context: c || undefined } })
 
@@ -47,12 +47,12 @@ export const authApi = {
 }
 
 export const clustersApi = {
-  list: () => http.get<ClusterInfo[]>('/clusters').then((r) => r.data),
+  list: () => http.get<ClusterOut[]>('/clusters').then((r) => r.data),
 }
 
 export const namespacesApi = {
   list: (cluster?: string | null) =>
-    http.get<NamespaceInfo[]>('/namespaces', { params: { context: cluster || undefined } }).then((r) => r.data),
+    http.get<NamespaceOut[]>('/namespaces', { params: { context: cluster || undefined } }).then((r) => r.data),
 }
 
 export const podsApi = {
@@ -61,7 +61,7 @@ export const podsApi = {
     status?: string; search?: string; labelSelector?: string;
     signal?: AbortSignal;
   }) =>
-    http.get<PodListResponse>('/pods', {
+    http.get<PodListOut>('/pods', {
       params: {
         context: params.cluster || undefined,
         namespace: params.namespace || undefined,
@@ -71,14 +71,14 @@ export const podsApi = {
       signal: params.signal,
     }).then((r) => r.data),
   get: (cluster: string | null, namespace: string, name: string) =>
-    http.get<PodInfo>(`/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, ctx(cluster)).then((r) => r.data),
+    http.get<PodOut>(`/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, ctx(cluster)).then((r) => r.data),
   stats: (cluster?: string | null) =>
-    http.get<DashboardStats>('/pods/stats', { params: { context: cluster || undefined } }).then((r) => r.data),
+    http.get<DashboardOut>('/pods/stats', { params: { context: cluster || undefined } }).then((r) => r.data),
   historyLogs: (
     cluster: string | null, namespace: string, name: string,
     container?: string | null, tail = 500, since?: string,
   ) =>
-    http.get<{ total: number; items: LogLine[] }>(
+    http.get<{ total: number; items: LogLineOut[] }>(
       `/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`,
       { params: {
           context: cluster || undefined,
@@ -104,7 +104,7 @@ export const logsApi = {
 
 export const eventsApi = {
   list: (params: { cluster?: string | null; namespace?: string | null; involved?: string; limit?: number }) =>
-    http.get<EventInfo[]>('/events', {
+    http.get<EventOut[]>('/events', {
       params: {
         context: params.cluster || undefined,
         namespace: params.namespace || undefined,
@@ -116,27 +116,27 @@ export const eventsApi = {
 
 export const nodesApi = {
   list: (cluster?: string | null) =>
-    http.get<NodeInfo[]>('/nodes', { params: { context: cluster || undefined } }).then((r) => r.data),
+    http.get<NodeOut[]>('/nodes', { params: { context: cluster || undefined } }).then((r) => r.data),
 }
 
 export const favoritesApi = {
-  list: () => http.get<Favorite[]>('/favorites').then((r) => r.data),
-  add: (payload: Omit<Favorite, 'id' | 'created_at'>) =>
-    http.post<Favorite>('/favorites', payload).then((r) => r.data),
+  list: () => http.get<FavoriteOut[]>('/favorites').then((r) => r.data),
+  add: (payload: Omit<FavoriteOut, 'id' | 'created_at'>) =>
+    http.post<FavoriteOut>('/favorites', payload).then((r) => r.data),
   remove: (id: number) => http.delete(`/favorites/${id}`),
 }
 
 export const aiApi = {
-  listProviders: () => http.get<AIProvider[]>('/ai/providers').then((r) => r.data),
-  addProvider: (p: AIProviderInput) => http.post<AIProvider>('/ai/providers', p).then((r) => r.data),
-  updateProvider: (id: number, p: AIProviderInput) =>
-    http.put<AIProvider>(`/ai/providers/${id}`, p).then((r) => r.data),
+  listProviders: () => http.get<AIProviderOut[]>('/ai/providers').then((r) => r.data),
+  addProvider: (p: AIProviderIn) => http.post<AIProviderOut>('/ai/providers', p).then((r) => r.data),
+  updateProvider: (id: number, p: AIProviderIn) =>
+    http.put<AIProviderOut>(`/ai/providers/${id}`, p).then((r) => r.data),
   deleteProvider: (id: number) => http.delete(`/ai/providers/${id}`),
   setDefault: (id: number) =>
-    http.post<AIProvider>(`/ai/providers/${id}/default`).then((r) => r.data),
+    http.post<AIProviderOut>(`/ai/providers/${id}/default`).then((r) => r.data),
   analyze: (cluster: string | null, namespace: string, name: string,
              providerId: number, logLines: string[], question: string) =>
-    http.post<AIAnalysisResult>(
+    http.post<AIAnalyzeOut>(
       `/ai/analyze/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
       { provider_id: providerId, question, log_lines: logLines },
       { params: { cluster: cluster || undefined } },

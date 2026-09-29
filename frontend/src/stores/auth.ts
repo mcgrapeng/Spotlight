@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { authApi, type AuthStatus, type LoginResult } from '@/api/endpoints'
+import { useClusterStore } from './cluster'
 
 /**
  * Auth store — controls the login screen for environments that route K8s
@@ -82,6 +83,10 @@ export const useAuthStore = defineStore('auth', () => {
             cluster: '',
           }
         }
+        // Ponytail: 同步全局 cluster 选中态,否则 LoginView 选完集群跳走
+        // 后,UI 顶部的 ClusterCombobox 还是空的(namespace 选不到、PodListView
+        // 拿不到 activeCluster)。setCluster 内部会触发 namespaces 重 fetch。
+        useClusterStore().setCluster(cluster)
         return true
       }
       error.value = r.message || 'kube login 失败'

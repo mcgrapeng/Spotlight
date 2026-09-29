@@ -66,7 +66,7 @@ class Node:
     name: str
     status: str  # NodeStatus
     roles: tuple[str, ...]
-    version: str
+    kubelet_version: str
     os_image: str
     cpu_capacity: str
     memory_capacity: str

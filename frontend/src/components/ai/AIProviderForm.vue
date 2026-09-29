@@ -11,19 +11,19 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import type { AIProviderInput } from '@/domain/types'
+import type { AIProviderIn } from '@/api/types'
 
 const props = defineProps<{
   open: boolean
-  initial?: Partial<AIProviderInput>
+  initial?: Partial<AIProviderIn>
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  save: [data: AIProviderInput]
+  save: [data: AIProviderIn]
 }>()
 
-const form = ref<AIProviderInput>({
+const form = ref<AIProviderIn>({
   name: props.initial?.name ?? '',
   provider: props.initial?.provider ?? 'openai',
   model: props.initial?.model ?? 'gpt-4o-mini',

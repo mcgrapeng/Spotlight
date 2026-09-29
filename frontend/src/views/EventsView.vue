@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight, Layers } from '@lucide/vue'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -11,7 +12,7 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { cn } from '@/lib/utils'
 import dayjs from '@/utils/dayjs'
-import type { EventInfo } from '@/domain/types'
+import type { EventOut } from '@/api/types'
 
 function formatRel(iso: string | null) {
   if (!iso) return '—'
@@ -21,9 +22,6 @@ function formatRel(iso: string | null) {
 const route = useRoute()
 const router = useRouter()
 const cluster = useClusterStore()
-const events = ref<EventInfo[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
 const expanded = ref<Set<string>>(new Set())
 
 // ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
@@ -55,51 +53,46 @@ function toggleExpand(name: string) {
   expanded.value = next
 }
 
-async function load() {
-  loading.value = true
-  error.value = null
-  try {
-    events.value = await eventsApi.list({
-      cluster: cluster.activeCluster,
-      namespace: cluster.activeNamespace,
-      limit: 500,
-    })
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(load)
-watch(() => cluster.activeCluster, load)
-watch(() => cluster.activeNamespace, load)
+// Ponytail: 用 useResource 取代手写 onMounted+watch+loading+error 三件套。
+// 这是 senior-engineer audit 里 #1 的样板重构。
+const { data: events, loading, error, reload: load } = useResource<EventOut[]>(
+  () => eventsApi.list({
+    cluster: cluster.activeCluster,
+    namespace: cluster.activeNamespace,
+    limit: 500,
+  }),
+  {
+    // cluster/namespace 任一变化就重拉
+    watch: () => [cluster.activeCluster, cluster.activeNamespace],
+    skip: () => !cluster.activeCluster,
+  },
+)
 
 const filtered = computed(() => {
-  if (typeFilter.value === 'all') return events.value
-  return events.value.filter(e => e.type === typeFilter.value)
+  if (typeFilter.value === 'all') return events.value ?? []
+  return (events.value ?? []).filter(e => e.type === typeFilter.value)
 })
 
 const countByType = computed<Record<string, number>>(() => {
   const c: Record<string, number> = { Warning: 0, Normal: 0 }
-  for (const e of events.value) {
+  for (const e of events.value ?? []) {
     if (e.type in c) c[e.type]++
   }
   return c
 })
 
-const totalEvents = computed(() => events.value.length)
+const totalEvents = computed(() => events.value?.length ?? 0)
 // ponytail: 告警数 = 告警源条目数（与列表行数一致）。每行的发生次数
 // 在 row 内部用 `×N 次` 单独显示 —— 这里不重复加总，避免与可见行数对不上。
 const warningEntries = computed(() =>
-  events.value.filter(e => e.type === 'Warning').length,
+  (events.value ?? []).filter(e => e.type === 'Warning').length,
 )
 </script>
 
 <template>
   <PageHeader
     :title="`Events · ${cluster.activeCluster || ''}`"
-    :subtitle="`${cluster.activeNamespace} · ${filtered.length} / ${events.length} 个事件`"
+    :subtitle="`${cluster.activeNamespace} · ${filtered.length} / ${totalEvents} 个事件`"
   >
     <template #actions>
       <Button variant="outline" size="sm" @click="load" :disabled="loading" aria-label="刷新">
@@ -136,13 +129,13 @@ const warningEntries = computed(() =>
           <span :class="cn(
             'tabular-nums text-2xs px-1.5 py-0.5 rounded',
             typeFilter === t ? 'bg-black/15' : 'bg-muted text-muted-foreground',
-          )">{{ t === 'all' ? events.length : countByType[t] }}</span>
+          )">{{ t === 'all' ? totalEvents : countByType[t] }}</span>
         </button>
         <span v-if="warningEntries > 0" class="text-xs text-warning ml-1 inline-flex items-center gap-1">
           <AlertTriangle :size="12" :stroke-width="2" />
           {{ warningEntries }} 个告警源
         </span>
-        <span v-if="totalEvents > events.length" class="text-xs text-muted-foreground ml-auto">
+        <span v-if="events && events.length > 0" class="text-xs text-muted-foreground ml-auto">
           只显示最近 {{ events.length }} / 总 {{ totalEvents }} 个
         </span>
       </div>
@@ -170,7 +163,7 @@ const warningEntries = computed(() =>
     <span>查看全集群事件</span>
   </div>
 
-  <LoadingState v-if="loading && events.length === 0" />
+  <LoadingState v-if="loading && totalEvents === 0" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="filtered.length === 0"

@@ -3,13 +3,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@lucide/vue'
 import { authApi, podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { usePermissionsStore } from '@/stores/permissions'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, formatPercent, formatNumber } from '@/lib/utils'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
-import type { DashboardStats, EventInfo } from '@/domain/types'
+import type { DashboardOut, EventOut } from '@/api/types'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import dayjs from '@/utils/dayjs'
@@ -20,19 +21,19 @@ function formatRel(iso: string | null) {
 }
 
 const cluster = useClusterStore()
-const stats = ref<DashboardStats | null>(null)
-const warns = ref<EventInfo[]>([])
+const stats = ref<DashboardOut | null>(null)
+const warns = ref<EventOut[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
-// RBAC probe — when nodes count is 0 because of denied access, show a
-// "blocked by Teleport role" hint next to the 节点 stat card.
-const permissions = ref<Record<string, boolean> | null>(null)
-const nodesBlocked = computed(() => permissions.value?.nodes === false)
+// Shared RBAC probe — see stores/permissions.ts. Refreshes lazily; cached
+// for 5min, so navigating Dashboard → Nodes doesn't re-probe.
+const perms = usePermissionsStore()
+const nodesBlocked = computed(() => perms.isBlocked('nodes') === true)
 
 const statsCacheKey = computed(() => `dashboard:${cluster.activeCluster || 'none'}`)
-const statsFetch = useCachedFetch<DashboardStats>({
+const statsFetch = useCachedFetch<DashboardOut>({
   key: statsCacheKey.value,
   fetcher: () => podsApi.stats(cluster.activeCluster!),
   data: stats,
@@ -66,11 +67,10 @@ async function load(silent = false) {
 }
 
 async function probePerms() {
-  try {
-    permissions.value = await authApi.permissions()
-  } catch {
-    permissions.value = null
-  }
+  // Delegates to the shared store. The store handles the 5min cache and
+  // dedupes concurrent requests across views, so a Dashboard→Nodes nav
+  // only hits /api/v1/auth/permissions once.
+  await perms.refresh()
 }
 
 onMounted(() => { load(); probePerms() })

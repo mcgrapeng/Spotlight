@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from app.application.dto import LogStreamParams
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.services.log_classifier import get_classifier
 from app.domain.services.log_parser import parse_log_line
 from app.domain.value_objects.enums import LogSeverity
 from app.domain.value_objects.primitives import LogFilter, ResourceRef
+from app.interface.api.v1.schemas import LogLineOut
 
 
 class LogUseCases:
@@ -19,25 +19,25 @@ class LogUseCases:
     async def read_history(
         self, ref: ResourceRef, container: str | None, tail: int,
         since: str | None = None,
-    ) -> list[LogStreamParams]:
+    ) -> list[LogLineOut]:
         entries = await self._repo.read_logs(ref, container, tail, since=since)
         return [self._enrich(e) for e in entries]
 
     def stream(
         self, ref: ResourceRef, container: str | None, tail: int,
-    ) -> Iterator[LogStreamParams]:
+    ) -> Iterator[LogLineOut]:
         for entry in self._repo.stream_logs(ref, container, tail):
             yield self._enrich(entry)
 
-    def _enrich(self, entry) -> LogStreamParams:
+    def _enrich(self, entry) -> LogLineOut:
         ts, content = parse_log_line(entry.content, entry.container)
-        return LogStreamParams(
+        return LogLineOut(
             timestamp=ts, content=content, container=entry.container,
             severity=self._classifier.classify(content).value,
         )
 
 
-def apply_filter(entry: LogStreamParams, flt: LogFilter) -> bool:
+def apply_filter(entry: LogLineOut, flt: LogFilter) -> bool:
     """Apply a LogFilter to a classified entry. Pure."""
     if not flt.is_active():
         return True

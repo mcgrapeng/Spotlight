@@ -10,10 +10,10 @@ Business rules (single source of truth):
 """
 from __future__ import annotations
 
-from app.application.dto import AnalyzeLogsResult
 from app.application.ports.outbound import AIRepositoryPort
 from app.domain.entities.ai import AIAnalysisRequest, AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
+from app.interface.api.v1.schemas import AIAnalyzeOut
 
 class SingleActiveProviderError(ValueError):
     """Raised when an operation would result in >1 enabled providers."""
@@ -50,7 +50,7 @@ class AIUseCases:
     async def analyze_logs(
         self, provider_id: int, ref: ResourceRef,
         log_lines: list[str], question: str,
-    ) -> AnalyzeLogsResult:
+    ) -> AIAnalyzeOut:
         cfg = await self._repo.get_provider(provider_id)
         if cfg is None:
             raise ValueError(f"ai provider {provider_id} not found")
@@ -62,7 +62,7 @@ class AIUseCases:
             provider_id=provider_id, pod_ref=ref, log_lines=bounded, question=question,
         )
         result = await self._repo.analyze(cfg, req)
-        return AnalyzeLogsResult(
+        return AIAnalyzeOut(
             answer=result.answer,
             model=result.model,
             latency_ms=result.latency_ms or 0,

@@ -7,10 +7,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+# Ponytail: 单一 config 共享给所有 entity-wrap schemas. 之前每个 schema 都要在
+# use_cases 里跑一遍 mapper(dto_from(pod_entity)) 才能变成 HTTP 返回 — 现在
+# 直接 `PodOut.model_validate(pod)` 一行搞定。dto/__init__.py 130 行 + mappers.py
+# 55 行 = ~185 行样板正在消失。
+_ENTITY_CONFIG = ConfigDict(from_attributes=True)
 
 
 class ClusterOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     name: str
     cluster: str
     user: str
@@ -45,6 +53,7 @@ class KubeLoginOut(BaseModel):
 
 
 class NamespaceOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     name: str
     status: str
     labels: dict[str, str] = Field(default_factory=dict)
@@ -52,6 +61,7 @@ class NamespaceOut(BaseModel):
 
 
 class ContainerOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     name: str
     image: str
     ready: bool
@@ -63,6 +73,7 @@ class ContainerOut(BaseModel):
 
 
 class PodOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     name: str
     namespace: str
     node: Optional[str] = None
@@ -91,6 +102,7 @@ class LogLineOut(BaseModel):
 
 
 class EventOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     name: str
     namespace: str
     type: str
@@ -104,10 +116,14 @@ class EventOut(BaseModel):
 
 
 class NodeOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     name: str
     status: str
     roles: list[str] = Field(default_factory=list)
-    version: str
+    # `version` and `kubelet_version` are the same value historically —
+    # kept as two fields for API compat. Schema is the source of truth;
+    # the dataclass exposes only kubelet_version.
+    version: Optional[str] = None
     os_image: str
     kubelet_version: str
     cpu_capacity: str
@@ -143,6 +159,7 @@ class FavoriteCreate(BaseModel):
 
 
 class FavoriteOut(BaseModel):
+    model_config = _ENTITY_CONFIG
     id: int
     resource_type: Literal["pod", "node", "namespace"]
     name: str

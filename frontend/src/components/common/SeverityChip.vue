@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { getSeverityToken } from '@/utils/severity'
-import type { LogSeverity } from '@/domain/types'
+import type { LogSeverity } from '@/api/types'
 
 const props = defineProps<{ severity: LogSeverity | string }>()
 const token = computed(() => getSeverityToken(props.severity))

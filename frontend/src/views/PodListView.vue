@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
 import { usePagination } from '@/composables/usePagination'
-import type { PodInfo } from '@/domain/types'
+import type { PodOut } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -63,13 +63,13 @@ const subtitle = computed(() => {
   return `${data.value.total.toLocaleString()} 个 · ${ns}`
 })
 
-function readyOf(p: PodInfo) { return p.containers.filter(c => c.ready).length }
-function restartSeverity(p: PodInfo) {
+function readyOf(p: PodOut) { return p.containers.filter(c => c.ready).length }
+function restartSeverity(p: PodOut) {
   if (p.restart_count > 100) return 'critical'
   if (p.restart_count > 5)   return 'warn'
   return 'normal'
 }
-function nodeShort(p: PodInfo) { return p.node ? p.node.split('.')[0] : null }
+function nodeShort(p: PodOut) { return p.node ? p.node.split('.')[0] : null }
 
 const PHASE_TONE: Record<string, string> = {
   Running:   'hover:bg-success/5',
@@ -78,11 +78,11 @@ const PHASE_TONE: Record<string, string> = {
   Succeeded: 'hover:bg-muted/40',
   Unknown:   'hover:bg-muted/40',
 }
-function rowClass(p: PodInfo) {
+function rowClass(p: PodOut) {
   return PHASE_TONE[p.phase] ?? 'hover:bg-muted/40'
 }
 
-function open(p: PodInfo) {
+function open(p: PodOut) {
   router.push({ name: 'pod-detail', params: { namespace: p.namespace, name: p.name } })
 }
 

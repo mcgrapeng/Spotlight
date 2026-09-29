@@ -1,5 +1,5 @@
 import { computed, type Ref } from 'vue'
-import type { LogLine } from '@/domain/types'
+import type { LogLineOut } from '@/api/types'
 
 export const SEVERITY_RANK: Record<string, number> = {
   trace: 0, debug: 0, info: 1, notice: 1,
@@ -9,7 +9,7 @@ export const SEVERITY_RANK: Record<string, number> = {
 }
 
 export function useLogFilters(opts: {
-  lines: Ref<readonly LogLine[]>
+  lines: Ref<readonly LogLineOut[]>
   search: Ref<string>
   minSeverity: Ref<number>
   max?: Ref<number>
@@ -18,7 +18,7 @@ export function useLogFilters(opts: {
     const q = opts.search.value.trim().toLowerCase()
     const minSev = opts.minSeverity.value
     const max = opts.max?.value ?? 50000
-    const out: LogLine[] = []
+    const out: LogLineOut[] = []
     for (const l of opts.lines.value) {
       if (minSev > 0 && (SEVERITY_RANK[l.severity.toLowerCase()] ?? 1) < minSev) continue
       if (q && !l.content.toLowerCase().includes(q) && !l.container.toLowerCase().includes(q)) continue

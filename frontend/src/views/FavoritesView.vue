@@ -1,41 +1,33 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { Star, Trash2, ExternalLink } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { favoritesApi } from '@/api/endpoints'
+import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import type { Favorite } from '@/domain/types'
+import type { FavoriteOut } from '@/api/types'
 
 const router = useRouter()
-const favorites = ref<Favorite[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
 
-async function load() {
-  loading.value = true
-  error.value = null
-  try {
-    favorites.value = await favoritesApi.list()
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(load)
+// Ponytail: 模板里只用 `favorites.length`,所以把 favorites 从 useResource
+// 抽成 computed 派生。T 不变,行数从 31 → 13。
+const { data: _raw, loading, error, reload: load } = useResource<FavoriteOut[]>(
+  () => favoritesApi.list(),
+)
+const favorites = computed(() => _raw.value ?? [])
 
 async function remove(id: number) {
   await favoritesApi.remove(id)
+  // Optimistic local remove — re-list on next mount.
   favorites.value = favorites.value.filter(f => f.id !== id)
 }
 
-function open(f: Favorite) {
+function open(f: FavoriteOut) {
   if (f.resource_type === 'pod') {
     router.push({ name: 'pod-detail', params: { name: f.name, namespace: f.namespace } })
   }

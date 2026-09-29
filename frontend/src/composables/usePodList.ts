@@ -1,6 +1,6 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { podsApi } from '@/api/endpoints'
-import type { PodListResponse } from '@/domain/types'
+import type { PodListOut } from '@/api/types'
 
 /**
  * Reactive pod list loader — production-hardened.
@@ -20,9 +20,9 @@ export function usePodList(opts: {
   search: Ref<string>
   debounceMs?: number
 }) {
-  // ponytail: shallowRef — PodListResponse reassigned whole; never mutate inner items
+  // ponytail: shallowRef — PodListOut reassigned whole; never mutate inner items
   // individually, so deep reactivity is wasted overhead on every prop of every pod.
-  const data = shallowRef<PodListResponse>({ total: 0, items: [] })
+  const data = shallowRef<PodListOut>({ total: 0, items: [] })
   const loading = ref(false)
   const error = ref<string | null>(null)
 

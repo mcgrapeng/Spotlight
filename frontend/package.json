@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "pnpm run types:check && vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "types:gen": "openapi-typescript http://127.0.0.1:8002/openapi.json -o src/api/types.ts",
+    "types:check": "openapi-typescript http://127.0.0.1:8002/openapi.json -o src/api/types.ts --check"
   },
   "dependencies": {
     "@lucide/vue": "1.47.0",
@@ -38,6 +40,7 @@
     "@vue/test-utils": "2.5.1",
     "autoprefixer": "^10.4.20",
     "happy-dom": "20.14.5",
+    "openapi-typescript": "7.13.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "~5.7.2",

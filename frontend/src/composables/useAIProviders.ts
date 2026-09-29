@@ -1,13 +1,13 @@
 import { computed, ref } from 'vue'
 import { aiApi } from '@/api/endpoints'
-import type { AIProvider } from '@/domain/types'
+import type { AIProviderOut } from '@/api/types'
 
 /**
  * AI providers composable.
  * Loads on mount, exposes reactive list + CRUD actions.
  */
 export function useAIProviders() {
-  const providers = ref<AIProvider[]>([])
+  const providers = ref<AIProviderOut[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -46,7 +46,7 @@ export function useAIProviders() {
     return p
   }
 
-  async function toggle(p: AIProvider) {
+  async function toggle(p: AIProviderOut) {
     const updated = await aiApi.updateProvider(p.id, {
       name: p.name, provider: p.provider, model: p.model,
       api_key: '',  // empty — backend keeps the existing key

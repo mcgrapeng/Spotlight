@@ -1,4 +1,4 @@
-import type { LogSeverity } from '@/domain/types'
+import type { LogSeverity } from '@/api/types'
 
 /**
  * Severity palette — single source of truth.

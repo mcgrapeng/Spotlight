@@ -9,10 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { useLogFilters, SEVERITY_RANK as SEV_RANK } from '@/composables/useLogFilters'
-import type { LogLine } from '@/domain/types'
+import { STORAGE_KEYS } from '@/storage-keys'
+import type { LogLineOut } from '@/api/types'
 
 const props = defineProps<{
-  lines: ReadonlyArray<LogLine>
+  lines: ReadonlyArray<LogLineOut>
   streaming?: boolean
   unreadCount?: number
   containers?: readonly string[]
@@ -22,17 +23,17 @@ const emit = defineEmits<{
   clear: []
   'update:streaming': [value: boolean]
   'consume-unread': []
-  'update:filtered': [value: readonly LogLine[]]
+  'update:filtered': [value: readonly LogLineOut[]]
 }>()
 
 // === State ===
 const search = ref('')
 const autoFollow = ref(true)
 const wrapMode = ref<'wrap' | 'nowrap'>(
-  (localStorage.getItem('spotlight:log-wrap') as 'wrap' | 'nowrap') ?? 'wrap',
+  (localStorage.getItem(STORAGE_KEYS.appLogWrap) as 'wrap' | 'nowrap') ?? 'wrap',
 )
 watch(wrapMode, (m) => {
-  try { localStorage.setItem('spotlight:log-wrap', m) } catch { /* quota / disabled */ }
+  try { localStorage.setItem(STORAGE_KEYS.appLogWrap, m) } catch { /* quota / disabled */ }
 })
 function toggleWrap() {
   wrapMode.value = wrapMode.value === 'wrap' ? 'nowrap' : 'wrap'
@@ -85,10 +86,10 @@ function traceIdColor(tid: string): string {
 // ponytail: JSON cache must live BEFORE the WeakMap helpers — they call parseJson at
 // decorate-time, and decorate runs when watch(displayedLines, {immediate:true}) tracks
 // its source during setup. If jsonCache were still in TDZ, cachedIsJson would throw.
-// ponytail: WeakMap keyed by LogLine — entries GC'd when the line drops out of the
+// ponytail: WeakMap keyed by LogLineOut — entries GC'd when the line drops out of the
 // buffer. Map<string,> grew unboundedly across long sessions (audit T1).
-const jsonCache = new WeakMap<LogLine, unknown>()
-function parseJson(line: LogLine): unknown {
+const jsonCache = new WeakMap<LogLineOut, unknown>()
+function parseJson(line: LogLineOut): unknown {
   const cached = jsonCache.get(line)
   if (cached !== undefined) return cached
   let parsed: unknown = null
@@ -101,11 +102,11 @@ function parseJson(line: LogLine): unknown {
 // ponytail: per-line WeakMap caches — auto-clean when lines drop out of the buffer.
 // Decorate once per line; render path reads primitives off the line, no per-row
 // regex/JSON.parse.
-const traceIdCache = new WeakMap<LogLine, string | null>()
-const isJsonCache = new WeakMap<LogLine, { isJson: boolean }>()
-const sigCache = new WeakMap<LogLine, string>()
+const traceIdCache = new WeakMap<LogLineOut, string | null>()
+const isJsonCache = new WeakMap<LogLineOut, { isJson: boolean }>()
+const sigCache = new WeakMap<LogLineOut, string>()
 
-function cachedTraceId(line: LogLine): string | null {
+function cachedTraceId(line: LogLineOut): string | null {
   let v = traceIdCache.get(line)
   if (v === undefined) {
     v = extractTraceId(line.content)
@@ -114,7 +115,7 @@ function cachedTraceId(line: LogLine): string | null {
   return v
 }
 
-function cachedIsJson(line: LogLine): boolean {
+function cachedIsJson(line: LogLineOut): boolean {
   let v = isJsonCache.get(line)
   if (!v) {
     v = { isJson: parseJson(line) !== null }
@@ -123,7 +124,7 @@ function cachedIsJson(line: LogLine): boolean {
   return v.isJson
 }
 
-function cachedSig(line: LogLine): string {
+function cachedSig(line: LogLineOut): string {
   let s = sigCache.get(line)
   if (s === undefined) {
     s = normalize(line.content)
@@ -133,7 +134,7 @@ function cachedSig(line: LogLine): string {
 }
 
 interface DecoratedLine {
-  raw: LogLine
+  raw: LogLineOut
   traceId: string | null
   isJson: boolean
 }
@@ -475,7 +476,7 @@ function clearSearch() {
 }
 
 // === Recent search history (localStorage, last 10, debounced 1.5s) ===
-const RECENT_KEY = 'spotlight:log-search-history'
+const RECENT_KEY = STORAGE_KEYS.appLogSearchHistory
 const MAX_RECENT = 10
 
 const recentSearches = ref<string[]>(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'))
@@ -511,9 +512,9 @@ function clearRecent() {
 // time and jsonCache must be initialized before the watch tracks displayedLines)
 
 interface JsonLineHtml { num: number; indent: number; html: string }
-// ponytail: WeakMap keyed by LogLine — entries GC'd when the line drops out of the
+// ponytail: WeakMap keyed by LogLineOut — entries GC'd when the line drops out of the
 // buffer. Map<string,> grew unboundedly across long sessions (audit T1).
-const jsonLinesCache = new WeakMap<LogLine, JsonLineHtml[]>()
+const jsonLinesCache = new WeakMap<LogLineOut, JsonLineHtml[]>()
 
 function tokenizeJsonLine(line: string): string {
   return line
@@ -535,7 +536,7 @@ function tokenizeJsonLine(line: string): string {
     )
 }
 
-function formatJsonLines(line: LogLine): JsonLineHtml[] {
+function formatJsonLines(line: LogLineOut): JsonLineHtml[] {
   const cached = jsonLinesCache.get(line)
   if (cached) return cached
   const parsed = parseJson(line)

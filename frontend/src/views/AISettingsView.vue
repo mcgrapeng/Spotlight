@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Plus, Star, Trash2, Pencil, AlertTriangle } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
+import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,38 +10,28 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import AIProviderForm from '@/components/ai/AIProviderForm.vue'
-import type { AIProvider, AIProviderInput } from '@/domain/types'
+import type { AIProviderOut, AIProviderIn } from '@/api/types'
 
-const providers = ref<AIProvider[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
+// Ponytail: 把 load() + onMounted 替换成 useResource,模板只读 `providers.length`
+// → 用 computed 派生,避免每次 reactive 触发时全数组铺平。
 const dialogOpen = ref(false)
-const editing = ref<(Partial<AIProviderInput> & { id?: number }) | undefined>()
+const editing = ref<(Partial<AIProviderIn> & { id?: number }) | undefined>()
 
 // ponytail: 删除确认从原生 confirm() 升级为内联 Dialog，与全站设计语言一致 (Audit §10.1)
 const deleteConfirm = ref<{ id: number; name: string } | null>(null)
 const deleting = ref(false)
 
-async function load() {
-  loading.value = true
-  error.value = null
-  try {
-    providers.value = await aiApi.listProviders()
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(load)
+const { data: _raw, loading, error, reload: load } = useResource<AIProviderOut[]>(
+  () => aiApi.listProviders(),
+)
+const providers = computed(() => _raw.value ?? [])
 
 function openCreate() {
   editing.value = undefined
   dialogOpen.value = true
 }
 
-function openEdit(p: AIProvider) {
+function openEdit(p: AIProviderOut) {
   editing.value = {
     id: p.id, name: p.name, provider: p.provider, model: p.model,
     api_base: p.api_base, temperature: p.temperature, max_tokens: p.max_tokens,
@@ -49,7 +40,7 @@ function openEdit(p: AIProvider) {
   dialogOpen.value = true
 }
 
-async function save(data: AIProviderInput) {
+async function save(data: AIProviderIn) {
   if (editing.value?.id) {
     await aiApi.updateProvider(editing.value.id, data)
   } else {
@@ -58,7 +49,7 @@ async function save(data: AIProviderInput) {
   await load()
 }
 
-function requestRemove(p: AIProvider) {
+function requestRemove(p: AIProviderOut) {
   deleteConfirm.value = { id: p.id, name: p.name }
 }
 
@@ -67,14 +58,14 @@ async function confirmRemove() {
   deleting.value = true
   try {
     await aiApi.deleteProvider(deleteConfirm.value.id)
-    providers.value = providers.value.filter(p => p.id !== deleteConfirm.value!.id)
+    await load()  // simplest correct path; refetch from server
   } finally {
     deleting.value = false
     deleteConfirm.value = null
   }
 }
 
-async function setDefault(p: AIProvider) {
+async function setDefault(p: AIProviderOut) {
   await aiApi.setDefault(p.id)
   await load()
 }

@@ -53,14 +53,19 @@ def _kubeconfig_path() -> Path:
 @router.get("/auth/status", response_model=StatusOut)
 def status() -> StatusOut:
     s = get_settings()
-    kube_path = _kubeconfig_path()
-    # session_valid is true iff a kubeconfig exists at the expected path.
-    # The cert inside may still be expired (tsh writes 12h certs) but the
-    # next API call will surface that as a 401 — at which point the
-    # frontend can prompt for re-login. For the page-refresh case this
-    # gives the right answer: don't bounce to /login just because we
-    # booted up without a cached /auth/status.
-    session_valid = kube_path.exists()
+    # Ponytail: 检查多个候选路径(settings.kubeconfig_path → KUBECONFIG env
+    # → ~/teleport-kubeconfig.yaml fallback)而不是单一路径。kube_login
+    # 写过 KUBECONFIG env,但 settings.kubeconfig_path 可能仍为空 —— 单
+    # 路径检查会出现 false-true 抖动,触发路由把已登录用户推回 /login。
+    # 多候选路径保证"任一处有 kubeconfig 就视为 session valid"。
+    candidates = [
+        s.kubeconfig_path or None,
+        os.environ.get("KUBECONFIG"),
+        str(Path.home() / "teleport-kubeconfig.yaml"),
+    ]
+    session_valid = any(
+        p and Path(p).exists() for p in candidates if p
+    )
     return StatusOut(
         configured=s.teleport_configured,
         available=tsh_available(s.tsh_binary),

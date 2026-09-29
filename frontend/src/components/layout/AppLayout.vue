@@ -6,8 +6,7 @@ import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
 import MobileDrawer from './MobileDrawer.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
-
-const SIDEBAR_COLLAPSED_KEY = 'spotlight-sidebar-collapsed'
+import { STORAGE_KEYS } from '@/storage-keys'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +19,7 @@ const key = computed(() => route.path)
 const collapsed = ref(false)
 const mobileOpen = ref(false)
 const isMobile = useMediaQuery('(max-width: 767px)')
+const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.appSidebarCollapsed
 
 onMounted(() => {
   const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
@@ -49,6 +49,10 @@ function onGlobalKey(e: KeyboardEvent) {
   // trigger navigation to /dashboard.
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return
   if (el.isContentEditable) return
+  // Ponytail: 按钮获得焦点时按字母键不该触发跳转 —— 容易跟按钮本身
+  // 的快捷键(以及 aria-label 暗示的行为)冲突。Role="button" 覆盖 SVG-only
+  // 图标按钮(<svg><rect transparent /></svg> 这种),用 closest 兼容两种。
+  if (el.tagName === 'BUTTON' || el.closest('button, [role="button"]')) return
   if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
   const routes: Record<string, string> = {
     d: 'dashboard', p: 'pods', n: 'nodes', e: 'events', f: 'favorites', a: 'ai',
