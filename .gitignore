@@ -43,6 +43,9 @@ dist/
 *.tsbuildinfo
 .pnpm-store/
 .yarn/
+# TypeScript-emitted config — the .ts file is the source of truth.
+frontend/vite.config.js
+frontend/vite.config.js.map
 
 # --- Frontend lockfile outputs ---
 .npmrc.local
@@ -99,6 +102,10 @@ docs/
 *.temp
 .tmp/
 .temp/
+# Ad-hoc Playwright debug / verification scripts (root + anywhere)
+verify-*.mjs
+# Root-level scratch scripts (e.g. _t.mjs)
+_*.mjs
 
 # --- Build / misc ---
 *.tgz
@@ -108,3 +115,6 @@ docs/
 .nuxt/
 .svelte-kit/
 out/
+.superpowers
+backend/data
+frontend/e2e
