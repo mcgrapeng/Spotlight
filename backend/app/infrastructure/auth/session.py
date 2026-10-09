@@ -1,17 +1,9 @@
 """Login sessions issued after successful auth.
 
-Two stores live side by side:
-
-* ``_tokens`` — the original simple token -> expiry map behind
-  ``issue``/``validate``/``revoke``. Kept working until the auth plugin
-  switch (Task 7) deletes it.
-* ``_sessions`` — the per-session credential container: every session owns a
-  private ``0700`` directory under ``SESSIONS_ROOT`` holding the kubeconfig
-  produced during login.
-
-Both are in-memory: process restart drops all sessions (users re-login) —
-acceptable for an operator console and avoids a persistence layer nobody
-asked for.
+Every session owns a private ``0700`` directory under ``SESSIONS_ROOT``
+holding the kubeconfig produced during `acquire`. Sessions are in-memory:
+process restart drops all sessions (users re-login) — acceptable for an
+operator console and avoids a persistence layer nobody asked for.
 """
 from __future__ import annotations
 
@@ -28,59 +20,14 @@ COOKIE_NAME = "spotlight_session"
 SESSIONS_ROOT = Path("./data/sessions")
 MAX_SESSIONS = 256
 
-_tokens: dict[str, float] = {}  # token -> expiry (monotonic seconds)
 _lock = Lock()
-
-
-# --- 旧简单令牌 API（Task 7 删除） ------------------------------------------
-
-
-def issue(ttl_seconds: int) -> str:
-    token = secrets.token_urlsafe(32)
-    with _lock:
-        _prune_locked()
-        if len(_tokens) >= MAX_SESSIONS:
-            oldest = min(_tokens, key=_tokens.__getitem__)
-            del _tokens[oldest]
-        _tokens[token] = time.monotonic() + ttl_seconds
-    return token
-
-
-def validate(token: str | None) -> bool:
-    if not token:
-        return False
-    with _lock:
-        exp = _tokens.get(token)
-        if exp is None:
-            return False
-        if exp < time.monotonic():
-            del _tokens[token]
-            return False
-        return True
-
-
-def revoke(token: str | None) -> None:
-    if not token:
-        return
-    with _lock:
-        _tokens.pop(token, None)
-
-
-def _prune_locked() -> None:
-    now = time.monotonic()
-    expired = [t for t, exp in _tokens.items() if exp < now]
-    for t in expired:
-        del _tokens[t]
-
-
-# --- 会话凭证目录 -----------------------------------------------------------
 
 
 @dataclass
 class Session:
     token: str
     provider_id: str
-    identity: "Identity"
+    identity: Identity
     dir: Path
     expires_at: float
 
@@ -92,7 +39,7 @@ class Session:
 _sessions: dict[str, Session] = {}
 
 
-def create_session(provider_id: str, identity: "Identity", ttl_seconds: int) -> Session:
+def create_session(provider_id: str, identity: Identity, ttl_seconds: int) -> Session:
     SESSIONS_ROOT.mkdir(parents=True, exist_ok=True)
     token = secrets.token_urlsafe(32)
     dir_ = SESSIONS_ROOT / token

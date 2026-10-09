@@ -5,10 +5,12 @@ re-exports them; the application layer owns the shape so it can be tested
 without any HTTP/SQL/K8s imports.
 """
 from app.application.dto.auth import (
-    KubeLoginIn,
-    KubeLoginOut,
+    ClusterSelectIn,
     LoginIn,
     LoginOut,
+    ProviderFieldOut,
+    ProviderInfoOut,
+    SessionInfoOut,
     StatusOut,
 )
 from app.application.dto.clusters import (
@@ -45,9 +47,11 @@ __all__ = [
     "AIAnalyzeOut",
     "AIProviderIn",
     "AIProviderOut",
-    "KubeLoginIn",
-    "KubeLoginOut",
+    "ClusterSelectIn",
     "LoginIn",
     "LoginOut",
+    "ProviderFieldOut",
+    "ProviderInfoOut",
+    "SessionInfoOut",
     "StatusOut",
 ]

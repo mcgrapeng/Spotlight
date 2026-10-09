@@ -1,49 +1,78 @@
-"""Auth DTOs (Teleport login + RBAC probe)."""
+"""Auth DTOs for the plugin-backed login flow (T7).
+
+Login is driven by a pluggable provider (`token` / `teleport` / future
+adapters). The frontend asks `/auth/status` for the active provider's
+form fields, posts `{username, fields}` to `/auth/login`, picks a cluster
+via `/auth/cluster`, and reads the kubeconfig the per-session pool wrote
+under `session.dir/kubeconfig.yaml`.
+
+Error mapping (see `routes/auth.py`):
+  invalid_credentials → 401  {code, message}
+  mfa_required        → 401  {code, message}
+  bad_otp             → 401  {code, message}
+  unavailable         → 503
+  rate-limited        → 429
+"""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
 
 class LoginIn(BaseModel):
-    password: str = Field(min_length=1, max_length=512)
-    # Optional MFA TOTP. Only needed if the cluster has MFA enforced for
-    # this user — otherwise leave empty. ASCII-only: fed to tsh via pty.
-    otp: str = Field(default="", max_length=16, pattern=r"^[0-9A-Za-z]*$")
+    """Login payload: username + dynamic form fields from the active provider."""
+
+    username: str = Field(min_length=1, max_length=128)
+    fields: dict[str, str] = Field(default_factory=dict)
 
 
 class LoginOut(BaseModel):
+    """Login response: success flag + kube clusters available after auth."""
+
     ok: bool
-    proxy: str
-    user: str
-    cluster: str  # Teleport cluster (== proxy host)
-    kube_clusters: list[str] = []  # K8s clusters available after auth
+    kube_clusters: list[str] = []
     message: str = ""
 
 
-class KubeLoginIn(BaseModel):
-    # Whitelist: the value is passed as a `tsh kube login <cluster>` argv
-    # element — never a shell string — so this is defense-in-depth against
-    # flag injection (e.g. "--insecure").
+class ClusterSelectIn(BaseModel):
+    """Pick a K8s cluster to log into. Whitelisted to alphanumeric + . _ -."""
+
     cluster: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
 
 
-class KubeLoginOut(BaseModel):
-    ok: bool
-    cluster: str
-    message: str = ""
+class ProviderFieldOut(BaseModel):
+    """One form field the frontend should render."""
+
+    name: str
+    label: str
+    type: str
+    required: bool = True
+
+
+class ProviderInfoOut(BaseModel):
+    """Active provider metadata for the login page."""
+
+    id: str
+    label: str
+    fields: list[ProviderFieldOut]
+
+
+class SessionInfoOut(BaseModel):
+    """Per-session info returned in /auth/status when the caller is logged in."""
+
+    username: str
 
 
 class StatusOut(BaseModel):
-    configured: bool  # Teleport auth is set up on the server
-    available: bool  # `tsh` binary is on PATH
-    proxy: str
-    user: str
-    cluster: str
-    # True when there's a kubeconfig on disk that the pool can read.
-    session_valid: bool
-    # True when this server demands authentication on /api/v1 routes
-    # (Teleport configured and/or API_TOKEN set).
+    """Public status: tells the frontend whether/how to show a login form."""
+
+    # True when an auth provider is registered (kept as a top-level bool for
+    # the frontend's "configured?" check; the provider details live under
+    # `provider`).
+    configured: bool
+    provider: ProviderInfoOut | None = None
+    # True when the server demands authentication. False in open mode.
     auth_required: bool
-    # True when THIS HTTP caller already holds a valid session (cookie or
-    # bearer token) — unlike session_valid, which is server-wide state.
+    # True when THIS HTTP caller has a valid session (cookie or bearer).
     client_session: bool
+    # Session info (only populated when client_session=True).
+    session: SessionInfoOut | None = None

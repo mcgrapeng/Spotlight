@@ -34,39 +34,44 @@ from app.infrastructure.persistence.repositories.favorite_repo import SQLFavorit
 def require_auth(request: Request) -> None:
     """Reject unauthenticated callers.
 
-    Accepted proofs: a session cookie issued by /auth/login, or the
-    `Authorization: Bearer <API_TOKEN>` header when a static token is
-    configured (scripts / host-bound deployments). When neither Teleport
-    nor API_TOKEN is configured the API is open (local-dev mode — the app
-    logs a startup warning).
+    Accepted proofs:
+      1. `Authorization: Bearer <API_TOKEN>` when `api_token` is set
+         (script / host-bound access — synthetic dev session).
+      2. A session cookie issued by `/auth/login` (real login).
+      3. Open mode (no provider + no api_token) — local-dev fallback.
+
+    `is_open_mode()` is the single source of truth for "the server
+    doesn't require auth"; matches the brief's policy alignment.
     """
     s = get_settings()
     header = request.headers.get("authorization", "")
     if s.api_token and secrets.compare_digest(header, f"Bearer {s.api_token}"):
         return
-    if session_store.validate(request.cookies.get(session_store.COOKIE_NAME)):
+    if session_store.get_session(request.cookies.get(session_store.COOKIE_NAME)) is not None:
         return
-    if not s.teleport_configured and not s.api_token:
+    if is_open_mode():
         return
     raise HTTPException(status_code=401, detail="未认证，请先登录")
 
 
 def current_session(request: Request) -> Session:
-    """Resolve the request's session — Cookie first, then dev session in open mode.
+    """Resolve the request's session.
 
     Order:
-      1. Cookie-issued Session (real login).
-      2. In open mode (no provider + no api_token), return the singleton
-         dev session so requests still get a stable kubeconfig scope.
-      3. Otherwise 401 — the caller must present a real session cookie.
-
-    T7 will switch `require_auth` to use `is_open_mode()` for the open-mode
-    branch; this helper already calls it so the policy lives in one place.
+      1. `Authorization: Bearer <API_TOKEN>` → dev session (synthetic;
+         Bearer is host-bound, no per-session kubeconfig dir).
+      2. Cookie-issued Session (real login).
+      3. Open mode → dev session (local-dev fallback).
+      4. Otherwise 401 — caller must present a real session cookie.
     """
+    s = get_settings()
+    header = request.headers.get("authorization", "")
+    if s.api_token and secrets.compare_digest(header, f"Bearer {s.api_token}"):
+        return session_store.dev_session()
     cookie_token = request.cookies.get(session_store.COOKIE_NAME)
-    s = session_store.get_session(cookie_token)
-    if s is not None:
-        return s
+    sess = session_store.get_session(cookie_token)
+    if sess is not None:
+        return sess
     if is_open_mode():
         return session_store.dev_session()
     raise HTTPException(status_code=401, detail="未认证，请先登录")
