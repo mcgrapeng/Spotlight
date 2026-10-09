@@ -122,6 +122,11 @@ class Cluster:
     user: str
     default_namespace: str
     is_current: bool = False
+    cluster: str = ""  # k8s cluster name (kubeconfig context.cluster)
+
+    @property
+    def namespace(self) -> str:
+        return self.default_namespace
 
 
 @dataclass(frozen=True, slots=True)

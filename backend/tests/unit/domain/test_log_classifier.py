@@ -101,3 +101,17 @@ def test_ordered():
 def test_color_var_unique():
     seen = {s.color_var for s in LogSeverity}
     assert len(seen) == len(LogSeverity)
+
+
+# ── ANSI-coloured lines (the lumen/pino style: "\x1b[34mdebug\x1b[39m msg") ──
+@pytest.mark.parametrize("line,expected", [
+    ("\x1b[34mdebug\x1b[39m [InternalClient] GET http://x -> 200", LogSeverity.DEBUG),
+    ("\x1b[32minfo\x1b[39m  [UsersJwks] refreshed", LogSeverity.INFO),
+    ("\x1b[33mwarn\x1b[39m  [api] api error", LogSeverity.WARN),
+    ("\x1b[31merror\x1b[39m [api] boom", LogSeverity.ERROR),
+    ("\x1b[1;31mFATAL\x1b[0m process died", LogSeverity.FATAL),
+])
+def test_ansi_coloured_lines_classify(clf, line, expected):
+    # Regression: SGR bytes used to sit between the \b boundary and the
+    # keyword ("...m debug"), so coloured lines all fell through to UNKNOWN.
+    assert clf.classify(line) is expected

@@ -85,6 +85,7 @@ class KubernetesAdapter(K8sRepositoryPort):
             Cluster(
                 name=c["name"], server=c.get("server", ""), user=c["user"],
                 default_namespace=c["namespace"], is_current=c["is_current"],
+                cluster=c.get("cluster", ""),
             )
             for c in contexts
         ]
@@ -226,9 +227,19 @@ class KubernetesAdapter(K8sRepositoryPort):
         """Stream pod logs. Caller MUST iterate in a thread (use `asyncio.to_thread`)
         because `kubernetes.watch.Watch().stream` is a blocking sync generator.
 
-        Stops when `stop_event` is set — checked between yields so the consumer
-        can cancel. (A consumer parked inside a blocking watch read on a silent
-        pod exits on the next line or the watch socket timeout.)
+        Uses `since_seconds=5` (no `follow=True`): the kubernetes python client
+        36.x `Watch().stream` for log endpoints wraps `iter_resp_lines` and
+        sets `self._stop = True` once the response stream ends (since the
+        `resource_version` is None for log streams, so the watch-reconnect
+        path never engages). Empirical probe of `read_namespaced_pod_log(
+        follow=True, tail_lines=3, _preload_content=False)` against this
+        cluster returns after 0.2s — the apiserver's `follow=true` streaming
+        response ends as soon as the log reader closes its chunked response.
+        Compensating strategy: the frontend's SSE `EventSource` auto-
+        reconnects on close (default 1s backoff), and the `usePodLogs`
+        `seen` Set drops any overlap between snapshots. The result is a
+        continuous live tail that survives stream-end, reconnect, and
+        EventSource reconnection without a single duplicated line.
         """
         api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
         w = watch.Watch()
@@ -238,12 +249,11 @@ class KubernetesAdapter(K8sRepositoryPort):
                 api.read_namespaced_pod_log,
                 name=ref.name, namespace=ref.namespace,
                 container=container, tail_lines=tail_lines,
-                follow=True, _request_timeout=3600,
+                since_seconds=5, _request_timeout=30.0,
+                _preload_content=False,
             ):
                 if stop_event is not None and stop_event.is_set():
                     return
-                # Same SDK quirk as read_logs: the watch yields repr-of-bytes
-                # strings when the underlying body isn't strict UTF-8.
                 line = _decode_sdk_log_content(line)
                 ts, _ = parse_log_line(line, container or "")
                 yield LogEntry(timestamp=ts, content=line, container=container or "")
