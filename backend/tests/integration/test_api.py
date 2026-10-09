@@ -132,7 +132,7 @@ def client():
     fake_fav = FakeFavRepo()
     fake_ai = FakeAIProviderRepo()
 
-    app.dependency_overrides[k8s_repo] = lambda: fake_k8s
+    app.dependency_overrides[k8s_repo] = lambda: fake_k8s  # k8s_repo now takes a Session via Depends, but the override replaces it wholesale — a zero-arg lambda keeps FastAPI from trying to bind the Session as a query param.
     app.dependency_overrides[ai_repo] = lambda: fake_ai
     app.dependency_overrides[favorite_uc] = lambda: FavoriteUseCases(fake_fav)
 

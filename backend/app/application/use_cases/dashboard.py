@@ -15,23 +15,25 @@ from app.domain.value_objects.primitives import LabelSelector
 from app.infrastructure.cache.ttl_cache import TTLCache
 from app.infrastructure.config.settings import get_settings
 
-_caches: dict[str | None, TTLCache[DashboardOut]] = {}
+_caches: dict[tuple[str, str | None], TTLCache[DashboardOut]] = {}
 
 
-def _cache_for(cluster: str | None) -> TTLCache[DashboardOut]:
-    c = _caches.get(cluster)
+def _cache_for(scope: str, cluster: str | None) -> TTLCache[DashboardOut]:
+    key = (scope, cluster)
+    c = _caches.get(key)
     if c is None:
         c = TTLCache(float(get_settings().cache_ttl_pods))
-        _caches[cluster] = c
+        _caches[key] = c
     return c
 
 
 class DashboardUseCases:
-    def __init__(self, k8s: K8sRepositoryPort) -> None:
+    def __init__(self, scope: str, k8s: K8sRepositoryPort) -> None:
+        self._scope = scope
         self._k8s = k8s
 
     async def build(self, cluster: str | None) -> DashboardOut:
-        cache = _cache_for(cluster)
+        cache = _cache_for(self._scope, cluster)
         async def _load() -> DashboardOut:
             pods, nodes, events, namespaces = await asyncio.gather(
                 self._k8s.list_pods(cluster, None, LabelSelector(), None, None),

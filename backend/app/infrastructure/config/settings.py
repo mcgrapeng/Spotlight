@@ -63,3 +63,15 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def is_open_mode() -> bool:
+    """True when no auth provider plugin AND no static API token are configured.
+
+    In open mode the API falls back to the dev session (no real auth proof),
+    matching the legacy single-tenant local-dev behavior. When EITHER is set the
+    caller must present a valid session cookie (or, if `api_token` is set,
+    a matching Bearer header — handled in `require_auth`).
+    """
+    s = get_settings()
+    return not (s.auth_provider or s.api_token)

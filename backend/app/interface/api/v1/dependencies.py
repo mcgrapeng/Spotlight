@@ -23,7 +23,8 @@ from app.application.use_cases.pods import PodUseCases
 from app.infrastructure.ai.providers.litellm_provider import LiteLLMAIRepository
 from app.infrastructure.ai.providers.sql_provider import SQLAIProviderRepository
 from app.infrastructure.auth import session as session_store
-from app.infrastructure.config.settings import get_settings
+from app.infrastructure.auth.session import Session
+from app.infrastructure.config.settings import get_settings, is_open_mode
 from app.infrastructure.k8s.adapter import KubernetesAdapter
 from app.infrastructure.persistence.db import get_session
 from app.infrastructure.persistence.repositories.favorite_repo import SQLFavoriteRepository
@@ -50,9 +51,33 @@ def require_auth(request: Request) -> None:
     raise HTTPException(status_code=401, detail="未认证，请先登录")
 
 
+def current_session(request: Request) -> Session:
+    """Resolve the request's session — Cookie first, then dev session in open mode.
+
+    Order:
+      1. Cookie-issued Session (real login).
+      2. In open mode (no provider + no api_token), return the singleton
+         dev session so requests still get a stable kubeconfig scope.
+      3. Otherwise 401 — the caller must present a real session cookie.
+
+    T7 will switch `require_auth` to use `is_open_mode()` for the open-mode
+    branch; this helper already calls it so the policy lives in one place.
+    """
+    cookie_token = request.cookies.get(session_store.COOKIE_NAME)
+    s = session_store.get_session(cookie_token)
+    if s is not None:
+        return s
+    if is_open_mode():
+        return session_store.dev_session()
+    raise HTTPException(status_code=401, detail="未认证，请先登录")
+
+
 # ── Adapters (singletons — no per-request state) ─────────────────────────
-def k8s_repo() -> KubernetesAdapter:
-    return KubernetesAdapter()
+def k8s_repo(s: Session = Depends(current_session)) -> KubernetesAdapter:
+    # Per-session kubeconfig lives under s.dir/kubeconfig.yaml; the global
+    # host-bound kubeconfig is the fallback when the per-session file is absent.
+    kp = str(s.kubeconfig_path) if s.kubeconfig_path.exists() else None
+    return KubernetesAdapter(s.token, kp)
 
 
 def ai_repo(
@@ -66,24 +91,29 @@ def cluster_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> ClusterUseCases:
     return ClusterUseCases(k8s)
 
 
-def namespace_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> NamespaceUseCases:
-    return NamespaceUseCases(k8s)
+def namespace_uc(s: Session = Depends(current_session),
+                 k8s: KubernetesAdapter = Depends(k8s_repo)) -> NamespaceUseCases:
+    return NamespaceUseCases(s.token, k8s)
 
 
-def pod_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> PodUseCases:
-    return PodUseCases(k8s)
+def pod_uc(s: Session = Depends(current_session),
+           k8s: KubernetesAdapter = Depends(k8s_repo)) -> PodUseCases:
+    return PodUseCases(s.token, k8s)
 
 
-def node_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> NodeUseCases:
-    return NodeUseCases(k8s)
+def node_uc(s: Session = Depends(current_session),
+            k8s: KubernetesAdapter = Depends(k8s_repo)) -> NodeUseCases:
+    return NodeUseCases(s.token, k8s)
 
 
-def event_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> EventUseCases:
-    return EventUseCases(k8s)
+def event_uc(s: Session = Depends(current_session),
+             k8s: KubernetesAdapter = Depends(k8s_repo)) -> EventUseCases:
+    return EventUseCases(s.token, k8s)
 
 
-def dashboard_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> DashboardUseCases:
-    return DashboardUseCases(k8s)
+def dashboard_uc(s: Session = Depends(current_session),
+                 k8s: KubernetesAdapter = Depends(k8s_repo)) -> DashboardUseCases:
+    return DashboardUseCases(s.token, k8s)
 
 
 def log_uc(k8s: KubernetesAdapter = Depends(k8s_repo)) -> LogUseCases:

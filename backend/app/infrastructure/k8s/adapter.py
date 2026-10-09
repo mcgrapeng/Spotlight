@@ -34,15 +34,17 @@ from app.infrastructure.k8s.mapper.mappers import (
 
 
 class KubernetesAdapter(K8sRepositoryPort):
-    def __init__(self) -> None:
+    def __init__(self, session_token: str, kubeconfig_path: str | None = None) -> None:
         self._pool = get_pool()
         self._timeout = get_settings().k8s_request_timeout
+        self._session_token = session_token
+        self._kubeconfig_path = kubeconfig_path
 
     # ── cluster ──────────────────────────────────────────────
     async def list_clusters(self) -> list[Cluster]:
         # No K8s SDK call — reads the cached kubeconfig. Safe sync wrapped
         # in async for interface uniformity.
-        contexts = await run_in_threadpool(self._pool.list_contexts)
+        contexts = await run_in_threadpool(self._pool.list_contexts, self._kubeconfig_path)
         return [
             Cluster(
                 name=c["name"], server=c.get("server", ""), user=c["user"],
@@ -52,11 +54,11 @@ class KubernetesAdapter(K8sRepositoryPort):
         ]
 
     def current_cluster(self) -> str | None:
-        return self._pool.current()
+        return self._pool.current(self._kubeconfig_path)
 
     # ── namespaces ───────────────────────────────────────────
     async def list_namespaces(self, cluster: Optional[str]) -> list[Namespace]:
-        api, ctx = self._pool.get(cluster)
+        api, ctx = self._pool.get(self._session_token, self._kubeconfig_path, cluster)
         result = await run_in_threadpool(
             lambda: api.list_namespace(_request_timeout=self._timeout)
         )
@@ -67,7 +69,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         self, cluster: Optional[str], namespace: Optional[str],
         label_selector: LabelSelector, search: Optional[str], status: Optional[str],
     ) -> list[Pod]:
-        api, ctx = self._pool.get(cluster)
+        api, ctx = self._pool.get(self._session_token, self._kubeconfig_path, cluster)
         kw: dict = {"_request_timeout": self._timeout}
         if namespace and namespace != "_all":
             kw["namespace"] = namespace
@@ -99,7 +101,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         return pods
 
     async def get_pod(self, ref: ResourceRef) -> Pod:
-        api, ctx = self._pool.get(ref.cluster or None)
+        api, ctx = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
         obj = await run_in_threadpool(
             lambda: api.read_namespaced_pod(
                 name=ref.name, namespace=ref.namespace,
@@ -113,7 +115,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         self, cluster: Optional[str], namespace: Optional[str],
         involved_name: Optional[str], limit: int,
     ) -> list[K8sEvent]:
-        api, _ = self._pool.get(cluster)
+        api, _ = self._pool.get(self._session_token, self._kubeconfig_path, cluster)
         # NOTE: `limit` on the K8s list API is a *page* size, not "last N" —
         # passing it would silently truncate to the first page in arbitrary
         # order. Fetch everything (event objects are compacted away after
@@ -135,7 +137,7 @@ class KubernetesAdapter(K8sRepositoryPort):
 
     # ── nodes ────────────────────────────────────────────────
     async def list_nodes(self, cluster: Optional[str]) -> list[Node]:
-        api, ctx = self._pool.get(cluster)
+        api, ctx = self._pool.get(self._session_token, self._kubeconfig_path, cluster)
         # Run the two K8s calls in parallel — both are bound by network RTT.
         nodes, pods = await asyncio.gather(
             run_in_threadpool(lambda: api.list_node(_request_timeout=self._timeout)),
@@ -152,7 +154,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         self, ref: ResourceRef, container: Optional[str],
         tail_lines: int, since: Optional[str],
     ) -> list[LogEntry]:
-        api, _ = self._pool.get(ref.cluster or None)
+        api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
         kw = {
             "name": ref.name, "namespace": ref.namespace,
             "container": container, "tail_lines": tail_lines,
@@ -191,7 +193,7 @@ class KubernetesAdapter(K8sRepositoryPort):
         can cancel. (A consumer parked inside a blocking watch read on a silent
         pod exits on the next line or the watch socket timeout.)
         """
-        api, _ = self._pool.get(ref.cluster or None)
+        api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
         w = watch.Watch()
         supports_stop = hasattr(w, "stop")
         try:

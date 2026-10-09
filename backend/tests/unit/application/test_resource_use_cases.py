@@ -112,7 +112,7 @@ def repo() -> FakeK8sRepo:
 
 # ── PodUseCases ──────────────────────────────────────────────────────────
 async def test_list_pods_all(repo):
-    uc = PodUseCases(repo)
+    uc = PodUseCases("s", repo)
     result = await uc.list_pods(None, None, "all", None, None)
     assert result.total == 3
     assert result.items[0].namespace == "default"
@@ -120,27 +120,27 @@ async def test_list_pods_all(repo):
 
 
 async def test_list_pods_filter_namespace(repo):
-    uc = PodUseCases(repo)
+    uc = PodUseCases("s", repo)
     result = await uc.list_pods(None, "kube-system", "all", None, None)
     assert result.total == 1
     assert result.items[0].name == "p-search"
 
 
 async def test_list_pods_filter_search(repo):
-    uc = PodUseCases(repo)
+    uc = PodUseCases("s", repo)
     result = await uc.list_pods(None, None, "all", "crash", None)
     assert result.total == 1
     assert result.items[0].name == "p-crash"
 
 
 async def test_list_pods_filter_status(repo):
-    uc = PodUseCases(repo)
+    uc = PodUseCases("s", repo)
     result = await uc.list_pods(None, None, "Running", None, None)
     assert result.total == 2
 
 
 async def test_get_pod_success(repo):
-    uc = PodUseCases(repo)
+    uc = PodUseCases("s", repo)
     ref = ResourceRef(cluster="", namespace="default", kind="Pod", name="p-ok")
     p = await uc.get_pod(ref)
     assert p.name == "p-ok"
@@ -148,7 +148,7 @@ async def test_get_pod_success(repo):
 
 
 async def test_get_pod_not_found(repo):
-    uc = PodUseCases(repo)
+    uc = PodUseCases("s", repo)
     ref = ResourceRef(cluster="", namespace="default", kind="Pod", name="missing")
     with pytest.raises(KeyError):
         await uc.get_pod(ref)
@@ -156,7 +156,7 @@ async def test_get_pod_not_found(repo):
 
 # ── DashboardUseCases ───────────────────────────────────────────────────
 async def test_dashboard_aggregates(repo):
-    uc = DashboardUseCases(repo)
+    uc = DashboardUseCases("s", repo)
     d = await uc.build(None)
     assert d.total_pods == 3
     assert d.running == 2
@@ -171,7 +171,7 @@ async def test_dashboard_aggregates(repo):
 
 # ── EventUseCases ───────────────────────────────────────────────────────
 async def test_events_sorted_by_recency(repo):
-    uc = EventUseCases(repo)
+    uc = EventUseCases("s", repo)
     out = await uc.list_events(None, None, None, 10)
     assert out[0].type == "Normal"  # more recent
     assert out[1].type == "Warning"
@@ -179,6 +179,6 @@ async def test_events_sorted_by_recency(repo):
 
 # ── NamespaceUseCases ───────────────────────────────────────────────────
 async def test_list_namespaces(repo):
-    uc = NamespaceUseCases(repo)
+    uc = NamespaceUseCases("s", repo)
     ns = await uc.list_namespaces(None)
     assert [n.name for n in ns] == ["default", "kube-system"]

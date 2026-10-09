@@ -17,9 +17,9 @@ _order: list[str] = []
 MAX_SLOTS = 32
 
 
-def _list_key(cluster: str | None, namespace: str | None, status: str | None,
+def _list_key(scope: str, cluster: str | None, namespace: str | None, status: str | None,
               search: str | None, label_selector: str | None) -> str:
-    return f"{cluster or ''}|{namespace or ''}|{status or ''}|{search or ''}|{label_selector or ''}"
+    return f"{scope}|{cluster or ''}|{namespace or ''}|{status or ''}|{search or ''}|{label_selector or ''}"
 
 
 def _cache_for(key: str) -> TTLCache[PodListOut]:
@@ -35,7 +35,8 @@ def _cache_for(key: str) -> TTLCache[PodListOut]:
 
 
 class PodUseCases:
-    def __init__(self, repo: K8sRepositoryPort) -> None:
+    def __init__(self, scope: str, repo: K8sRepositoryPort) -> None:
+        self._scope = scope
         self._repo = repo
 
     async def list_pods(
@@ -43,7 +44,7 @@ class PodUseCases:
         status: str | None, search: str | None, label_selector: str | None,
     ) -> PodListOut:
         selector = LabelSelector.parse(label_selector)
-        cache = _cache_for(_list_key(cluster, namespace, status, search, label_selector))
+        cache = _cache_for(_list_key(self._scope, cluster, namespace, status, search, label_selector))
         async def _load() -> PodListOut:
             pods = await self._repo.list_pods(cluster, namespace, selector, search, status)
             items = sorted(
