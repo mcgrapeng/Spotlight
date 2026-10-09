@@ -6,10 +6,12 @@ import {
   CommandDialog, CommandInput, CommandList,
   CommandEmpty, CommandGroup, CommandItem, CommandSeparator,
 } from '@/components/ui/command'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
   LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
   RefreshCw, Bot, Keyboard,
 } from '@lucide/vue'
+import { isTypingTarget } from '@/composables/useKeyboardShortcuts'
 
 const router = useRouter()
 const open = ref(false)
@@ -20,7 +22,11 @@ const cmdK = computed(() => keys['Meta+K']?.value || keys['Ctrl+K']?.value)
 const shiftSlash = computed(() => keys['Shift+/']?.value)  // ? key on US layout
 
 whenever(cmdK, () => { open.value = true })
-whenever(shiftSlash, () => { shortcutsOpen.value = true })
+whenever(shiftSlash, () => {
+  // "?" typed inside a text field is a character, not a shortcut
+  if (isTypingTarget(document.activeElement)) return
+  shortcutsOpen.value = true
+})
 
 // ponytail: 补全中英文双向 keywords，让中文用户能搜出、英文也能搜出 (Audit §2.4)
 const navItems = [
@@ -126,41 +132,21 @@ defineExpose({
     </div>
   </CommandDialog>
 
-  <!-- 全局快捷键面板 (Audit §13.1) -->
-  <Teleport to="body">
-    <div
-      v-if="shortcutsOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="shortcuts-title"
-      @click.self="shortcutsOpen = false"
-      @keydown.escape="shortcutsOpen = false"
-    >
-      <div class="w-full max-w-md rounded-lg border border-border bg-card shadow-lg">
-        <div class="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 id="shortcuts-title" class="text-sm font-semibold flex items-center gap-2">
-            <Keyboard :size="14" :stroke-width="1.75" />
-            快捷键
-          </h3>
-          <button
-            type="button"
-            class="text-muted-foreground hover:text-foreground"
-            aria-label="关闭"
-            @click="shortcutsOpen = false"
-          >
-            <kbd class="font-mono text-2xs">esc</kbd>
-          </button>
+  <!-- 全局快捷键面板（reka Dialog：焦点陷阱 / Esc / 遮罩关闭） -->
+  <Dialog :open="shortcutsOpen" @update:open="(v) => (shortcutsOpen = v)">
+    <DialogContent class="sm:max-w-md">
+      <DialogTitle class="flex items-center gap-2">
+        <Keyboard :size="14" :stroke-width="1.75" />
+        快捷键
+      </DialogTitle>
+      <dl class="space-y-2">
+        <div v-for="s in shortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">
+          <dt class="font-mono text-xs bg-muted px-2 py-0.5 rounded shrink-0 min-w-[140px] text-center">
+            {{ s.combo }}
+          </dt>
+          <dd class="text-muted-foreground">{{ s.desc }}</dd>
         </div>
-        <dl class="px-4 py-3 space-y-2">
-          <div v-for="s in shortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">
-            <dt class="font-mono text-xs bg-muted px-2 py-0.5 rounded shrink-0 min-w-[140px] text-center">
-              {{ s.combo }}
-            </dt>
-            <dd class="text-muted-foreground">{{ s.desc }}</dd>
-          </div>
-        </dl>
-      </div>
-    </div>
-  </Teleport>
+      </dl>
+    </DialogContent>
+  </Dialog>
 </template>

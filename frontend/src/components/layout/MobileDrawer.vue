@@ -25,7 +25,7 @@ function onOpenChange(open: boolean) {
   <Sheet :open="open" @update:open="onOpenChange">
     <SheetContent
       side="left"
-      class="w-[280px] p-0 sm:max-w-[280px] [&>button]:hidden"
+      class="w-[280px] p-0 sm:max-w-[280px]"
     >
       <SheetHeader class="sr-only">
         <SheetTitle>导航菜单</SheetTitle>

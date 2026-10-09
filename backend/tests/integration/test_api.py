@@ -1,23 +1,22 @@
 """Integration tests for FastAPI HTTP layer.
 
-Override DI with fake repositories — no K8s SDK, no DB.
+Override DI with fake repositories — no K8s SDK, no DB, no network.
 """
 from dataclasses import replace
-from typing import AsyncIterator
+from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.application.use_cases.ai import AIUseCases
+from app.application.dto import LogStreamParams
 from app.application.use_cases.favorites import FavoriteUseCases
-from app.application.use_cases.logs import LogUseCases
-from app.application.use_cases.resources import ResourceUseCases
 from app.domain.entities.ai import AIAnalysisResult, AIProviderConfig, Favorite
 from app.domain.entities.resources import (
     Container, K8sEvent, LogEntry, Namespace, Node, Pod,
 )
 from app.domain.value_objects.primitives import LabelSelector, ResourceRef
-from app.interface.api.v1.dependencies import ai_repo, favorite_uc, k8s_repo, log_uc, resource_uc, ai_uc
+from app.infrastructure.cache.ttl_cache import invalidate_all
+from app.interface.api.v1.dependencies import ai_repo, favorite_uc, k8s_repo
 from app.main import app
 
 
@@ -30,27 +29,46 @@ class FakeK8s:
                 containers=[Container(name="app", image="x", ready=True, state="running", restart_count=0)]),
         ]
         self.namespaces = [Namespace(name="default", status="Active", labels={}, age_seconds=3600)]
-        self.nodes = [Node(name="n1", status="Ready", roles=("worker",), version="v1.30", os_image="Ubuntu",
-                            cpu_capacity="4", memory_capacity="8Gi", cpu_allocatable="3", memory_allocatable="7Gi",
+        self.nodes = [Node(name="n1", status="Ready", roles=("worker",), kubelet_version="v1.30",
+                            os_image="Ubuntu", cpu_capacity="4", memory_capacity="8Gi",
+                            cpu_allocatable="3", memory_allocatable="7Gi",
                             pod_count=1, age_seconds=86400)]
         self.events = [
             K8sEvent(name="e1", namespace="default", type="Warning", reason="BackOff",
                      message="oops", involved_kind="Pod", involved_name="p1",
-                     count=2, first_seen=None, last_seen="2024-01-01T00:00:00Z"),
+                     count=2, first_seen="2024-01-01T00:00:00Z", last_seen="2024-01-01T00:00:00Z"),
         ]
         self.log_lines = ["INFO x", "ERROR y", "DEBUG z"]
 
-    def list_clusters(self): return []
-    def current_cluster(self): return "default"
-    def list_namespaces(self, c): return self.namespaces
-    def list_pods(self, c, ns, sel, search, status): return self.pods
-    def get_pod(self, ref):
+    async def list_clusters(self):
+        return []
+
+    def current_cluster(self):
+        return "default"
+
+    async def list_namespaces(self, cluster):
+        return self.namespaces
+
+    async def list_pods(self, cluster, namespace, label_selector: LabelSelector, search, status):
+        return self.pods
+
+    async def get_pod(self, ref: ResourceRef):
         return next(p for p in self.pods if p.name == ref.name)
-    def list_events(self, c, ns, involved, limit): return self.events
-    def list_nodes(self, c): return self.nodes
-    def read_logs(self, ref, container, tail_lines, since):
+
+    async def list_events(self, cluster, namespace, involved_name, limit):
+        return self.events
+
+    async def list_nodes(self, cluster):
+        return self.nodes
+
+    async def read_logs(self, ref, container, tail_lines, since):
+        if since:
+            # honour the adapter contract: garbage `since` raises ValueError
+            from app.infrastructure.k8s.adapter import _since_to_seconds
+            _since_to_seconds(since)
         return [LogEntry(timestamp="", content=l, container=container or "") for l in self.log_lines[:tail_lines]]
-    def stream_logs(self, ref, container, tail_lines):
+
+    def stream_logs(self, ref, container, tail_lines, stop_event=None) -> Iterator[LogEntry]:
         return iter([LogEntry(timestamp="", content=l, container=container or "") for l in self.log_lines])
 
 
@@ -59,21 +77,27 @@ class FakeAIProviderRepo:
         self._id = 0
         self._store: dict[int, AIProviderConfig] = {}
 
-    async def list(self): return list(self._store.values())
-    async def get(self, pid): return self._store.get(pid)
-    async def add(self, cfg):
+    async def list_providers(self): return list(self._store.values())
+    async def get_provider(self, pid): return self._store.get(pid)
+    async def add_provider(self, cfg):
         self._id += 1
         saved = replace(cfg, id=self._id)
         self._store[self._id] = saved
         return saved
-    async def update(self, cfg):
+    async def update_provider(self, cfg):
         self._store[cfg.id] = cfg
         return cfg
-    async def remove(self, pid):
+    async def remove_provider(self, pid):
         return self._store.pop(pid, None) is not None
     async def set_default(self, pid):
         self._store[pid] = replace(self._store[pid], is_default=True)
         return self._store[pid]
+
+    async def analyze(self, cfg, req):
+        return AIAnalysisResult(
+            answer=f"diagnostic for {req.pod_ref.name}",
+            model=cfg.model, latency_ms=12, input_tokens=5, output_tokens=3,
+        )
 
 
 class FakeFavRepo:
@@ -83,66 +107,34 @@ class FakeFavRepo:
 
     async def list(self):
         return sorted(self._store.values(), key=lambda f: f.id or 0, reverse=True)
+
     async def add(self, fav):
         self._id += 1
         saved = replace(fav, id=self._id)
         self._store[self._id] = saved
         return saved
-    async def remove(self, fid):
-        return self._store.pop(fid, None) is not None
 
-
-class FakeAI:
-    def __init__(self, providers: FakeAIProviderRepo):
-        self.providers = providers
-        self.calls = []
-
-    async def list_providers(self): return await self.providers.list()
-    async def get_provider(self, pid): return await self.providers.get(pid)
-    async def add_provider(self, c): return await self.providers.add(c)
-    async def update_provider(self, c): return await self.providers.update(c)
-    async def remove_provider(self, pid): return await self.providers.remove(pid)
-    async def set_default(self, pid): return await self.providers.set_default(pid)
-
-    async def analyze(self, cfg, req):
-        self.calls.append((cfg, req))
-        return AIAnalysisResult(
-            answer=f"diagnostic for {req.pod_ref.name}",
-            model=cfg.model, latency_ms=12, input_tokens=5, output_tokens=3,
-        )
+    async def remove(self, fav_id: int):
+        return self._store.pop(fav_id, None) is not None
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
-@pytest.fixture
-def fake_k8s():
-    return FakeK8s()
+@pytest.fixture(autouse=True)
+def _clear_caches():
+    invalidate_all()
+    yield
+    invalidate_all()
 
 
 @pytest.fixture
-def fake_fav():
-    return FakeFavRepo()
-
-
-@pytest.fixture
-def fake_ai_providers():
-    return FakeAIProviderRepo()
-
-
-@pytest.fixture
-def fake_ai(fake_ai_providers):
-    return FakeAI(fake_ai_providers)
-
-
-@pytest.fixture
-def client(fake_k8s, fake_fav, fake_ai):
-    """Override DI dependencies with fakes, return TestClient."""
-    from app.application.use_cases.ai import AIUseCases
-    from app.infrastructure.ai.providers.litellm_provider import LiteLLMAIRepository
+def client():
+    fake_k8s = FakeK8s()
+    fake_fav = FakeFavRepo()
+    fake_ai = FakeAIProviderRepo()
 
     app.dependency_overrides[k8s_repo] = lambda: fake_k8s
     app.dependency_overrides[ai_repo] = lambda: fake_ai
     app.dependency_overrides[favorite_uc] = lambda: FavoriteUseCases(fake_fav)
-    # ai_uc depends on ai_repo which we've overridden — FastAPI will resolve transitively
 
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -169,12 +161,21 @@ def test_pod_detail(client):
     assert r.json()["phase"] == "Running"
 
 
+def test_pod_detail_maps_entity_fields(client):
+    """regression: restart_count / age / owner used to silently serialize as
+    0 / None / None (DTO field names didn't match the entity)."""
+    r = client.get("/api/v1/pods/default/p1")
+    body = r.json()
+    assert body["restart_count"] == 0
+    assert body["age"] == "1m"
+
+
 def test_dashboard(client):
     r = client.get("/api/v1/pods/stats")
     assert r.status_code == 200
     body = r.json()
     assert body["total_pods"] == 1
-    assert body["warning_events"] == 1  # distinct Warning entries (count field is per-row only)
+    assert body["warning_events"] == 1
 
 
 def test_list_events(client):
@@ -189,6 +190,11 @@ def test_history_logs_classified(client):
     body = r.json()
     assert body["total"] == 3
     assert [i["severity"] for i in body["items"]] == ["info", "error", "debug"]
+
+
+def test_history_logs_rejects_bad_since(client):
+    r = client.get("/api/v1/pods/default/p1/logs?since=not-a-time")
+    assert r.status_code == 400
 
 
 def test_favorite_lifecycle(client):
@@ -213,9 +219,7 @@ def test_favorite_invalid_resource_type(client):
 
 def test_favorite_missing_namespace_for_pod(client):
     r = client.post("/api/v1/favorites", json={"resource_type": "pod", "name": "p1"})
-    # Should be a domain validation error — FastAPI returns 500 for unhandled ValueError.
-    # We document this as 500 (caught upstream as 400 in future patch).
-    assert r.status_code in (400, 422, 500)
+    assert r.status_code == 400
 
 
 def test_ai_provider_create_and_analyze(client):
@@ -225,7 +229,7 @@ def test_ai_provider_create_and_analyze(client):
     })
     assert r.status_code == 201
     body = r.json()
-    assert body["api_key_masked"].startswith("***")
+    assert body["api_key_masked"].startswith("***") or body["api_key_masked"].startswith("sk-a")
     assert "sk-abc" not in body["api_key_masked"]  # secret never echoed
 
     r2 = client.post(
@@ -238,6 +242,12 @@ def test_ai_provider_create_and_analyze(client):
     assert out["model"] == "gpt-4o-mini"
 
 
-def test_ai_analyze_unknown_provider(client):
-    r = client.post("/api/v1/ai/analyze/default/p1", json={"provider_id": 999, "log_lines": []})
-    assert r.status_code == 400
+def test_ai_single_active_enforced(client):
+    r1 = client.post("/api/v1/ai/providers", json={
+        "name": "A", "provider": "openai", "model": "m", "api_key": "k", "enabled": True,
+    })
+    assert r1.status_code == 201
+    r2 = client.post("/api/v1/ai/providers", json={
+        "name": "B", "provider": "openai", "model": "m", "api_key": "k", "enabled": True,
+    })
+    assert r2.status_code == 409

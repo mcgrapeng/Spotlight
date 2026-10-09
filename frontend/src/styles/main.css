@@ -37,14 +37,15 @@
     --destructive: 0 72% 51%;              /* alias to --error */
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 71% 36%;               /* #16A34A */
+    --success: 142 71% 30%;               /* #157F3A — ≥4.7:1 on white & success-bg (AA) */
     --success-foreground: 0 0% 100%;
     --success-bg: 138 76% 97%;             /* #F0FDF4 */
     --success-border: 142 86% 83%;         /* #BBF7D0 */
 
-    /* ponytail: warning 降饱和度 + 改色相到琥珀 (从橙红 26°90% 改到 38°92% 50%)，
-       让 warning 不再撞 error 的红橙区。Audit §1.1 */
-    --warning: 38 92% 45%;                /* #B47409 — 琥珀色 */
+    /* ponytail: warning 降饱和度 + 改色相到琥珀 (从橙红 26°90% 改到 38°92%)，
+       让 warning 不再撞 error 的红橙区。Audit §1.1。L=32% 保证
+       text-warning 在白底与 warning-bg 上都 ≥4.5:1 (AA)。 */
+    --warning: 38 92% 32%;                 /* #A26907 — AA-safe 琥珀 */
     --warning-foreground: 0 0% 100%;
     --warning-bg: 48 100% 96%;             /* #FFFBEB */
     --warning-border: 40 100% 80%;         /* #FED7AA */
@@ -54,7 +55,7 @@
     --error-bg: 0 86% 97%;                 /* #FEF2F2 */
     --error-border: 0 86% 90%;             /* #FECACA */
 
-    --info: 217 91% 60%;                   /* #3B82F6 — JSON keys */
+    --info: 217 91% 48%;                   /* #3066C4 — AA on white & info-bg (JSON keys) */
     --info-foreground: 0 0% 100%;
     --info-bg: 214 100% 97%;               /* #EFF6FF */
     --info-border: 214 95% 93%;            /* #DBEAFE */

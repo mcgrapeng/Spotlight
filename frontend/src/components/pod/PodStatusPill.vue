@@ -23,8 +23,6 @@ const props = defineProps<{
       'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-foreground',
       props.class,
     )"
-    role="status"
-    :aria-label="`Pod phase: ${(PHASE_CONFIG[props.phase] ?? PHASE_CONFIG.Unknown).label}`"
   >
     <span :class="cn('h-1 w-1 rounded-full', (PHASE_CONFIG[props.phase] ?? PHASE_CONFIG.Unknown).dotClass)" aria-hidden="true" />
     {{ (PHASE_CONFIG[props.phase] ?? PHASE_CONFIG.Unknown).label }}

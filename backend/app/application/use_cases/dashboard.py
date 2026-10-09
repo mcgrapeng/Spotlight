@@ -41,10 +41,13 @@ class DashboardUseCases:
             )
             phase_counter = Counter(p.phase for p in pods)
             restart_top = sorted(
-                ((f"{p.namespace}/{p.name}", p.total_restarts) for p in pods if p.total_restarts > 0),
+                ((f"{p.namespace}/{p.name}", p.restart_count) for p in pods if p.restart_count > 0),
                 key=lambda x: x[1], reverse=True,
             )[:10]
-            recent_warns = [e for e in events if e.is_warning][:8]
+            recent_warns = sorted(
+                (e for e in events if e.is_warning),
+                key=lambda e: e.last_seen or "", reverse=True,
+            )[:8]
             return DashboardOut(
                 total_pods=len(pods),
                 running=phase_counter.get("Running", 0),

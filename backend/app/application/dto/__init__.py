@@ -19,7 +19,7 @@ from app.application.dto.clusters import (
 )
 from app.application.dto.events import EventOut
 from app.application.dto.favorites import FavoriteCreate, FavoriteOut
-from app.application.dto.logs import LogStreamParams
+from app.application.dto.logs import LogHistoryOut, LogStreamParams
 from app.application.dto.pods import ContainerOut, PodListOut, PodOut
 from app.application.dto.ai import (
     AIAnalyzeIn,
@@ -38,6 +38,7 @@ __all__ = [
     "PodListOut",
     "EventOut",
     "LogStreamParams",
+    "LogHistoryOut",
     "FavoriteCreate",
     "FavoriteOut",
     "AIAnalyzeIn",

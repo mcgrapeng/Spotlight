@@ -96,7 +96,7 @@ const isActive = (path: string) =>
         :key="item.path"
         :to="item.path"
         :class="cn(
-          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
+          'relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
           'hover:bg-sidebar-accent',
           isActive(item.path)
             ? 'bg-foreground text-background hover:bg-foreground/90'
@@ -116,10 +116,15 @@ const isActive = (path: string) =>
         <span v-if="!props.collapsed" class="flex-1 truncate">{{ item.label }}</span>
         <span
           v-if="!props.collapsed && item.badge"
-          class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-error text-error-foreground text-2xs font-semibold"
+          class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-warning text-warning-foreground text-2xs font-semibold"
         >
           {{ item.badge }}
         </span>
+        <span
+          v-else-if="props.collapsed && item.badge"
+          class="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-warning"
+          aria-hidden="true"
+        />
       </router-link>
     </div>
 
@@ -134,6 +139,7 @@ const isActive = (path: string) =>
             : 'text-sidebar-foreground',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
+        :aria-current="isActive('/settings') ? 'page' : undefined"
       >
         <Settings :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">设置</span>

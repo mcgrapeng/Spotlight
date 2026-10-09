@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
-from typing import NewType
 
 
 class PodPhase(str, Enum):
@@ -81,25 +79,3 @@ class LogSeverity(str, Enum):
             LogSeverity.FATAL: "--log-fatal",
             LogSeverity.UNKNOWN: "--log-unknown",
         }[self]
-
-
-@dataclass(frozen=True, slots=True)
-class PodMetrics:
-    restart_count: int
-    ready_containers: int
-    total_containers: int
-
-    @property
-    def is_fully_ready(self) -> bool:
-        return self.ready_containers == self.total_containers > 0
-
-    @property
-    def readiness_ratio(self) -> float:
-        return self.ready_containers / self.total_containers if self.total_containers else 0.0
-
-
-NamespaceName = NewType("NamespaceName", str)
-PodName = NewType("PodName", str)
-ContainerName = NewType("ContainerName", str)
-NodeName = NewType("NodeName", str)
-ClusterName = NewType("ClusterName", str)

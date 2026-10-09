@@ -136,7 +136,7 @@ const warningEntries = computed(() =>
           {{ warningEntries }} 个告警源
         </span>
         <span v-if="events && events.length > 0" class="text-xs text-muted-foreground ml-auto">
-          只显示最近 {{ events.length }} / 总 {{ totalEvents }} 个
+          仅显示最近 {{ events.length }} 条事件
         </span>
       </div>
     </template>
@@ -182,16 +182,13 @@ const warningEntries = computed(() =>
   </EmptyState>
 
   <div v-else class="space-y-2">
-    <component
-      :is="ev.involved_kind === 'Pod' ? 'router-link' : 'div'"
+    <!-- 卡片统一为 div：把"展开"按钮塞进 router-link 是非法嵌套交互，
+         详情跳转改由 footer 的独立链接承载（Audit §8.3）。 -->
+    <div
       v-for="ev in filtered"
       :key="ev.name"
-      v-bind="ev.involved_kind === 'Pod' ? { to: { name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } } } : {}"
       :class="cn(
         'group block rounded-lg border transition-colors overflow-hidden',
-        ev.involved_kind === 'Pod'
-          ? 'cursor-pointer hover:border-foreground/30'
-          : '',
         ev.type === 'Warning'
           ? 'border-warning/40 bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
           : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
@@ -233,27 +230,37 @@ const warningEntries = computed(() =>
               : ev.message.slice(0, 160) + '…' }}
           </p>
           <div class="text-xs text-muted-foreground mt-2 flex items-center gap-3">
-            <span :title="ev.last_seen ?? undefined">{{ formatRel(ev.last_seen) }}</span>
+            <span :title="ev.last_seen ?? undefined">{{ formatRel(ev.last_seen ?? null) }}</span>
             <span v-if="ev.count > 1" class="inline-flex items-center gap-1">
               <span class="opacity-60">×</span>
               <span class="tabular-nums font-medium">{{ ev.count }}</span>
               <span class="opacity-60">次</span>
             </span>
-            <button
-              v-if="ev.message.length >= 160"
-              type="button"
-              class="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              @click.stop.prevent="toggleExpand(ev.name)"
-            >
-              <component
-                :is="expanded.has(ev.name) ? ChevronDown : ChevronRight"
-                :size="12" :stroke-width="2" aria-hidden="true"
-              />
-              {{ expanded.has(ev.name) ? '收起' : '展开' }}
-            </button>
+            <div class="ml-auto flex items-center gap-3">
+              <button
+                v-if="ev.message.length >= 160"
+                type="button"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                @click.stop="toggleExpand(ev.name)"
+              >
+                <component
+                  :is="expanded.has(ev.name) ? ChevronDown : ChevronRight"
+                  :size="12" :stroke-width="2" aria-hidden="true"
+                />
+                {{ expanded.has(ev.name) ? '收起' : '展开' }}
+              </button>
+              <router-link
+                v-if="ev.involved_kind === 'Pod'"
+                :to="{ name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } }"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                查看详情
+                <ChevronRight :size="12" :stroke-width="2" aria-hidden="true" />
+              </router-link>
+            </div>
           </div>
         </div>
       </div>
-    </component>
+    </div>
   </div>
 </template>

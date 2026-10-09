@@ -3,13 +3,20 @@
 Reuses the official `kubernetes` SDK. The pool is keyed by context name so we
 don't rebuild the HTTP client every request.
 
+Thread-safety
+-------------
+Every ApiClient is built with its own `client.Configuration` loaded via
+`load_kube_config(..., client_configuration=cfg)`. We NEVER touch the SDK's
+process-global default Configuration (`Configuration.set_default`) — that
+global is mutated by the plain `load_kube_config()` call and would let two
+threads building clients for different clusters cross-wire credentials.
+
 Performance notes
 -----------------
-- kubeconfig is loaded ONCE at startup. The `kubernetes` SDK mutates module-level
-  state on every `load_kube_config()` call, so calling it per request would be
-  costly AND unsafe under concurrent use. We only reload if the source path
-  changed at runtime (rare — covered by Teleport login flow).
-- Each context→CoreV1Api lookup is O(1) dict access under an RLock.
+- kubeconfig parsing happens only on cache misses (one client per context)
+  and on path change / reload(). The hot path is an O(1) dict lookup.
+- The current-context name is cached; it re-parses only after reload().
+- `reload()` closes dropped ApiClients so their connection pools don't leak.
 """
 from __future__ import annotations
 
@@ -29,67 +36,94 @@ class KubernetesClientPool:
     def __init__(self) -> None:
         self._clients: dict[str, client.ApiClient] = {}
         self._lock = RLock()
-        self._kubeconfig_path: str | None = None
-        self._loaded_path: str | None = None
+        self._resolved_path: str | None = None
+        self._current: str | None = None
 
     def _resolve_path(self) -> str | None:
         return get_settings().kubeconfig_path or os.environ.get("KUBECONFIG")
 
-    def _load_kubeconfig(self, force: bool = False) -> None:
+    def _clear_locked(self) -> None:
+        for cli in self._clients.values():
+            try:
+                cli.close()
+            except Exception:
+                pass
+        self._clients.clear()
+        self._current = None
+
+    def _sync_path_locked(self) -> str | None:
+        """Adopt the current kubeconfig path; drop clients when it changes."""
         path = self._resolve_path()
-        self._kubeconfig_path = path
+        if path != self._resolved_path:
+            self._clear_locked()
+            self._resolved_path = path
+        return path
 
-        if not force and path == self._loaded_path:
-            return  # idempotent — most frequent path on the hot path
+    def _build(self, context: Optional[str]) -> client.ApiClient:
+        """Build an ApiClient bound to an explicit per-client Configuration.
 
+        `client_configuration` keeps this off the SDK's global default, so
+        concurrent builds for different contexts can't cross-contaminate.
+        """
+        cfg = client.Configuration()
+        path = self._resolved_path
         if path and os.path.exists(path):
-            config.load_kube_config(config_file=path)
+            config.load_kube_config(
+                config_file=path, context=context, client_configuration=cfg
+            )
         else:
             try:
-                config.load_kube_config()
+                config.load_kube_config(context=context, client_configuration=cfg)
             except config.ConfigException:
-                config.load_incluster_config()
-        self._loaded_path = path
-        # Any previously-cached clients were built against the old config; drop.
-        with self._lock:
-            self._clients.clear()
-        log.info("k8s.kubeconfig.loaded", path=path or "<default>")
+                config.load_incluster_config(client_configuration=cfg)
+        return client.ApiClient(configuration=cfg)
 
     def initialize(self) -> None:
-        self._load_kubeconfig(force=True)
+        with self._lock:
+            self._sync_path_locked()
+            active = self.current() or "default"
+            if active not in self._clients:
+                self._clients[active] = self._build(None)
+                log.info("k8s.client.created", context=active)
 
     def reload(self) -> None:
-        """Force a kubeconfig reload (e.g. after Teleport `tsh login` rotates certs)."""
-        self._load_kubeconfig(force=True)
+        """Force a rebuild (e.g. after Teleport `tsh kube login` rotates certs
+        or switches the current context)."""
+        with self._lock:
+            self._clear_locked()
+            self._resolved_path = self._resolve_path()
 
     def get(self, context: Optional[str] = None) -> tuple[client.CoreV1Api, str]:
-        """Return (CoreV1Api, current_context_name). Thread-safe; O(1) on cache hit."""
-        if context:
-            # SDK requires the *named* context to be loaded before constructing the client.
-            # We only re-run load_kube_config if the kubeconfig path actually changed.
-            path = self._resolve_path()
-            if path != self._loaded_path:
-                self._load_kubeconfig()
-            config.load_kube_config(context=context, config_file=self._loaded_path)
-
-        active = context or self._current_context() or "default"
+        """Return (CoreV1Api, active_context_name). Thread-safe; O(1) on cache hit."""
         with self._lock:
+            self._sync_path_locked()
+            active = context or self._current or self.current() or "default"
             cli = self._clients.get(active)
             if cli is None:
-                cli = client.ApiClient()
+                cli = self._build(context)
                 self._clients[active] = cli
                 log.info("k8s.client.created", context=active)
             return client.CoreV1Api(cli), active
 
     def current(self) -> str | None:
-        return self._current_context()
-
-    def _current_context(self) -> str | None:
-        _, current = config.list_kube_config_contexts(config_file=self._loaded_path)
-        return current.get("name") if current else None
+        with self._lock:
+            self._sync_path_locked()
+            if self._current is None:
+                try:
+                    _, current = config.list_kube_config_contexts(
+                        config_file=self._resolved_path
+                    )
+                    self._current = current.get("name") if current else None
+                except Exception:
+                    self._current = None
+            return self._current
 
     def list_contexts(self) -> list[dict]:
-        contexts, current = config.list_kube_config_contexts(config_file=self._loaded_path)
+        with self._lock:
+            self._sync_path_locked()
+            contexts, current = config.list_kube_config_contexts(
+                config_file=self._resolved_path
+            )
         current_name = current.get("name", "") if current else ""
         return [
             {

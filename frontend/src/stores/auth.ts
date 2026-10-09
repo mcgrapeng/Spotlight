@@ -27,16 +27,19 @@ export const useAuthStore = defineStore('auth', () => {
   async function refreshStatus() {
     try {
       status.value = await authApi.status()
-      // "required" means "the user needs to log in". Login is needed when:
-      //  - Teleport auth is configured on the server, AND
-      //  - we don't have a working kubeconfig / tsh session yet.
-      // Without the session check, a page refresh would bounce the user
-      // back to /login even though they're already authenticated.
-      required.value = status.value.configured && !status.value.session_valid
+      // "required" means "this browser must log in". The server demands a
+      // session (Teleport and/or API_TOKEN configured) and this caller
+      // doesn't hold one yet.
+      required.value = status.value.auth_required && !status.value.client_session
     } catch {
       status.value = null
       required.value = false
     }
+  }
+
+  /** Called by the HTTP layer on 401 — session gone mid-flight. */
+  function requireLogin() {
+    required.value = true
   }
 
   /** Step 1: `tsh login`. Returns the LoginResult so the caller can decide
@@ -49,13 +52,19 @@ export const useAuthStore = defineStore('auth', () => {
       if (r.ok) {
         pendingClusters.value = r.kube_clusters ?? []
         pendingProxy.value = r.proxy
-        // required stays true until kubeLogin() lands
+        if (!pendingClusters.value.length) {
+          // Token login (host-bound deployment): no kube-cluster step.
+          required.value = false
+        }
+        // else: required stays true until kubeLogin() lands
         return r
       }
       error.value = r.message || '登录失败'
       return null
     } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? '登录失败'
+      // detail is either a plain string or {code, message} (mfa_required).
+      const d = e?.response?.data?.detail
+      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? '登录失败')
       return null
     } finally {
       busy.value = false
@@ -72,7 +81,7 @@ export const useAuthStore = defineStore('auth', () => {
         required.value = false
         pendingClusters.value = []
         // Mark status as known so the router's beforeEach guard doesn't
-        // re-fetch /auth/status (which would set `required = configured`
+        // re-fetch /auth/status (which would set `required = auth_required`
         // and immediately bounce us back to /login).
         if (status.value === null) {
           status.value = {
@@ -81,6 +90,9 @@ export const useAuthStore = defineStore('auth', () => {
             proxy: '',
             user: '',
             cluster: '',
+            session_valid: true,
+            auth_required: true,
+            client_session: true,
           }
         }
         // Ponytail: 同步全局 cluster 选中态,否则 LoginView 选完集群跳走
@@ -92,7 +104,8 @@ export const useAuthStore = defineStore('auth', () => {
       error.value = r.message || 'kube login 失败'
       return false
     } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? 'kube login 失败'
+      const d = e?.response?.data?.detail
+      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? 'kube login 失败')
       return false
     } finally {
       busy.value = false
@@ -103,9 +116,12 @@ export const useAuthStore = defineStore('auth', () => {
     required.value = true
     pendingClusters.value = []
     pendingProxy.value = ''
+    // Revoke the server session; ignore network errors (local state is
+    // already cleared — the TTL will reap the cookie anyway).
+    authApi.logout().catch(() => {})
   }
 
   return { status, required, busy, error,
            pendingClusters, pendingProxy,
-           refreshStatus, login, kubeLogin, logout }
+           refreshStatus, requireLogin, login, kubeLogin, logout }
 })

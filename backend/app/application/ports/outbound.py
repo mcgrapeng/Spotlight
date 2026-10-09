@@ -7,6 +7,7 @@ it in `run_in_executor` for keepalive-racing.
 """
 from __future__ import annotations
 
+import threading
 from typing import AsyncIterator, Iterator, Protocol, runtime_checkable
 
 from app.domain.entities.ai import AIProviderConfig
@@ -38,6 +39,7 @@ class K8sRepositoryPort(Protocol):
     ) -> list[LogEntry]: ...
     def stream_logs(
         self, ref: ResourceRef, container: str | None, tail_lines: int,
+        stop_event: "threading.Event | None" = None,
     ) -> Iterator[LogEntry]: ...
 
 

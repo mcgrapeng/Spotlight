@@ -165,8 +165,8 @@ async def test_dashboard_aggregates(repo):
     assert d.nodes_total == 1
     assert d.nodes_ready == 1
     assert d.namespaces_count == 2
-    assert d.restart_top[0]["restarts"] == 5
-    assert d.restart_top[0]["pod"] == "default/p-crash"
+    assert d.restart_top[0].restarts == 5
+    assert d.restart_top[0].pod == "default/p-crash"
 
 
 # ── EventUseCases ───────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Sparkles, Server, Layers, ChevronRight, Info, LogOut } from '@lucide/vue'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useClusterStore } from '@/stores/cluster'
 import { useAuthStore } from '@/stores/auth'
@@ -162,34 +163,23 @@ function confirmLogout() {
       </Card>
     </section>
 
-    <!-- 登出确认 Dialog -->
-    <Teleport to="body">
-      <div
-        v-if="showLogoutConfirm"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="logout-dialog-title"
-        @click.self="showLogoutConfirm = false"
-      >
-        <Card class="w-full max-w-sm p-0">
-          <CardContent class="p-5">
-            <h3 id="logout-dialog-title" class="text-base font-semibold">确认登出？</h3>
-            <p class="mt-2 text-sm text-muted-foreground">
-              登出后会回到登录页，本地会话将被清除。
-            </p>
-            <div class="mt-5 flex justify-end gap-2">
-              <Button variant="outline" size="sm" @click="showLogoutConfirm = false">
-                取消
-              </Button>
-              <Button variant="destructive" size="sm" @click="confirmLogout">
-                <LogOut :size="14" :stroke-width="1.75" class="mr-1" />
-                登出
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </Teleport>
+    <!-- 登出确认 Dialog（reka Dialog：自带焦点陷阱 / Esc / 遮罩关闭） -->
+    <Dialog :open="showLogoutConfirm" @update:open="(v) => (showLogoutConfirm = v)">
+      <DialogContent class="sm:max-w-sm">
+        <DialogTitle>确认登出？</DialogTitle>
+        <p class="text-sm text-muted-foreground">
+          登出后会回到登录页，本地会话将被清除。
+        </p>
+        <div class="mt-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" @click="showLogoutConfirm = false">
+            取消
+          </Button>
+          <Button variant="destructive" size="sm" @click="confirmLogout">
+            <LogOut :size="14" :stroke-width="1.75" class="mr-1" />
+            登出
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

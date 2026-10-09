@@ -357,7 +357,7 @@ const SEV_ICON: Record<string, string> = {
   unknown: '?',
 }
 const SEV_CLASS: Record<string, string> = {
-  trace: 'text-muted-foreground/50', debug: 'text-muted-foreground/50',
+  trace: 'text-muted-foreground/70', debug: 'text-muted-foreground/70',
   info: 'text-foreground', notice: 'text-foreground',
   warn: 'text-warning', warning: 'text-warning',
   error: 'text-error', err: 'text-error',
@@ -404,8 +404,8 @@ const SEV_BADGE_CLASS: Record<string, string> = {
   warning: 'bg-warning/15 text-warning border-warning/40 font-medium',
   info: 'bg-muted text-foreground border-border font-medium',
   notice: 'bg-muted text-foreground border-border font-medium',
-  trace: 'bg-transparent text-muted-foreground/50 border-transparent',
-  debug: 'bg-transparent text-muted-foreground/50 border-transparent',
+  trace: 'bg-transparent text-muted-foreground/70 border-transparent',
+  debug: 'bg-transparent text-muted-foreground/70 border-transparent',
   unknown: 'bg-muted text-muted-foreground border-border',
 }
 const SEV_BADGE_TEXT: Record<string, string> = {
@@ -890,14 +890,14 @@ function truncatedHtml(content: string): string {
               </span>
               <span
                 v-if="group.line.raw.container && group.line.raw.container !== '—'"
-                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                 :title="group.line.raw.container"
               >{{ group.line.raw.container }}</span>
               <button
                 v-if="group.line.isJson"
                 type="button"
                 @click="toggleJson(`${group.key}`)"
-                class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
                 :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
                 :aria-expanded="jsonExpanded.has(`${group.key}`)"
                 aria-label="切换 JSON 展开"
@@ -926,7 +926,7 @@ function truncatedHtml(content: string): string {
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
-                    <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
+                    <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
                 <span
                   class="flex-1 min-w-0 whitespace-pre"
                   :style="JSON_GUIDE_STYLE"
@@ -946,8 +946,11 @@ function truncatedHtml(content: string): string {
               :style="{ opacity: timeOpacity(group.lines[0].raw.timestamp) }"
               v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId]"
               role="button"
+              tabindex="0"
               :aria-expanded="group.expanded"
               @click="toggleExpand(group.key)"
+              @keydown.enter.prevent="toggleExpand(group.key)"
+              @keydown.space.prevent="toggleExpand(group.key)"
             >
               <span
                 v-if="group.lines[0].traceId"
@@ -970,14 +973,14 @@ function truncatedHtml(content: string): string {
               </span>
               <span
                 v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-[10px] font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                 :title="group.lines[0].raw.container"
               >{{ group.lines[0].raw.container }}</span>
               <button
                 v-if="group.lines[0].isJson"
                 type="button"
                 @click.stop="toggleJson(`${group.key}`)"
-                class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
                 :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
                 :aria-expanded="jsonExpanded.has(`${group.key}`)"
                 aria-label="切换 JSON 展开"
@@ -1017,7 +1020,7 @@ function truncatedHtml(content: string): string {
                     v-if="line.isJson"
                     type="button"
                     @click="toggleJson(`${group.key + idx + 1}`)"
-                    class="shrink-0 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                    class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
                     :title="jsonExpanded.has(`${group.key + idx + 1}`) ? '折叠 JSON' : '展开 JSON'"
                     :aria-expanded="jsonExpanded.has(`${group.key + idx + 1}`)"
                     aria-label="切换 JSON 展开"
@@ -1046,7 +1049,7 @@ function truncatedHtml(content: string): string {
                     :key="jl.num"
                     class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
                   >
-                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-[10px] mt-px">{{ jl.num }}</span>
+                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
                     <span
                       class="flex-1 min-w-0 whitespace-pre"
                       :style="JSON_GUIDE_STYLE"

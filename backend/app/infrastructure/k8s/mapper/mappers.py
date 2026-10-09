@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from dateutil import parser as dtparser
-
 from app.domain.entities.resources import (
     Container,
     K8sEvent,
@@ -22,7 +20,8 @@ def _parse_dt(raw: str | datetime | None) -> datetime | None:
     if isinstance(raw, datetime):
         return raw
     try:
-        return dtparser.isoparse(raw)
+        # stdlib since 3.11 accepts the "Z" suffix and offsets natively.
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
 
@@ -38,6 +37,10 @@ def _age_seconds(raw: str | datetime | None, now: datetime) -> int | None:
 
 def _container_state(cstatus) -> tuple[str, str | None, str | None]:
     state = cstatus.state
+    # K8s allows container status with state unset (rare but real during
+    # admission races) — never let it crash a whole pod list response.
+    if state is None:
+        return ContainerState.UNKNOWN.value, None, None
     if state.waiting:
         return ContainerState.WAITING.value, state.waiting.reason, state.waiting.message
     if state.terminated:
@@ -53,7 +56,11 @@ def map_pod(pod_obj, *, cluster: str = "", now: datetime | None = None) -> Pod:
     containers: list[Container] = []
     for c in cs:
         state_name, reason, msg = _container_state(c)
-        started_at = str(c.state.running.started_at) if c.state.running else None
+        started_at = (
+            str(c.state.running.started_at)
+            if c.state is not None and c.state.running
+            else None
+        )
         containers.append(
             Container(
                 name=c.name, image=c.image, ready=c.ready, state=state_name,
@@ -136,6 +143,13 @@ def map_node(node_obj, *, pod_count: int = 0, cluster: str = "", now: datetime |
 
 def map_event(ev_obj) -> K8sEvent:
     involved = ev_obj.involved_object
+    # New-style events (events.k8s.io/v1) carry no last_timestamp; the
+    # observed time lives in series.lastObservedTime. Fall back so they
+    # don't sort as "oldest".
+    last = ev_obj.last_timestamp
+    if not last:
+        series = getattr(ev_obj, "series", None)
+        last = getattr(series, "last_observed_time", None) if series else None
     return K8sEvent(
         name=ev_obj.metadata.name,
         namespace=ev_obj.metadata.namespace or "",
@@ -146,7 +160,7 @@ def map_event(ev_obj) -> K8sEvent:
         involved_name=involved.name if involved else "",
         count=ev_obj.count or 0,
         first_seen=str(ev_obj.first_timestamp) if ev_obj.first_timestamp else None,
-        last_seen=str(ev_obj.last_timestamp) if ev_obj.last_timestamp else None,
+        last_seen=str(last) if last else None,
     )
 
 

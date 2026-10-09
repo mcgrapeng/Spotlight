@@ -57,7 +57,7 @@ function selectNamespace(name: string) {
       </button>
     </PopoverTrigger>
     <PopoverContent class="w-[260px] p-0" align="start">
-      <Command v-model="value">
+      <Command :model-value="value">
         <CommandInput placeholder="搜索 namespace…" />
         <CommandList>
           <CommandEmpty>没有匹配的 namespace</CommandEmpty>

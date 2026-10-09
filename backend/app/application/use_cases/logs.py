@@ -26,8 +26,9 @@ class LogUseCases:
 
     def stream(
         self, ref: ResourceRef, container: str | None, tail: int,
+        stop_event=None,
     ) -> Iterator[LogStreamParams]:
-        for entry in self._repo.stream_logs(ref, container, tail):
+        for entry in self._repo.stream_logs(ref, container, tail, stop_event=stop_event):
             yield self._enrich(entry)
 
     def _enrich(self, entry) -> LogStreamParams:

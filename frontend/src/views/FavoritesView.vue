@@ -23,8 +23,9 @@ const favorites = computed(() => _raw.value ?? [])
 
 async function remove(id: number) {
   await favoritesApi.remove(id)
-  // Optimistic local remove — re-list on next mount.
-  favorites.value = favorites.value.filter(f => f.id !== id)
+  // Optimistic local remove — re-list on next mount. Write the source ref,
+  // not the readonly derived computed.
+  _raw.value = (_raw.value ?? []).filter(f => f.id !== id)
 }
 
 function open(f: FavoriteOut) {

@@ -10,6 +10,7 @@ import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
@@ -49,6 +50,8 @@ const { data, loading, error, reload } = usePodList({
   status: statusFilter,
   search,
 })
+
+const pageSizeOptions = [10, 20, 50, 100].map((n) => ({ value: n, label: String(n) }))
 
 const statusOptions = [
   { value: 'all',       label: '全部' },
@@ -130,14 +133,13 @@ const pagedPods = computed(() => {
 
     <!-- FilterBar -->
     <div class="flex items-center gap-3 flex-wrap" role="search" aria-label="Pod 列表筛选">
-      <div class="relative w-44">
-        <select
+      <div class="w-44">
+        <AppSelect
           v-model="statusFilter"
-          class="flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          :options="statusOptions"
           aria-label="按状态筛选"
-        >
-          <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
+          class="w-full"
+        />
       </div>
       <div class="relative flex-1 min-w-[240px] max-w-md">
         <Search :size="14" class="absolute left-2.5 top-3 text-muted-foreground" :stroke-width="1.75" />
@@ -182,13 +184,13 @@ const pagedPods = computed(() => {
         <table class="w-full text-sm">
           <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
             <tr>
-              <th class="text-left font-medium px-4 py-2.5 min-w-[240px]">Pod</th>
-              <th class="text-left font-medium px-4 py-2.5 hidden lg:table-cell">Namespace</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[160px]">Status</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[110px]">Containers</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[100px]">Restarts</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[140px] hidden lg:table-cell">Node</th>
-              <th class="text-left font-medium px-4 py-2.5 w-[80px]">Age</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 min-w-[240px]">Pod</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 hidden lg:table-cell">Namespace</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[160px]">Status</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[110px]">Containers</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[100px]">Restarts</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[140px] hidden lg:table-cell">Node</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[80px]">Age</th>
             </tr>
           </thead>
           <tbody>
@@ -197,19 +199,23 @@ const pagedPods = computed(() => {
               :key="`${row.namespace}/${row.name}`"
               style="content-visibility: auto; contain-intrinsic-size: auto 44px;"
               :class="cn(
-                'border-b border-border last:border-0 cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none transition-colors',
+                'border-b border-border last:border-0 cursor-pointer transition-colors',
+                'focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                 clsOf(row),
               )"
               tabindex="0"
-              role="button"
-              :aria-label="`查看 ${row.name} 详情`"
               @click="open(row)"
               @keydown.enter="open(row)"
               @keydown.space.prevent="open(row)"
             >
               <td class="px-4 py-2.5 min-w-0">
                 <div class="flex flex-col gap-0.5 min-w-0">
-                  <span class="font-mono text-[13px] text-foreground truncate">{{ row.name }}</span>
+                  <router-link
+                    :to="{ name: 'pod-detail', params: { namespace: row.namespace, name: row.name } }"
+                    class="font-mono text-[13px] text-foreground truncate rounded hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    :aria-label="`查看 ${row.name} 详情`"
+                    @click.stop
+                  >{{ row.name }}</router-link>
                   <span
                     v-if="row.owner_kind"
                     class="text-2xs text-muted-foreground font-mono truncate"
@@ -304,7 +310,7 @@ const pagedPods = computed(() => {
           v-for="row in pagedPods"
           :key="`${row.namespace}/${row.name}`"
           type="button"
-          class="w-full text-left p-3 active:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none transition-colors"
+          class="w-full text-left p-3 active:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
           :class="clsOf(row)"
           :aria-label="`查看 ${row.name} 详情`"
           @click="open(row)"
@@ -344,13 +350,13 @@ const pagedPods = computed(() => {
         <div class="flex items-center gap-2">
           <label class="flex items-center gap-1.5">
             <span>每页</span>
-            <select
-              v-model.number="pageSize"
-              class="h-7 rounded-md border border-input bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <AppSelect
+              :model-value="String(pageSize)"
+              :options="pageSizeOptions"
               aria-label="每页条数"
-            >
-              <option v-for="n in [10, 20, 50, 100]" :key="n" :value="n">{{ n }}</option>
-            </select>
+              size="sm"
+              @update:model-value="(v) => (pageSize = Number(v))"
+            />
           </label>
           <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
           <Button

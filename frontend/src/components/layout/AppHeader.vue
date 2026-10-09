@@ -37,7 +37,7 @@ defineEmits<{
       </span>
       <span class="hidden sm:flex flex-col leading-none">
         <span class="text-sm font-semibold tracking-tight text-foreground">Spotlight</span>
-        <span class="text-[10px] font-medium tracking-wide text-muted-foreground mt-0.5">集群驾驶舱</span>
+        <span class="text-2xs font-medium tracking-wide text-muted-foreground mt-0.5">集群驾驶舱</span>
       </span>
     </router-link>
 

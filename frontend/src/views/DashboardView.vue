@@ -60,11 +60,10 @@ async function load(silent = false) {
   if (silent) {
     refreshing.value = true
     try {
-      const fresh = await statsFetch.refresh()
-      if (fresh) {
-        stats.value = fresh
-        lastRefreshed.value = new Date()
-      }
+      // refresh() writes the fresh snapshot straight into `stats` (it IS
+      // the bound data ref) and returns void.
+      await statsFetch.refresh()
+      lastRefreshed.value = new Date()
     } catch (e: any) {
       error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
     } finally {
@@ -277,7 +276,7 @@ const recentActivity = computed(() => {
             <span class="ml-auto h-1.5 w-12 rounded-full bg-muted overflow-hidden">
               <span
                 class="block h-full transition-all"
-                :class="healthIsCritical ? 'bg-error' : healthScore >= 70 ? 'bg-warning' : 'bg-success'"
+                :class="healthIsCritical ? 'bg-error' : healthScore >= 90 ? 'bg-success' : 'bg-warning'"
                 :style="{ width: `${healthScore}%` }"
               />
             </span>
@@ -294,7 +293,7 @@ const recentActivity = computed(() => {
       <Card class="p-0">
         <CardContent class="p-4">
           <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">告警</div>
-          <div class="text-2xl font-bold tabular-nums" :class="stats.warning_events > 0 ? 'text-warning' : 'text-muted-foreground/50'">
+          <div class="text-2xl font-bold tabular-nums" :class="stats.warning_events > 0 ? 'text-warning' : 'text-muted-foreground/70'">
             {{ formatNumber(stats.warning_events) }}
           </div>
           <div class="text-2xs text-muted-foreground mt-1">5min 内最近</div>

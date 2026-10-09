@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.infrastructure.auth.teleport import _run_with_pty, tsh_available
+from app.infrastructure.auth.teleport import _is_mfa_prompt, _run_with_pty, tsh_available
 from app.infrastructure.config.settings import Settings
 
 
@@ -48,8 +48,14 @@ async def test_run_with_pty_feeds_stdin_through_a_real_terminal():
     """
     rc, out, _err = await _run_with_pty(
         ["/bin/sh", "-c", "read line; echo \"GOT:$line\""],
-        b"hello-from-pty",
+        [b"hello-from-pty"],  # contract: one bytes item per stdin line
         timeout=5.0,
     )
     assert rc == 0
     assert "GOT:hello-from-pty" in out
+
+def test_is_mfa_prompt_detects_totp_stall():
+    assert _is_mfa_prompt("Enter an OTP code from a device:\n") is True
+    assert _is_mfa_prompt("please enter your MFA token") is True
+    assert _is_mfa_prompt("Enter password for Teleport user bob:") is False
+    assert _is_mfa_prompt("access denied") is False

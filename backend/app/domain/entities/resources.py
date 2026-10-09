@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.domain.services.duration import format_age
+
 
 @dataclass(frozen=True, slots=True)
 class Container:
@@ -13,11 +15,6 @@ class Container:
     reason: str | None = None
     message: str | None = None
     started_at: str | None = None
-
-    def short_state(self) -> str:
-        if self.reason:
-            return f"{self.state} · {self.reason}"
-        return self.state
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,22 +40,24 @@ class Pod:
     cluster: str = ""
 
     @property
-    def total_restarts(self) -> int:
+    def restart_count(self) -> int:
         return sum(c.restart_count for c in self.containers)
 
     @property
-    def ready_containers(self) -> int:
-        return sum(1 for c in self.containers if c.ready)
+    def age(self) -> str | None:
+        return format_age(self.age_seconds)
 
     @property
-    def is_healthy(self) -> bool:
-        from app.domain.value_objects.enums import PodPhase
+    def owner_kind(self) -> str | None:
+        return self.owner.kind if self.owner else None
 
-        return self.phase == PodPhase.RUNNING.value and all(c.ready for c in self.containers)
+    @property
+    def owner_name(self) -> str | None:
+        return self.owner.name if self.owner else None
 
     @property
     def is_warning(self) -> bool:
-        return self.total_restarts > 0 or self.reason is not None
+        return self.restart_count > 0 or self.reason is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +79,10 @@ class Node:
     def is_ready(self) -> bool:
         return self.status == "Ready"
 
+    @property
+    def age(self) -> str | None:
+        return format_age(self.age_seconds)
+
 
 @dataclass(frozen=True, slots=True)
 class Namespace:
@@ -88,6 +91,10 @@ class Namespace:
     labels: dict[str, str]
     age_seconds: int | None
     cluster: str = ""
+
+    @property
+    def age(self) -> str | None:
+        return format_age(self.age_seconds)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +132,3 @@ class LogEntry:
     content: str
     container: str
     severity: str = "unknown"  # LogSeverity value
-
-    def matches(self, text: str) -> bool:
-        return text in self.content

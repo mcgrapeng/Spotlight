@@ -6,6 +6,7 @@ import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -79,6 +80,11 @@ async function setDefault(p: AIProviderOut) {
         添加 Provider
       </Button>
     </template>
+    <template #extra>
+      <p class="text-2xs text-muted-foreground">
+        系统限制同时只能启用一个模型：启用新的 Provider 前需先禁用当前启用的。
+      </p>
+    </template>
   </PageHeader>
 
   <LoadingState v-if="loading && providers.length === 0" />
@@ -89,6 +95,12 @@ async function setDefault(p: AIProviderOut) {
     <Card v-for="p in providers" :key="p.id" class="p-0">
       <CardContent class="p-4">
         <div class="flex items-center gap-3">
+          <span
+            v-if="p.enabled"
+            class="inline-flex items-center rounded px-2 py-0.5 text-2xs font-semibold bg-success-bg text-success border border-success-border"
+          >
+            已启用
+          </span>
           <span
             v-if="p.is_default"
             class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold bg-foreground text-background"
@@ -118,40 +130,30 @@ async function setDefault(p: AIProviderOut) {
 
   <AIProviderForm v-model:open="dialogOpen" :initial="editing" @save="save" />
 
-  <!-- 内联删除确认 (替代原生 confirm) -->
-  <Teleport to="body">
-    <div
-      v-if="deleteConfirm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="delete-provider-title"
-      @click.self="deleteConfirm = null"
-    >
-      <Card class="w-full max-w-sm p-0">
-        <CardContent class="p-5">
-          <div class="flex items-start gap-3">
-            <span class="inline-flex items-center justify-center size-9 rounded-md shrink-0 bg-error/10 text-error">
-              <AlertTriangle :size="16" :stroke-width="1.75" aria-hidden="true" />
-            </span>
-            <div class="flex-1 min-w-0">
-              <h3 id="delete-provider-title" class="text-base font-semibold">删除 Provider？</h3>
-              <p class="mt-2 text-sm text-muted-foreground">
-                将删除 <span class="font-mono text-foreground">{{ deleteConfirm.name }}</span>。已使用此 Provider 的 AI 分析记录不会被清理，但新增分析将无法选择它。此操作不可撤销。
-              </p>
-            </div>
-          </div>
-          <div class="mt-5 flex justify-end gap-2">
-            <Button variant="outline" size="sm" :disabled="deleting" @click="deleteConfirm = null">
-              取消
-            </Button>
-            <Button variant="destructive" size="sm" :disabled="deleting" @click="confirmRemove">
-              <Trash2 :size="14" :stroke-width="1.75" class="mr-1" />
-              {{ deleting ? '删除中…' : '删除' }}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  </Teleport>
+  <!-- 删除确认（reka Dialog：自带焦点陷阱 / Esc / 遮罩关闭） -->
+  <Dialog
+    :open="!!deleteConfirm"
+    @update:open="(v) => { if (!v) deleteConfirm = null }"
+  >
+    <DialogContent class="sm:max-w-sm">
+      <DialogTitle class="flex items-start gap-3">
+        <span class="inline-flex items-center justify-center size-9 rounded-md shrink-0 bg-error/10 text-error">
+          <AlertTriangle :size="16" :stroke-width="1.75" aria-hidden="true" />
+        </span>
+        删除 Provider？
+      </DialogTitle>
+      <p class="text-sm text-muted-foreground">
+        将删除 <span class="font-mono text-foreground">{{ deleteConfirm?.name }}</span>。已使用此 Provider 的 AI 分析记录不会被清理，但新增分析将无法选择它。此操作不可撤销。
+      </p>
+      <div class="mt-3 flex justify-end gap-2">
+        <Button variant="outline" size="sm" :disabled="deleting" @click="deleteConfirm = null">
+          取消
+        </Button>
+        <Button variant="destructive" size="sm" :disabled="deleting" @click="confirmRemove">
+          <Trash2 :size="14" :stroke-width="1.75" class="mr-1" />
+          {{ deleting ? '删除中…' : '删除' }}
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>
 </template>

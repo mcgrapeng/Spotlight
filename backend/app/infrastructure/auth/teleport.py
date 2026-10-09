@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from app.infrastructure.cache.ttl_cache import invalidate_all
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.k8s.client.pool import get_pool
 from app.infrastructure.logging import get_logger
@@ -35,6 +36,7 @@ class LoginResult:
     cluster: str               # Teleport cluster (== proxy host in most setups)
     kube_clusters: list[str]   # K8s clusters the user has access to post-auth
     message: str = ""
+    code: str = ""             # "" | "mfa_required" — machine-readable failure class
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,16 @@ async def _run(cmd: list[str], *, stdin: bytes | None = None,
     )
 
 
+def _dec(b: bytes | None) -> str:
+    return (b or b"").decode("utf-8", "replace")
+
+
+def _is_mfa_prompt(text: str) -> bool:
+    """True when tsh stopped to ask for an MFA/TOTP code."""
+    low = text.lower()
+    return any(k in low for k in ("otp", "mfa", "two-factor", "2fa", "totp"))
+
+
 async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
                           env: dict[str, str] | None = None,
                           timeout: float = 60.0,
@@ -103,12 +115,11 @@ async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
     `inter_line_delay` is the pause between successive lines so the child
     has time to consume each one before the next arrives.
     """
-    # Ponytail: master_fd must be released on EVERY exit path — including
-    # asyncio.create_subprocess_exec throwing (FileNotFoundError on a bad
-    # binary, PermissionError on a non-executable, etc.). We openpty() FIRST,
-    # then wrap the rest in try/finally. Previous versions only had
-    # try/finally around the post-spawn phase, which leaked the fd whenever
-    # the binary itself was missing.
+    # Ponytail: exactly ONE cleanup block closes master_fd, on every exit
+    # path (spawn failure, timeout, crash, success). A nested
+    # finally + except-BaseException pair double-closes the fd on exception
+    # paths — and after another thread reuses the fd number the second
+    # close kills an unrelated connection.
     master_fd, slave_fd = pty.openpty()
     full_env = os.environ.copy()
     if env:
@@ -126,55 +137,42 @@ async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
             )
         finally:
             # Always close the slave fd from the parent — child inherited
-            # its own copy via fork(). If subprocess creation threw, this
-            # is the only cleanup needed for the slave side.
+            # its own copy via fork().
             try:
                 os.close(slave_fd)
             except OSError:
                 pass
 
-        # ponytail: master_fd leaks were the single biggest production risk
-        # here. Any non-TimeoutError on the executor / communicate path
-        # (executor shutdown, ProcessLookupError on already-dead proc, etc.)
-        # used to skip the os.close entirely. Over a day of failed logins
-        # that exhausts ulimit -n and the whole backend goes EMFILE. Always
-        # close the master fd, regardless of how we exit.
         try:
-            try:
-                await asyncio.wait_for(
-                    loop.run_in_executor(None, _feed_lines, master_fd, lines, inter_line_delay),
-                    timeout=max(10.0, inter_line_delay * (len(lines) + 1)),
-                )
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return (124, "", "timeout")
-
-            try:
-                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return (124, "", "timeout")
-
-            return (
-                proc.returncode or 0,
-                stdout_b.decode("utf-8", "replace"),
-                stderr_b.decode("utf-8", "replace"),
+            await asyncio.wait_for(
+                loop.run_in_executor(None, _feed_lines, master_fd, lines, inter_line_delay),
+                timeout=max(10.0, inter_line_delay * (len(lines) + 1)),
             )
-        finally:
-            try:
-                os.close(master_fd)
-            except OSError:
-                pass
-    except BaseException:
-        # If subprocess creation itself threw, we still need to close master_fd
-        # — try/finally above only ran the slave-close branch.
+        except asyncio.TimeoutError:
+            proc.kill()
+            out_b, err_b = await proc.communicate()
+            return (124, _dec(out_b), _dec(err_b) or "timeout")
+
+        # shield() keeps communicate() alive past a timeout so we can still
+        # drain what the child printed (e.g. the TOTP prompt) after kill.
+        comm = asyncio.ensure_future(proc.communicate())
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(asyncio.shield(comm), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            stdout_b, stderr_b = await comm
+            return (124, _dec(stdout_b), _dec(stderr_b) or "timeout")
+
+        return (
+            proc.returncode or 0,
+            _dec(stdout_b),
+            _dec(stderr_b),
+        )
+    finally:
         try:
             os.close(master_fd)
         except OSError:
             pass
-        raise
 
 
 def _feed_lines(fd: int, lines: list[bytes], delay: float) -> None:
@@ -255,12 +253,23 @@ async def login(password: str, *, otp: str = "",
     feed_lines: list[bytes] = [password.encode("utf-8")]
     if otp:
         feed_lines.append(otp.encode("ascii"))
-    rc, out, err = await _run_with_pty(login_cmd, feed_lines, timeout=timeout)
+    # Without an OTP we may be staring at a TOTP prompt — don't hold the
+    # browser for the full minute; fail fast into a clear "mfa_required".
+    run_timeout = timeout if otp else min(timeout, 20.0)
+    rc, out, err = await _run_with_pty(login_cmd, feed_lines, timeout=run_timeout)
     if rc != 0:
         log.warning("tsh.login.failed", rc=rc, stderr=err.strip())
+        if _is_mfa_prompt(f"{out}\n{err}"):
+            if otp:
+                return LoginResult(False, s.teleport_proxy, s.teleport_user, s.teleport_cluster,
+                                   kube_clusters=[], code="bad_otp",
+                                   message="一次性码错误或已过期，请重试")
+            return LoginResult(False, s.teleport_proxy, s.teleport_user, s.teleport_cluster,
+                               kube_clusters=[], code="mfa_required",
+                               message="该集群要求 MFA，请输入一次性码后重新登录")
         return LoginResult(False, s.teleport_proxy, s.teleport_user, s.teleport_cluster,
-                           kube_clusters=[],
-                           message=f"tsh login failed: {err.strip() or out.strip()}")
+                           kube_clusters=[], code="failed",
+                           message=f"tsh login failed: {err.strip() or out.strip() or 'timeout'}")
 
     # After auth, list the K8s clusters the user has access to so the UI
     # can show a dropdown. Best-effort: if listing fails (older tsh, proxy
@@ -423,6 +432,9 @@ async def kube_login(cluster: str, *,
         get_pool().reload()
     except Exception as e:
         log.warning("pool.reload.failed", error=str(e))
+    # Drop every cached K8s snapshot — otherwise the UI keeps showing the
+    # previous cluster's pods/nodes/events for up to a full TTL window.
+    invalidate_all()
 
     log.info("tsh.kube.login.ok", cluster=cluster,
              kubeconfig=str(target_kubeconfig))

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, RefreshCw, Bot, PanelLeftClose, PanelLeftOpen, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
-import { podsApi, eventsApi } from '@/api/endpoints'
+import { podsApi, eventsApi, aiApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { usePodLogs } from '@/composables/usePodLogs'
 import { useResource } from '@/composables/useResource'
@@ -50,11 +50,56 @@ function toggleMeta() {
   metaCollapsed.value = !metaCollapsed.value
 }
 
+/** Map a container's K8s state/reason to a phase pill. Never label a
+ *  CrashLoopBackOff / ImagePullBackOff container as "Pending". */
+function containerPhase(c: { state: string; ready?: boolean; reason?: string | null }): string {
+  if (c.state === 'running') return 'Running'
+  if (c.state === 'terminated') {
+    return (c.reason ?? '') === 'Completed' ? 'Succeeded' : 'Failed'
+  }
+  if (c.state === 'waiting') {
+    const r = (c.reason ?? '').toLowerCase()
+    const failed = r.includes('backoff') || r.includes('imagepull') || r.includes('errimage') || r.includes('error')
+    return failed ? 'Failed' : 'Pending'
+  }
+  return 'Unknown'
+}
+
 const name = computed(() => String(route.params.name ?? ''))
 const namespace = computed(() => String(route.params.namespace ?? cluster.activeNamespace))
 
 const logStreaming = ref(true)
 const logUnread = ref(0)
+
+// AI 分析（LogAnalyzerDrawer 的 analyze/loading/result 三件套）
+const aiLoading = ref(false)
+const aiResult = ref('')
+const aiError = ref('')
+
+async function runAI(content: string) {
+  aiError.value = ''
+  aiResult.value = ''
+  aiLoading.value = true
+  try {
+    const providers = await aiApi.listProviders()
+    const provider = providers.find(p => p.enabled) ?? providers.find(p => p.is_default)
+    if (!provider?.id) {
+      aiError.value = '请先在「AI 设置」中配置并启用一个模型'
+      return
+    }
+    const out = await aiApi.analyze(
+      cluster.activeCluster, namespace.value, name.value,
+      provider.id, content.split('\n'),
+      '请分析这些日志的根因、异常点和建议',
+    )
+    aiResult.value = out.answer
+  } catch (e: any) {
+    aiError.value = e?.response?.data?.detail ?? e?.message ?? '分析失败'
+  } finally {
+    aiLoading.value = false
+  }
+}
+
 const { lines: logLines, unreadCount } = usePodLogs({
   cluster, namespace, name, enabled: logsTabActive,
   streaming: logStreaming,
@@ -170,9 +215,11 @@ function back() { router.push({ name: 'pods' }) }
               >
                 <div class="min-w-0 flex-1">
                   <div class="font-mono text-xs font-medium truncate">{{ c.name }}</div>
-                  <div class="text-2xs text-muted-foreground truncate">{{ c.image }}</div>
+                  <div class="text-2xs text-muted-foreground truncate">
+                    {{ c.image }}<span v-if="c.reason"> · {{ c.reason }}</span>
+                  </div>
                 </div>
-                <PodStatusPill :phase="c.state === 'running' ? 'Running' : (c.ready ? 'Running' : 'Pending')" />
+                <PodStatusPill :phase="containerPhase(c)" />
               </div>
             </div>
           </CardContent>
@@ -243,7 +290,7 @@ function back() { router.push({ name: 'pods' }) }
                   <div class="text-2xs text-muted-foreground mt-1 flex gap-3">
                     <span :title="ev.last_seen ?? undefined">
                       <Clock :size="11" class="inline -mt-0.5" :stroke-width="1.75" />
-                      {{ formatRel(ev.last_seen) }}
+                      {{ formatRel(ev.last_seen ?? null) }}
                     </span>
                     <span>×{{ ev.count }}</span>
                   </div>
@@ -258,6 +305,10 @@ function back() { router.push({ name: 'pods' }) }
     <LogAnalyzerDrawer
       v-model:open="analyzerOpen"
       :log-content="filteredLogsForAI.map(l => l.content).join('\n')"
+      :loading="aiLoading"
+      :result="aiResult"
+      :error="aiError"
+      @analyze="runAI"
     />
   </div>
 </template>

@@ -14,7 +14,7 @@ export interface Shortcut {
   ignoreInInputs?: boolean
 }
 
-function isTypingTarget(el: EventTarget | null): boolean {
+export function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true

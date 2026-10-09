@@ -69,7 +69,8 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
   <!-- ponytail: skip-link 在 AppLayout 唯一渲染一次，App.vue 旧副本删除
        (Audit §2.1)。两个目的地：#main-content 给主内容，#sidebar-nav 给导航。 -->
   <a class="skip-link" href="#main-content">跳到主内容</a>
-  <a class="skip-link" href="#sidebar-nav">跳到导航</a>
+  <!-- sidebar-nav 只在桌面侧栏渲染（移动端是抽屉），别留死锚点 -->
+  <a v-if="!isMobile" class="skip-link" href="#sidebar-nav">跳到导航</a>
 
   <div class="min-h-screen bg-background flex flex-col">
     <header class="shrink-0 border-b border-sidebar-border">

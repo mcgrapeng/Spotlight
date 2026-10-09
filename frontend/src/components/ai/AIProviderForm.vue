@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { AIProviderIn } from '@/api/types'
 
 const props = defineProps<{
@@ -32,6 +33,8 @@ const form = ref<AIProviderIn>({
   temperature: props.initial?.temperature ?? 0.7,
   max_tokens: props.initial?.max_tokens ?? 2048,
   is_default: props.initial?.is_default ?? false,
+  enabled: props.initial?.enabled ?? true,
+  extra: props.initial?.extra ?? {},
 })
 
 const apiBaseInput = computed<string>({
@@ -76,13 +79,12 @@ function close() {
 
         <div class="grid gap-1.5">
           <label class="text-sm font-medium" for="provider-provider">Provider</label>
-          <select
+          <AppSelect
             id="provider-provider"
             v-model="form.provider"
-            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option v-for="o in providerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-          </select>
+            :options="providerOptions"
+            class="w-full"
+          />
         </div>
 
         <div class="grid gap-1.5">

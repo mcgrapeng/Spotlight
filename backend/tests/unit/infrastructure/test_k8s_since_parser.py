@@ -21,11 +21,17 @@ def test_iso_falls_back_to_delta():
     assert 1700 <= delta <= 1900
 
 
-def test_garbage_returns_zero():
-    assert _since_to_seconds("not a time") == 0
-    assert _since_to_seconds("") == 0
+def test_garbage_raises():
+    # Bad input must not silently degrade to "since 0" (wrong log window).
+    import pytest
+    with pytest.raises(ValueError):
+        _since_to_seconds("not a time")
+    with pytest.raises(ValueError):
+        _since_to_seconds("")
 
 
-def test_negative_short_unit_unsupported_returns_zero():
-    # Negative deltas make no sense for "since" — we floor at 0.
-    assert _since_to_seconds("-5m") == 0
+def test_negative_short_unit_unsupported_raises():
+    # Negative deltas make no sense for "since".
+    import pytest
+    with pytest.raises(ValueError):
+        _since_to_seconds("-5m")

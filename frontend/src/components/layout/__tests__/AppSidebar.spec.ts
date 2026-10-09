@@ -43,7 +43,7 @@ describe('AppSidebar event badge', () => {
     await new Promise(r => setTimeout(r, 10))
     await nextTick()
 
-    const badge = wrapper.find('[class*="bg-error"]')
+    const badge = wrapper.find('[class*="bg-warning"]')
     expect(badge.exists()).toBe(true)
     // Badge = 2 Warning entries (NOT 53 = sum of count fields).
     // Per-row ×N 次 separately conveys repetition severity.
@@ -61,7 +61,7 @@ describe('AppSidebar event badge', () => {
     await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
     await new Promise(r => setTimeout(r, 10))
 
-    const badge = wrapper.find('[class*="bg-error"]')
+    const badge = wrapper.find('[class*="bg-warning"]')
     expect(badge.exists()).toBe(false)
   })
 

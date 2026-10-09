@@ -31,8 +31,8 @@ class PodOut(BaseModel):
     message: Optional[str] = None
     restart_count: int = 0
     age: Optional[str] = None
-    labels: dict[str, str] = Field(default_factory=dict)
-    containers: list[ContainerOut] = Field(default_factory=list)
+    labels: dict[str, str]
+    containers: list[ContainerOut]
     owner_kind: Optional[str] = None
     owner_name: Optional[str] = None
 

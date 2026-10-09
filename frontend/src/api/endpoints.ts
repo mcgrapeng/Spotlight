@@ -1,31 +1,16 @@
 import { http } from './client'
 import type {
   AIAnalyzeOut, AIProviderOut, AIProviderIn, ClusterOut, DashboardOut,
-  EventOut, FavoriteOut, LogLineOut, NamespaceOut, NodeOut, PodOut, PodListOut,
+  EventOut, FavoriteOut, KubeLoginOut, LogHistoryOut, LogLineOut,
+  LoginOut, NamespaceOut, NodeOut, PodOut, PodListOut, StatusOut,
 } from '@/api/types'
 
 const ctx = (c?: string | null) => ({ params: { context: c || undefined } })
 
-export interface AuthStatus {
-  configured: boolean; available: boolean;
-  proxy: string; user: string; cluster: string;
-  session_valid: boolean;
-}
-
-export interface LoginResult {
-  ok: boolean;
-  proxy: string;
-  user: string;
-  cluster: string;
-  kube_clusters: string[];
-  message: string;
-}
-
-export interface KubeLoginResult {
-  ok: boolean;
-  cluster: string;
-  message: string;
-}
+// Call-site names kept stable over the generated OpenAPI types.
+export type AuthStatus = StatusOut
+export type LoginResult = LoginOut
+export type KubeLoginResult = KubeLoginOut
 
 export const authApi = {
   status: () => http.get<AuthStatus>('/auth/status').then((r) => r.data),
@@ -44,6 +29,7 @@ export const authApi = {
   permissions: () =>
     http.get<Record<string, boolean>>('/auth/permissions', { timeout: 15_000 })
       .then((r) => r.data),
+  logout: () => http.post('/auth/logout').then((r) => r.data as { ok: boolean }),
 }
 
 export const clustersApi = {
@@ -78,7 +64,7 @@ export const podsApi = {
     cluster: string | null, namespace: string, name: string,
     container?: string | null, tail = 500, since?: string,
   ) =>
-    http.get<{ total: number; items: LogLineOut[] }>(
+    http.get<LogHistoryOut>(
       `/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs`,
       { params: {
           context: cluster || undefined,

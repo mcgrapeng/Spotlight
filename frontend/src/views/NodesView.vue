@@ -236,9 +236,9 @@ function podOverloaded(n: NodeOut): boolean {
               <div
                 :class="cn(
                   'h-full transition-all rounded-full',
-                  podOverloaded(n) ? 'bg-warning' : 'bg-foreground',
+                  podOverloaded(d.node) ? 'bg-warning' : 'bg-foreground',
                 )"
-                :style="{ width: `${podPct(n)}%` }"
+                :style="{ width: `${podPct(d.node)}%` }"
               />
             </div>
           </div>

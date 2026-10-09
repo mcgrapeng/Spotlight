@@ -11,3 +11,8 @@ class LogStreamParams(BaseModel):
     content: str
     container: str
     severity: str = "unknown"
+
+
+class LogHistoryOut(BaseModel):
+    total: int
+    items: list[LogStreamParams]

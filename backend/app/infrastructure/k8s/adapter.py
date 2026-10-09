@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 from datetime import datetime, timezone
 from typing import Iterator, Optional
 
-from dateutil import parser as dtparser
 from fastapi.concurrency import run_in_threadpool
 from kubernetes import watch
 
@@ -114,7 +114,11 @@ class KubernetesAdapter(K8sRepositoryPort):
         involved_name: Optional[str], limit: int,
     ) -> list[K8sEvent]:
         api, _ = self._pool.get(cluster)
-        kw = {"_request_timeout": self._timeout, "limit": limit}
+        # NOTE: `limit` on the K8s list API is a *page* size, not "last N" —
+        # passing it would silently truncate to the first page in arbitrary
+        # order. Fetch everything (event objects are compacted away after
+        # ~1h, so lists stay small) and truncate locally on sorted time.
+        kw = {"_request_timeout": self._timeout}
         if namespace and namespace != "_all":
             items = await run_in_threadpool(
                 lambda: api.list_namespaced_event(namespace=namespace, **kw).items
@@ -126,7 +130,8 @@ class KubernetesAdapter(K8sRepositoryPort):
         events = [map_event(e) for e in items]
         if involved_name:
             events = [e for e in events if e.involved_name == involved_name]
-        return events
+        events.sort(key=lambda e: e.last_seen or "", reverse=True)
+        return events[:limit] if limit and limit > 0 else events
 
     # ── nodes ────────────────────────────────────────────────
     async def list_nodes(self, cluster: Optional[str]) -> list[Node]:
@@ -177,16 +182,17 @@ class KubernetesAdapter(K8sRepositoryPort):
 
     def stream_logs(
         self, ref: ResourceRef, container: Optional[str], tail_lines: int,
+        stop_event: Optional[threading.Event] = None,
     ) -> Iterator[LogEntry]:
         """Stream pod logs. Caller MUST iterate in a thread (use `asyncio.to_thread`)
         because `kubernetes.watch.Watch().stream` is a blocking sync generator.
 
-        Stops cleanly when `stop_event.is_set()` returns True — checked between
-        yields so the consumer can cancel without leaking the HTTP connection.
+        Stops when `stop_event` is set — checked between yields so the consumer
+        can cancel. (A consumer parked inside a blocking watch read on a silent
+        pod exits on the next line or the watch socket timeout.)
         """
         api, _ = self._pool.get(ref.cluster or None)
         w = watch.Watch()
-        # Probe support once (avoids a per-yield AttributeError on old SDKs).
         supports_stop = hasattr(w, "stop")
         try:
             for line in w.stream(
@@ -195,10 +201,10 @@ class KubernetesAdapter(K8sRepositoryPort):
                 container=container, tail_lines=tail_lines,
                 follow=True, _request_timeout=3600,
             ):
+                if stop_event is not None and stop_event.is_set():
+                    return
                 ts, _ = parse_log_line(line, container or "")
                 yield LogEntry(timestamp=ts, content=line, container=container or "")
-        except StopIteration:
-            return
         finally:
             if supports_stop:
                 try:
@@ -208,16 +214,21 @@ class KubernetesAdapter(K8sRepositoryPort):
 
 
 def _since_to_seconds(since: str) -> int:
-    """Coarse 'since' parser. Accepts ISO8601 timestamp or short form ('5m' / '2h' / '1d')."""
+    """Coarse 'since' parser. Accepts ISO8601 timestamp or short form ('5m' / '2h' / '1d').
+
+    Raises ValueError on unparseable input — silently treating bad input as
+    "since 0" would quietly return the wrong log window.
+    """
     m = re.match(r"^(\d+)([smhd])$", since.strip())
     if m:
         n = int(m.group(1))
         unit = m.group(2)
         return {"s": n, "m": n * 60, "h": n * 3600, "d": n * 86400}[unit]
     try:
-        dt = dtparser.isoparse(since)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return max(1, int((datetime.now(timezone.utc) - dt).total_seconds()))
-    except (ValueError, TypeError):
-        return 0
+        # stdlib since 3.11 handles the "Z" suffix and offsets natively.
+        dt = datetime.fromisoformat(since.strip().replace("Z", "+00:00"))
+    except ValueError as e:
+        raise ValueError(f"unparseable since: {since!r}") from e
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return max(1, int((datetime.now(timezone.utc) - dt).total_seconds()))

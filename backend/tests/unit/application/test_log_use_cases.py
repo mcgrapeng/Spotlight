@@ -15,7 +15,7 @@ class FakeLogRepo:
     async def read_logs(self, ref, container, tail_lines, since):
         return [LogEntry(timestamp="", content=l, container=container or "") for l in self._history[:tail_lines]]
 
-    def stream_logs(self, ref, container, tail_lines):
+    def stream_logs(self, ref, container, tail_lines, stop_event=None):
         yield from (LogEntry(timestamp="", content=l, container=container or "") for l in self._history[:tail_lines])
         yield from (LogEntry(timestamp="", content=l, container=container or "") for l in self._follow)
 

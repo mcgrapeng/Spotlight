@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from kubernetes.client.exceptions import ApiException
 
 from app.application.dto import DashboardOut, PodListOut, PodOut
 from app.application.use_cases.dashboard import DashboardUseCases
 from app.application.use_cases.pods import PodUseCases
 from app.domain.value_objects.primitives import ResourceRef
+from app.infrastructure.logging import get_logger
 from app.interface.api.v1.dependencies import dashboard_uc, pod_uc
 
 router = APIRouter(tags=["pods"])
+log = get_logger("api.pods")
 
 
 @router.get("/pods", response_model=PodListOut)
@@ -43,5 +46,15 @@ async def get_pod(
         return await uc.get_pod(
             ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
         )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ApiException as e:
+        # Only a genuine not-found is a 404 — auth/ratelimit/timeout must
+        # not masquerade as "pod doesn't exist".
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Pod 不存在或已被删除") from e
+        if e.status in (401, 403):
+            raise HTTPException(status_code=e.status, detail="无权访问该 Pod") from e
+        log.warning("api.pods.get.failed", status=e.status, detail=e.reason)
+        raise HTTPException(status_code=502, detail="K8s API 请求失败") from e
+    except Exception:
+        log.exception("api.pods.get.error", pod=f"{namespace}/{name}")
+        raise HTTPException(status_code=502, detail="查询 Pod 失败") from None

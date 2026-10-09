@@ -3,22 +3,35 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import AsyncIterator, List, Optional
+import threading
+from typing import AsyncIterator, Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
+from app.application.dto import LogHistoryOut
 from app.application.use_cases.logs import LogUseCases
 from app.domain.value_objects.primitives import ResourceRef
-from app.interface.api.v1.dependencies import log_uc
-from app.application.dto import LogStreamParams
 from app.infrastructure.logging import get_logger
+from app.interface.api.v1.dependencies import log_uc
 
 router = APIRouter(tags=["logs"])
 log = get_logger("api.logs")
 
+# Each follow-stream pins one default-executor thread for its lifetime (the
+# kubernetes watch is blocking). Without a cap, a handful of idle browser
+# tabs exhausts the shared pool and freezes ALL other K8s I/O in the
+# process. At cap, new streams are rejected with 429.
+MAX_STREAMS = 8
+_stream_slots = threading.BoundedSemaphore(MAX_STREAMS)
 
-@router.get("/pods/{namespace}/{name}/logs", response_model=dict)
+# Queue holds JSON-ready batches: ≤ QUEUE_MAX_BATCHES × BATCH_MAX lines of
+# memory per stream (≈1MB), then the producer thread applies backpressure.
+QUEUE_MAX_BATCHES = 100
+BATCH_MAX = 100
+
+
+@router.get("/pods/{namespace}/{name}/logs", response_model=LogHistoryOut)
 async def read_history(
     namespace: str,
     name: str,
@@ -29,15 +42,15 @@ async def read_history(
         default=None, description="ISO timestamp or short form like 5m / 1h / 7d",
     ),
     uc: LogUseCases = Depends(log_uc),
-):
-    items = await uc.read_history(
-        ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name),
-        container, tail_lines, since,
-    )
-    return {
-        "total": len(items),
-        "items": [i.model_dump() for i in items],
-    }
+) -> LogHistoryOut:
+    try:
+        items = await uc.read_history(
+            ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name),
+            container, tail_lines, since,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return LogHistoryOut(total=len(items), items=items)
 
 
 @router.get("/pods/{namespace}/{name}/logs/stream")
@@ -53,59 +66,52 @@ async def stream(
 ) -> EventSourceResponse:
     """SSE log stream — single executor hop + 1 encode per flush.
 
-    Ponytail: previous version called `loop.run_in_executor(None, next, sync_iter)`
-    per line — 100 lines/sec = 100 executor tasks + 100 json.dumps calls.
-    New version drives the blocking generator via asyncio.to_thread (one
-    concurrent task per stream), pushes entries into an asyncio.Queue, and
-    flushes them as a JSON array — N lines collapse to 1 encode per window.
     Wire format: `{"event": "log", "data": "<json-array-of-entries>"}` —
-    frontend handles both array and single-object payloads.
+    frontend splits arrays into lines.
     """
+    if not _stream_slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="并发日志流已达上限，请稍后再试")
+
     ref = ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
-    queue: asyncio.Queue = asyncio.Queue(maxsize=10_000)
+    stop_event = threading.Event()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_MAX_BATCHES)
+    loop = asyncio.get_event_loop()
 
     async def producer() -> None:
-        # ONE blocking reader task. Drains the sync generator in a worker thread
-        # and bulk-pushes to the asyncio queue. Producer-side errors end the stream.
         try:
-            await asyncio.to_thread(_drain, uc, ref, container, tail_lines, queue)
+            await asyncio.to_thread(_drain, loop, uc, ref, container, tail_lines, queue, stop_event)
         except Exception as exc:  # noqa: BLE001
             log.exception("sse.stream.producer_error", error=str(exc))
         finally:
             await queue.put(None)  # sentinel = stream ended
 
     async def event_gen() -> AsyncIterator[dict]:
-        asyncio.create_task(producer())
-        last_flush = asyncio.get_event_loop().time()
-        FLUSH_INTERVAL = 0.1
-        BATCH_MAX = 100
+        task = asyncio.create_task(producer())
+        last_ping = asyncio.get_event_loop().time()
         try:
             while True:
                 # Short get timeout so the keepalive + disconnect check fires
                 # even when the upstream is silent.
                 try:
-                    batch = await asyncio.wait_for(queue.get(), timeout=min(keepalive_seconds, 1.0))
+                    batch = await asyncio.wait_for(queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
                     if await request.is_disconnected():
                         log.info("sse.client.disconnected", pod=f"{namespace}/{name}")
                         break
-                    yield {"event": "ping", "data": ""}
-                    last_flush = asyncio.get_event_loop().time()
+                    now = asyncio.get_event_loop().time()
+                    if now - last_ping >= keepalive_seconds:
+                        yield {"event": "ping", "data": ""}
+                        last_ping = now
                     continue
 
                 if batch is None:  # stream ended
                     break
 
-                # Yield each line as its own SSE event for frontend compatibility,
-                # but use one bulk JSON-array string per flush. Frontend splits.
                 yield {
                     "event": "log",
                     "data": json.dumps(batch, ensure_ascii=False),
                 }
-                last_flush = asyncio.get_event_loop().time()
-
-                # If a big batch came in, keep flushing until the queue drains
-                # to keep latency low under burst load.
+                # Burst drain to keep latency low under load.
                 while not queue.empty():
                     try:
                         next_batch = queue.get_nowait()
@@ -117,35 +123,64 @@ async def stream(
                         "event": "log",
                         "data": json.dumps(next_batch, ensure_ascii=False),
                     }
-                    last_flush = asyncio.get_event_loop().time()
-        finally:
             yield {"event": "end", "data": "[DONE]"}
+        finally:
+            # Client gone / stream over: stop the blocking watch drain and
+            # give the executor thread back. (The thread only lingers if it
+            # is parked inside a watch read on a silent pod — it exits on the
+            # next line or the watch socket timeout.)
+            stop_event.set()
+            task.cancel()
+            _stream_slots.release()
 
     return EventSourceResponse(event_gen())
 
 
 def _drain(
+    loop: asyncio.AbstractEventLoop,
     uc: LogUseCases,
     ref: ResourceRef,
     container: Optional[str],
     tail_lines: int,
     queue: asyncio.Queue,
+    stop_event: threading.Event,
 ) -> None:
     """Sync helper: drive the blocking sync generator in a worker thread.
 
-    Buffers up to BATCH_MAX entries per push so each queue item is a JSON-array
-    payload — N line yields collapse to 1 queue.put (and 1 json.dumps in the
-    consumer).
+    Hand batches to the asyncio queue via call_soon_threadsafe /
+    run_coroutine_threadsafe — asyncio.Queue is NOT thread-safe when shared
+    across threads. Full queue suspends the put (backpressure), so memory
+    stays bounded and no lines are silently dropped.
     """
-    BATCH_MAX = 100
     batch: list[dict] = []
-    for entry in uc.stream(ref, container, tail_lines):
+    for entry in uc.stream(ref, container, tail_lines, stop_event=stop_event):
+        if stop_event.is_set():
+            return
         batch.append({
             "timestamp": entry.timestamp, "content": entry.content,
             "container": entry.container, "severity": entry.severity,
         })
         if len(batch) >= BATCH_MAX:
-            queue.put_nowait(batch)
+            if not _put(loop, queue, batch, stop_event):
+                return
             batch = []
-    if batch:
-        queue.put_nowait(batch)
+    if batch and not stop_event.is_set():
+        _put(loop, queue, batch, stop_event)
+
+
+def _put(
+    loop: asyncio.AbstractEventLoop,
+    queue: asyncio.Queue,
+    batch: list[dict],
+    stop_event: threading.Event,
+) -> bool:
+    """Thread-safe queue.put with stop-aware backpressure. False = stopped."""
+    try:
+        fut = asyncio.run_coroutine_threadsafe(queue.put(batch), loop)
+    except RuntimeError:  # loop closed during shutdown
+        return False
+    while not fut.done():
+        if stop_event.wait(0.25):
+            fut.cancel()
+            return False
+    return True

@@ -17,6 +17,12 @@ configure_logging()
 log = get_logger("main")
 _settings = get_settings()
 
+if not _settings.teleport_configured and not _settings.api_token:
+    log.warning(
+        "auth.open_mode",
+        hint="API is unauthenticated: set API_TOKEN or TELEPORT_* to require login",
+    )
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):

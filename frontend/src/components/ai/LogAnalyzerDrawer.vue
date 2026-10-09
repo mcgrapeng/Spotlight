@@ -16,6 +16,7 @@ const props = defineProps<{
   logContent: string
   loading?: boolean
   result?: string
+  error?: string
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +29,7 @@ function close() { emit('update:open', false) }
 
 <template>
   <Sheet :open="open" @update:open="(v) => emit('update:open', v)">
-    <SheetContent side="right" class="w-[480px] sm:max-w-[480px] p-0 gap-0">
+    <SheetContent side="right" class="w-full sm:w-[480px] p-0 gap-0">
       <SheetHeader class="px-4 py-3 border-b border-border">
         <SheetTitle class="flex items-center gap-2">
           <Bot :size="18" :stroke-width="1.75" />
@@ -47,8 +48,11 @@ function close() { emit('update:open', false) }
 
         <div v-if="result">
           <h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">AI 分析</h4>
-          <div class="text-sm prose prose-sm max-w-none" v-html="result" />
+          <!-- text-only render: LLM output is untrusted — never v-html -->
+          <div class="text-sm whitespace-pre-wrap">{{ result }}</div>
         </div>
+
+        <div v-if="error" class="text-sm text-error" role="alert">{{ error }}</div>
 
         <div v-if="loading" class="flex items-center justify-center py-8 text-muted-foreground">
           <Bot :size="16" :stroke-width="1.75" class="mr-2 animate-pulse" />

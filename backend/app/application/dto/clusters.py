@@ -31,11 +31,7 @@ class NodeOut(BaseModel):
     model_config = _ENTITY
     name: str
     status: str
-    roles: list[str] = Field(default_factory=list)
-    # `version` and `kubelet_version` are the same value historically —
-    # kept as two fields for API compat. Schema is the source of truth;
-    # the dataclass exposes only kubelet_version.
-    version: Optional[str] = None
+    roles: list[str]
     os_image: str
     kubelet_version: str
     cpu_capacity: str
@@ -44,6 +40,11 @@ class NodeOut(BaseModel):
     memory_allocatable: str
     pod_count: int = 0
     age: Optional[str] = None
+
+
+class RestartTopItem(BaseModel):
+    pod: str
+    restarts: int
 
 
 class DashboardOut(BaseModel):
@@ -56,7 +57,7 @@ class DashboardOut(BaseModel):
     nodes_total: int
     nodes_ready: int
     namespaces_count: int
-    restart_top: list[dict] = Field(default_factory=list)
+    restart_top: list[RestartTopItem]
     # Inlined from /events?limit=500 — the dashboard's "recent activity"
     # list previously triggered a second K8s API call.
     recent_warns: list[EventOut] = Field(default_factory=list)

@@ -1,6 +1,5 @@
 """Application settings (pydantic-settings)."""
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,9 +13,6 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "spotlight"
-    app_host: str = "0.0.0.0"
-    app_port: int = 8000
-    debug: bool = True
     log_level: str = "INFO"
 
     # K8s / kubeconfig
@@ -33,6 +29,13 @@ class Settings(BaseSettings):
     teleport_insecure: bool = False
     tsh_binary: str = "tsh"
 
+    # API access. When set, every /api/v1 route (except /auth/status and
+    # /auth/login) requires either this bearer token or a session cookie
+    # issued by /auth/login. When BOTH api_token and Teleport are unset the
+    # API is open (local-dev mode) and the app logs a startup warning.
+    api_token: str = ""
+    session_ttl_seconds: int = 43200  # 12h
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -43,18 +46,9 @@ class Settings(BaseSettings):
     cache_ttl_events: int = 10
     cache_ttl_namespaces: int = 60
 
-    # Logs
-    log_max_lines_buffer: int = 5000  # safety cap
-
     @property
     def cors_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-
-    @property
-    def data_dir(self) -> Path:
-        p = Path("./data")
-        p.mkdir(parents=True, exist_ok=True)
-        return p
 
     @property
     def teleport_configured(self) -> bool:

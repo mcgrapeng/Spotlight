@@ -11,23 +11,19 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
-    "types:gen": "openapi-typescript http://127.0.0.1:8002/openapi.json -o src/api/types.ts",
-    "types:check": "openapi-typescript http://127.0.0.1:8002/openapi.json -o src/api/types.ts --check"
+    "types:gen": "openapi-typescript http://127.0.0.1:8002/openapi.json -o src/api/types.gen.ts",
+    "types:check": "openapi-typescript http://127.0.0.1:8002/openapi.json -o src/api/types.gen.ts --check"
   },
   "dependencies": {
     "@lucide/vue": "1.47.0",
-    "@tanstack/vue-table": "9.2.4",
     "@vueuse/core": "11.3.0",
     "axios": "^1.7.9",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "cmdk": "1.1.1",
     "dayjs": "^1.11.13",
     "pinia": "^2.3.0",
-    "radix-vue": "1.9.17",
     "reka-ui": "2.10.5",
     "tailwind-merge": "3.7.0",
-    "tw-animate-css": "1.4.0",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0",
     "vue-sonner": "2.0.9"

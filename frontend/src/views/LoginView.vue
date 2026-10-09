@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { KeyRound, LogIn, Loader2, Server, ShieldCheck } from '@lucide/vue'
+import { KeyRound, LogIn, Loader2, Server } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import LogoMark from '@/components/common/LogoMark.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -16,12 +17,9 @@ const password = ref('')
 const otp = ref('')
 const cluster = ref('')
 
-// MFA / OTP is optional. The user clicks "需要 MFA 一次性码" to reveal the
-// field — keeps the form uncluttered for clusters without MFA, while still
-// supporting clusters that enforce it.
-const showOtp = ref(false)
-
-const step = computed<'auth' | 'pick'>('auth')
+// Token mode: Teleport is not configured but the server does demand auth —
+// the password field carries the API access token instead.
+const tokenMode = computed(() => auth.status !== null && !auth.status.configured)
 const availableClusters = computed(() => auth.pendingClusters)
 const singleCluster = computed(() =>
   availableClusters.value.length === 1 ? availableClusters.value[0] : null,
@@ -37,6 +35,12 @@ async function submitAuth() {
   if (!password.value || auth.busy) return
   const r = await auth.login(password.value, otp.value.trim())
   if (!r) return
+  if (r.kube_clusters.length === 0) {
+    // Token login (host-bound deployment): no kube-cluster step.
+    password.value = ''
+    redirectAfterLogin()
+    return
+  }
   if (r.kube_clusters.length === 1) {
     const ok = await auth.kubeLogin(r.kube_clusters[0])
     if (ok) {
@@ -73,6 +77,13 @@ async function submitPick() {
           </div>
           <h1 class="text-2xl font-bold tracking-tight">Spotlight</h1>
           <p class="text-sm text-muted-foreground mt-1">集群驾驶舱</p>
+          <!-- 连接信息：让用户知道正在向哪个 proxy 认证 -->
+          <p
+            v-if="auth.status?.configured && auth.status.proxy"
+            class="mt-2 text-2xs text-muted-foreground font-mono break-all"
+          >
+            {{ auth.status.user }}@{{ auth.status.proxy }} · {{ auth.status.cluster }}
+          </p>
         </div>
 
         <!-- Step 1: Teleport auth -->
@@ -83,35 +94,24 @@ async function submitPick() {
         >
           <div>
             <label class="text-sm font-medium mb-1.5 block" for="login-pass">
-              密码
+              {{ tokenMode ? '访问令牌' : '密码' }}
             </label>
             <Input
               id="login-pass"
               v-model="password"
               type="password"
-              placeholder="Teleport 用户密码"
+              :placeholder="tokenMode ? 'API 访问令牌' : 'Teleport 用户密码'"
               autocomplete="current-password"
               :disabled="auth.busy"
               required
             />
           </div>
 
-          <!-- MFA / OTP toggle -->
-          <div v-if="!showOtp">
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-              :disabled="auth.busy"
-              @click="showOtp = true"
-            >
-              <ShieldCheck :size="13" :stroke-width="1.75" />
-              需要 MFA 一次性码?
-            </button>
-          </div>
-          <div v-else>
+          <!-- MFA / OTP（集群启用 MFA 时必填；token 模式无 MFA） -->
+          <div v-if="!tokenMode">
             <label class="text-sm font-medium mb-1.5 block" for="login-otp">
               MFA 一次性码
-              <span class="text-xs font-normal text-muted-foreground ml-1">(6 位 TOTP)</span>
+              <span class="text-xs font-normal text-muted-foreground ml-1">(6 位 TOTP，集群启用 MFA 时必填)</span>
             </label>
             <div class="relative">
               <KeyRound
@@ -161,24 +161,15 @@ async function submitPick() {
                 (共 {{ availableClusters.length }} 个)
               </span>
             </label>
-            <div class="relative">
-              <Server
-                :size="14"
-                :stroke-width="1.75"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-                aria-hidden="true"
-              />
-              <select
-                id="login-cluster"
-                v-model="cluster"
-                :disabled="auth.busy"
-                class="w-full h-9 pl-9 pr-3 rounded-md border border-input bg-background text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                required
-              >
-                <option value="" disabled>选择要管理的集群</option>
-                <option v-for="c in availableClusters" :key="c" :value="c">{{ c }}</option>
-              </select>
-            </div>
+            <AppSelect
+              id="login-cluster"
+              v-model="cluster"
+              :options="availableClusters.map((c) => ({ value: c, label: c }))"
+              :disabled="auth.busy"
+              placeholder="选择要管理的集群"
+              :leading-icon="Server"
+              class="w-full"
+            />
           </div>
           <p v-if="auth.error" class="text-sm text-error" role="alert">
             {{ auth.error }}

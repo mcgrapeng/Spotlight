@@ -12,6 +12,9 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  // logs.spec.ts targets a live dev stack (:7003 + real backend :8002) —
+  // it runs under playwright.dev.config.ts, not this mocked suite.
+  testIgnore: '**/logs.spec.ts',
   timeout: 60_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
