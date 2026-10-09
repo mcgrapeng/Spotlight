@@ -878,7 +878,7 @@ const helpRows = [
         @click="selectedContainer = c"
       >
         {{ c }}
-        <span class="ml-1 tabular-nums text-muted-foreground shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
+        <span class="ml-1 tabular-nums text-foreground shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
       </button>
     </div>
 
@@ -1150,7 +1150,7 @@ const helpRows = [
               />
               <!-- Col 1: timestamp (sticky) -->
               <span
-                class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.line.raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.line.raw.timestamp) }}
@@ -1239,7 +1239,7 @@ const helpRows = [
                 aria-label="实时"
               />
               <span
-                class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
@@ -1331,7 +1331,7 @@ const helpRows = [
                     :aria-label="`按 trace_id ${line.traceId} 过滤`"
                   />
                   <span
-                    class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                    class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                     :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
