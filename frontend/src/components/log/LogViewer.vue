@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
-  Copy, X, Terminal, Filter, Clock, WrapText,
+  Copy, X, Terminal, Filter, Clock, WrapText, Download, AlertCircle, HelpCircle,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -10,22 +10,34 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { useLogFilters } from '@/composables/useLogFilters'
 import { useLogSeverityCounts, SEVERITY_CHIP_THRESHOLDS } from '@/composables/useLogSeverityCounts'
-import { ansiToHtml } from '@/utils/ansiToHtml'
+import { useLogKeyboardShortcuts } from '@/composables/useLogKeyboardShortcuts'
+import { ansiToHtml, getAnsiFor } from '@/utils/ansiToHtml'
+import { stripAnsi } from '@/domain/services/logFormat'
 import { STORAGE_KEYS } from '@/storage-keys'
 import type { LogLineOut } from '@/api/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   lines: ReadonlyArray<LogLineOut>
   streaming?: boolean
   unreadCount?: number
   containers?: readonly string[]
-}>()
+  podName?: string
+  namespace?: string
+  error?: string | null
+  downloadScope?: 'all' | 'visible'
+}>(), {
+  podName: '',
+  namespace: '',
+  error: null,
+  downloadScope: 'visible',
+})
 
 const emit = defineEmits<{
   clear: []
   'update:streaming': [value: boolean]
   'consume-unread': []
   'update:filtered': [value: readonly LogLineOut[]]
+  retry: []
 }>()
 
 // === State ===
@@ -305,33 +317,73 @@ function toggleAutoFollow() {
   }
 }
 
-// === Keyboard ===
-function onKey(e: KeyboardEvent) {
-  const tag = (e.target as HTMLElement)?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA') {
-    if (e.key === 'Escape' && tag === 'INPUT') {
-      search.value = ''
-      ;(e.target as HTMLInputElement).blur()
+// === Keyboard (scoped to LogViewer via mouseenter/leave) ===
+const shortcutsActive = ref(false)
+const helpOpen = ref(false)
+
+function focusSearchInput() {
+  searchInput.value?.focus()
+}
+function toggleErrorsOnly() {
+  // 3 = error rank (matches useLogFilters SEVERITY_RANK).
+  minSeverity.value = minSeverity.value === 3 ? 0 : 3
+}
+function jumpToError(dir: 1 | -1) {
+  // Find next/prev error-or-warn line in displayedLines (after container filter),
+  // and scroll to it. Reverse iteration for `dir = -1` (G).
+  const errs = displayedLines.value.filter((l) =>
+    SEV_ERROR_KEYS.has(l.raw.severity.toLowerCase())
+    || l.raw.severity.toLowerCase() === 'warn'
+    || l.raw.severity.toLowerCase() === 'warning',
+  )
+  if (errs.length === 0) return
+  // displayedLines is newest-first. `g` (dir=1) = newer, `G` (dir=-1) = older.
+  // Newer has smaller group.key (closer to 0). For "next" we want the line
+  // after the current top: pick the first err whose key > 0 if any.
+  const top = scrollEl.value?.scrollTop ?? 0
+  const currentKey = top <= 0 ? -1 : Math.floor(top / LINE_HEIGHT)
+  let target: DecoratedLine | null = null
+  if (dir === 1) {
+    target = errs.find((l) => displayedLines.value.indexOf(l) > currentKey) ?? errs[0]!
+  } else {
+    // find latest err before currentKey
+    for (const e of errs) {
+      const k = displayedLines.value.indexOf(e)
+      if (k < currentKey) { target = e; break }
     }
-    return
+    if (!target) target = errs[errs.length - 1]!
   }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-    e.preventDefault()
-    searchInput.value?.focus()
-  } else if (e.key === '/') {
-    e.preventDefault()
-    searchInput.value?.focus()
-  } else if (e.key === 'k' || e.key === 'K') {
-    e.preventDefault()
-    emit('update:streaming', !props.streaming)
-  } else if (e.key === 'l' || e.key === 'L') {
-    e.preventDefault()
-    toggleAutoFollow()
-  } else if (e.key === 'c' || e.key === 'C') {
-    if (e.metaKey || e.ctrlKey) return
-    e.preventDefault()
-    copyAll()
-  }
+  const idx = displayedLines.value.indexOf(target)
+  scrollEl.value?.scrollTo({ top: idx * LINE_HEIGHT, behavior: 'smooth' })
+}
+function jumpLine(dir: 1 | -1) {
+  const el = scrollEl.value
+  if (!el) return
+  el.scrollBy({ top: dir * LINE_HEIGHT * 5, behavior: 'smooth' })
+}
+function clearAll() {
+  emit('clear')
+}
+
+useLogKeyboardShortcuts(
+  {
+    focusSearch: focusSearchInput,
+    toggleErrorsOnly,
+    togglePause: togglePause,
+    clear: clearAll,
+    jumpError: jumpToError,
+    jumpLine,
+    toggleHelp: () => { helpOpen.value = !helpOpen.value },
+  },
+  { active: shortcutsActive },
+)
+
+function onRegionEnter() {
+  shortcutsActive.value = true
+  markInteraction()
+}
+function onRegionLeave() {
+  shortcutsActive.value = false
 }
 
 async function copyAll() {
@@ -342,12 +394,15 @@ async function copyAll() {
 }
 
 onMounted(() => {
-  document.addEventListener('keydown', onKey)
+  // ponytail: keyboard shortcuts are scoped to the LogViewer region via the
+  // mouseenter/leave toggle on shortcutsActive (see useLogKeyboardShortcuts).
+  // Mounting/unmounting of `document` listeners is handled by the composable's
+  // watchEffect. We still need an initial focus state for SSR safety.
+  shortcutsActive.value = false
   nextTick(jumpToTop)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', onKey)
   // ponytail: 清理 search history debounce timer，避免 unmount 后还写 localStorage
   if (searchHistoryTimer) {
     clearTimeout(searchHistoryTimer)
@@ -627,26 +682,80 @@ function safeCutAt(content: string, plainLimit: number): number {
   if (plain + (content.length - i) >= plainLimit) return i + (plainLimit - plain)
   return content.length
 }
-function plainLength(content: string): number {
-  return ansiToHtml(content).plain.length
+function plainLength(line: LogLineOut): number {
+  return getAnsiFor(line).plain.length
 }
-function lineHtml(content: string): string {
-  const expanded = truncatedExpanded.value.has(content)
-  const parts = ansiToHtml(content)
+function lineHtml(line: LogLineOut): string {
+  const expanded = truncatedExpanded.value.has(line.content)
+  const parts = getAnsiFor(line)
   if (expanded || parts.plain.length <= TRUNCATE_LIMIT) return applySearchHighlight(parts.html)
-  const cut = safeCutAt(content, TRUNCATE_LIMIT)
-  const { html: cutHtml } = ansiToHtml(content.slice(0, cut))
+  const cut = safeCutAt(line.content, TRUNCATE_LIMIT)
+  const { html: cutHtml } = ansiToHtml(line.content.slice(0, cut))
   return applySearchHighlight(cutHtml) + '<span class="text-muted-foreground/60 select-none">…</span>'
 }
 function applySearchHighlight(html: string): string {
   const q = search.value.trim()
   if (!q) return html
+  // ponytail: skip highlight when filter is a `trace:` lookup — the visible
+  // content never contains the bare query string, only an embedded UUID, so
+  // highlighting wastes a regex pass per row.
+  if (q.toLowerCase().startsWith('trace:')) return html
   const qEsc = escapeHtml(q)
   return html.replace(
     new RegExp(`(${escapeRegex(qEsc)})`, 'gi'),
     '<mark class="bg-warning/30 text-foreground rounded-sm px-0.5">$1</mark>',
   )
 }
+
+// === Trace-id chip click → filter to that trace ===
+function toggleTraceFilter(tid: string | null) {
+  if (!tid) return
+  const current = search.value.trim().toLowerCase()
+  const want = `trace:${tid.toLowerCase()}`
+  if (current === want) {
+    search.value = ''
+  } else {
+    search.value = want
+  }
+}
+
+// === Download .log (filtered or all) ===
+function downloadLogs() {
+  const source = props.downloadScope === 'all' ? props.lines : filtered.value
+  const text = source.map((l) => stripAnsi(l.content)).join('\n') + '\n'
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const podPart = props.podName
+    ? `pod-${props.namespace ? `${props.namespace}-` : ''}${props.podName}.log`
+    : (props.namespace ? `pod-${props.namespace}.log` : 'pod.log')
+  a.href = url
+  a.download = podPart
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // ponytail: revoke on next tick so the click can complete before the URL
+  // becomes invalid. Calling revokeObjectURL synchronously after .click() works
+  // in Chrome but Safari sometimes races; deferring is the documented pattern.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function clearAllFilters() {
+  search.value = ''
+  minSeverity.value = 0
+}
+
+// ponytail: keep help content out of the template to avoid re-listing the same
+// key map as the keyboard composable. Single source of truth for the help popover.
+const helpRows = [
+  { key: 'f / /', label: '聚焦搜索' },
+  { key: 'e', label: '仅显示 error（再按取消）' },
+  { key: 'p', label: '暂停 / 继续' },
+  { key: 'c', label: '清空日志' },
+  { key: 'g / G', label: '下一条 / 上一条 error·warn' },
+  { key: 'j / k', label: '向下 / 向上滚动 5 行' },
+  { key: '?', label: '显示 / 隐藏此面板' },
+] as const
 </script>
 
 <template>
@@ -839,6 +948,38 @@ function applySearchHighlight(html: string): string {
       >
         <Copy :size="13" :stroke-width="1.75" />
       </Button>
+      <Button
+        variant="outline" size="sm"
+        class="h-7 px-2"
+        :disabled="!filtered.length"
+        @click="downloadLogs"
+        aria-label="下载日志"
+        title="下载日志"
+      >
+        <Download :size="13" :stroke-width="1.75" />
+      </Button>
+      <Popover v-model:open="helpOpen">
+        <PopoverTrigger as-child>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 px-2"
+            aria-label="快捷键帮助 (?)"
+            title="快捷键 (?)"
+          >
+            <HelpCircle :size="13" :stroke-width="1.75" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-[260px] p-3" align="end">
+          <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">快捷键</div>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono">
+            <template v-for="row in helpRows" :key="row.key">
+              <kbd class="px-1.5 py-0.5 rounded border border-border bg-muted text-2xs">{{ row.key }}</kbd>
+              <span class="text-muted-foreground self-center">{{ row.label }}</span>
+            </template>
+          </dl>
+        </PopoverContent>
+      </Popover>
     </div>
 
     <!-- JSON field filter chips (top-level keys from the first JSON object line) -->
@@ -876,9 +1017,31 @@ function applySearchHighlight(html: string): string {
       role="log"
       aria-live="polite"
       aria-label="日志输出（最新在上）"
-      @mouseenter="markInteraction"
+      @mouseenter="onRegionEnter"
+      @mouseleave="onRegionLeave"
       @scroll="(e) => { onScroll(); markInteraction() }"
     >
+      <!-- ponytail: error banner sits inside the scrollable region so the layout
+           above (toolbar + status bar) stays the same; it's the first thing the
+           user sees at the top of the buffer. -->
+      <div
+        v-if="error"
+        class="sticky top-0 z-20 flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-error"
+        role="alert"
+      >
+        <AlertCircle :size="14" :stroke-width="2" />
+        <span class="flex-1 text-xs font-medium">{{ error }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-6 px-2 text-2xs border-error/40 text-error hover:bg-error/15"
+          @click="emit('retry')"
+          aria-label="重试"
+        >
+          重试
+        </Button>
+      </div>
+
       <!-- "N new" pill when auto-follow is off and new lines arrived -->
       <button
         v-if="!autoFollow && (unreadCount ?? 0) > 0"
@@ -890,9 +1053,36 @@ function applySearchHighlight(html: string): string {
         {{ unreadCount }} 条新 · 跳转
       </button>
 
-      <div v-if="displayedLines.length === 0" class="p-12 text-center text-muted-foreground font-sans">
-        <Terminal :size="24" class="mx-auto mb-2 opacity-30" :stroke-width="1.5" />
-        {{ search ? '没有匹配的行' : (streaming ? '等待日志…' : '日志已暂停') }}
+      <div
+        v-if="displayedLines.length === 0"
+        class="flex flex-col items-center justify-center h-full px-4 text-center text-muted-foreground font-sans"
+      >
+        <!-- ponytail: three explicit branches so the message always reads true.
+             Without filter + lines=[] + streaming=true → "等待" (pods haven't
+             written yet); without filter + paused → "已暂停"; with filter but
+             filtered=[] (lines exist) → "无匹配" + a one-click reset. -->
+        <template v-if="lines.length === 0">
+          <Terminal :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
+          <p class="text-sm font-medium text-foreground mb-1">
+            暂无日志
+          </p>
+          <p class="text-2xs text-muted-foreground">
+            {{ streaming ? '等待容器输出…' : '日志已暂停' }}
+          </p>
+        </template>
+        <template v-else>
+          <Search :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
+          <p class="text-sm font-medium text-foreground mb-1">
+            当前过滤无匹配
+          </p>
+          <p class="text-2xs text-muted-foreground mb-3">
+            {{ lines.length.toLocaleString() }} 行被过滤掉，{{ search || minSeverity > 0 ? '当前条件：' : '' }}{{ search ? `「${search}」` : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
+          </p>
+          <Button variant="outline" size="sm" class="h-7 text-xs" @click="clearAllFilters">
+            <X :size="11" :stroke-width="2" class="mr-1" />
+            清空过滤
+          </Button>
+        </template>
       </div>
       <div v-else class="relative">
         <div :style="{ height: padTop + 'px' }" aria-hidden="true" />
@@ -908,12 +1098,14 @@ function applySearchHighlight(html: string): string {
               :style="{ opacity: timeOpacity(group.line.raw.timestamp) }"
               v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content)]"
             >
-              <span
+              <button
                 v-if="group.line.traceId"
-                class="absolute left-0 top-0 bottom-0 w-1"
+                type="button"
+                @click.stop="toggleTraceFilter(group.line.traceId)"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.line.traceId) }"
-                :title="`trace_id: ${group.line.traceId}`"
-                aria-hidden="true"
+                :title="`按 trace_id 过滤: ${group.line.traceId}`"
+                :aria-label="`按 trace_id ${group.line.traceId} 过滤`"
               />
               <span
                 v-if="isNewestLine(group)"
@@ -949,15 +1141,15 @@ function applySearchHighlight(html: string): string {
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                   <ChevronUp v-else :size="9" :stroke-width="2.5" />
                 </button>
-                <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(group.line.raw.content)" />
+                <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(group.line.raw)" />
                 <button
-                  v-if="plainLength(group.line.raw.content) > TRUNCATE_LIMIT"
+                  v-if="plainLength(group.line.raw) > TRUNCATE_LIMIT"
                   type="button"
                   class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                  :title="truncatedExpanded.has(group.line.raw.content) ? '收起' : `展开剩余 ${(plainLength(group.line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                  :title="truncatedExpanded.has(group.line.raw.content) ? '收起' : `展开剩余 ${(plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字`"
                   @click.stop="toggleTruncate(group.line.raw.content)"
                 >
-                  {{ truncatedExpanded.has(group.line.raw.content) ? '收起' : `+${(plainLength(group.line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                  {{ truncatedExpanded.has(group.line.raw.content) ? '收起' : `+${(plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
                 </button>
               </div>
             </div>
@@ -996,12 +1188,14 @@ function applySearchHighlight(html: string): string {
               @keydown.enter.prevent="toggleExpand(group.key)"
               @keydown.space.prevent="toggleExpand(group.key)"
             >
-              <span
+              <button
                 v-if="group.lines[0].traceId"
-                class="absolute left-0 top-0 bottom-0 w-1"
+                type="button"
+                @click.stop="toggleTraceFilter(group.lines[0].traceId)"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
-                :title="`trace_id: ${group.lines[0].traceId}`"
-                aria-hidden="true"
+                :title="`按 trace_id 过滤: ${group.lines[0].traceId}`"
+                :aria-label="`按 trace_id ${group.lines[0].traceId} 过滤`"
               />
               <span
                 v-if="isNewestLine(group)"
@@ -1034,27 +1228,71 @@ function applySearchHighlight(html: string): string {
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                   <ChevronUp v-else :size="9" :stroke-width="2.5" />
                 </button>
-                <span class="flex-1 min-w-0 font-mono truncate" v-html="lineHtml(group.lines[0].raw.content)" />
-                <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground text-background text-2xs font-semibold tabular-nums">
-                  <ChevronDown v-if="group.expanded" :size="10" :stroke-width="2.5" />
-                  <ChevronRight v-else :size="10" :stroke-width="2.5" />
+                <span
+                  v-if="!group.expanded"
+                  class="group/fold relative flex-1 min-w-0 font-mono truncate"
+                >
+                  <span v-html="lineHtml(group.lines[0].raw)" />
+                  <!-- ponytail: hover preview — when a user hovers the collapsed
+                       content cell, float a tooltip showing up to 3 distinct
+                       timestamps. CSS hover is enough; no per-row state needed. -->
+                  <span
+                    class="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover/fold:flex flex-col gap-1 p-2 rounded-md border border-border bg-popover text-popover-foreground shadow-md min-w-[320px] max-w-[640px]"
+                    role="tooltip"
+                  >
+                    <span class="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">
+                      本组 ×{{ group.lines.length }}（点击展开全部）
+                    </span>
+                    <span
+                      v-for="(l, i) in group.lines.slice(0, 3)"
+                      :key="i"
+                      class="flex gap-2 text-2xs font-mono"
+                    >
+                      <span class="text-muted-foreground tabular-nums shrink-0">{{ fmtLocalTime(l.raw.timestamp) }}</span>
+                      <span class="truncate text-foreground/80">{{ stripAnsi(l.raw.content).slice(0, 120) }}</span>
+                    </span>
+                    <span
+                      v-if="group.lines.length > 3"
+                      class="text-2xs text-muted-foreground italic"
+                    >
+                      … 共 {{ group.lines.length }} 条
+                    </span>
+                  </span>
+                </span>
+                <span v-else class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(group.lines[0].raw)" />
+                <!-- ponytail: large ×N badge on the left of the row signals
+                     "this is folded". Color follows severity for instant
+                     scanability — error fold = red, warn = amber, etc. -->
+                <span
+                  :class="cn(
+                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors',
+                    severityBgFor(group.lines[0].raw.severity),
+                    severityBorderFor(group.lines[0].raw.severity),
+                  )"
+                  :title="`本组 ${group.lines.length} 条相同的日志 · 点击展开`"
+                >
+                  <ChevronDown v-if="group.expanded" :size="11" :stroke-width="2.5" />
+                  <ChevronRight v-else :size="11" :stroke-width="2.5" />
                   ×{{ group.lines.length }}
                 </span>
               </div>
             </div>
-            <template v-if="group.expanded">
-              <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
-                <div
-                  class="grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-muted-foreground relative"
-                  :style="{ opacity: timeOpacity(line.raw.timestamp) }"
-                  v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content)]"
-                >
-                  <span
+            <Transition name="fade-fast">
+              <div v-if="group.expanded" class="contents">
+                <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
+                  <div
+                    class="grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-muted-foreground relative"
+                    :style="{ opacity: timeOpacity(line.raw.timestamp) }"
+                    v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content)]"
+                  >
+                  <button
                     v-if="line.traceId"
-                    class="absolute left-0 top-0 bottom-0 w-1"
+                    type="button"
+                    @click.stop="toggleTraceFilter(line.traceId)"
+                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
-                    :title="`trace_id: ${line.traceId}`"
-                    aria-hidden="true"
+                    :title="`按 trace_id 过滤: ${line.traceId}`"
+                    :aria-label="`按 trace_id ${line.traceId} 过滤`"
                   />
                   <span
                     class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
@@ -1077,15 +1315,15 @@ function applySearchHighlight(html: string): string {
                       <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
                       <ChevronUp v-else :size="9" :stroke-width="2.5" />
                     </button>
-                    <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(line.raw.content)" />
+                    <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(line.raw)" />
                     <button
-                      v-if="plainLength(line.raw.content) > TRUNCATE_LIMIT"
+                      v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
                       class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                      :title="truncatedExpanded.has(line.raw.content) ? '收起' : `展开剩余 ${(plainLength(line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                      :title="truncatedExpanded.has(line.raw.content) ? '收起' : `展开剩余 ${(plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字`"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >
-                      {{ truncatedExpanded.has(line.raw.content) ? '收起' : `+${(plainLength(line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                      {{ truncatedExpanded.has(line.raw.content) ? '收起' : `+${(plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
                     </button>
                   </div>
                 </div>
@@ -1107,7 +1345,8 @@ function applySearchHighlight(html: string): string {
                   </div>
                 </div>
               </template>
-            </template>
+              </div>
+            </Transition>
           </template>
         </template>
         <div :style="{ height: padBottom + 'px' }" aria-hidden="true" />
@@ -1134,3 +1373,26 @@ function applySearchHighlight(html: string): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* ponytail: scoped fade-fast for the fold-row <Transition>. Soft 150ms so the
+   expand/collapse of duplicate-line groups doesn't flicker when the user clicks
+   a 12-row fold open. */
+.fade-fast-enter-active,
+.fade-fast-leave-active {
+  transition: opacity 150ms ease, max-height 150ms ease, transform 150ms ease;
+  overflow: hidden;
+}
+.fade-fast-enter-from,
+.fade-fast-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-2px);
+}
+.fade-fast-enter-to,
+.fade-fast-leave-from {
+  opacity: 1;
+  max-height: 1200px;
+  transform: translateY(0);
+}
+</style>

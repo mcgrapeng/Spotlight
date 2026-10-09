@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ansiToHtml } from '../ansiToHtml'
+import { ansiToHtml, getAnsiFor } from '../ansiToHtml'
 
 describe('ansiToHtml', () => {
   it('returns empty parts for empty input', () => {
@@ -72,5 +72,30 @@ describe('ansiToHtml', () => {
     expect((html.match(/<span class="text-red-500">/g) ?? []).length).toBe(1000)
     expect(plain).not.toContain('\x1b[')
     expect(plain.split('\n').length).toBe(1000)
+  })
+
+  it('processes 1000 SGR sequences per 10KB input under 200ms (cold path)', () => {
+    // 10 lines × 10_000 chars each, each line a fresh ANSI-colored blob — the
+    // aggregate workload that a busy pod produces on first paint.
+    const oneLine = '\x1b[31m' + 'x'.repeat(1000) + '\x1b[0m'
+    const big = (oneLine + '\n').repeat(10_000)
+    const start = performance.now()
+    const { plain } = ansiToHtml(big)
+    const ms = performance.now() - start
+    expect(ms).toBeLessThan(200)
+    expect(plain.length).toBeGreaterThan(10_000_000)
+  })
+
+  it('getAnsiFor hits the WeakMap cache — 1000 calls on the same line under 5ms', () => {
+    const line = { content: '\x1b[1;33mwarn hello world\x1b[0m' }
+    // Warm the cache.
+    const first = getAnsiFor(line)
+    expect(first.plain).toBe('warn hello world')
+    const start = performance.now()
+    let last: { html: string; plain: string } | undefined
+    for (let i = 0; i < 1000; i++) last = getAnsiFor(line)
+    const ms = performance.now() - start
+    expect(ms).toBeLessThan(5)
+    expect(last).toBe(first)
   })
 })

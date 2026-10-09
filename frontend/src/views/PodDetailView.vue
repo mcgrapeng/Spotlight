@@ -100,7 +100,7 @@ async function runAI(content: string) {
   }
 }
 
-const { lines: logLines, unreadCount } = usePodLogs({
+const { lines: logLines, unreadCount, error: logError, start: logStart } = usePodLogs({
   cluster, namespace, name, enabled: logsTabActive,
   streaming: logStreaming,
 })
@@ -250,9 +250,13 @@ function back() { router.push({ name: 'pods' }) }
                 v-model:streaming="logStreaming"
                 :unread-count="logUnread"
                 :containers="pod.containers.map(c => c.name)"
+                :pod-name="name"
+                :namespace="namespace"
+                :error="logError"
                 @update:filtered="filteredLogsForAI = $event"
                 @clear="logLines = []"
                 @consume-unread="logUnread = 0"
+                @retry="logStart"
               />
             </div>
           </TabsContent>

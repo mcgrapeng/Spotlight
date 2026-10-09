@@ -44,6 +44,28 @@ export interface AnsiParts {
   plain: string
 }
 
+// ponytail: module-level WeakMap cache keyed by LogLineOut. A batch of 500
+// lines used to pay 500 parse passes; now the second render of the same line
+// is a single WeakMap lookup. Entries auto-GC when the line drops out of the
+// ring buffer — no manual eviction needed. Module-level so the cache survives
+// LogViewer unmount/remount (component-instance scope would lose every entry
+// on tab switch).
+type LineWithContent = { content: string }
+const ansiCache = new WeakMap<LineWithContent, AnsiParts>()
+
+/**
+ * Cached ANSI→HTML lookup. Use this in the render hot path instead of calling
+ * `ansiToHtml(line.content)` — the WeakMap eliminates re-parsing the same line on
+ * subsequent renders. Returns `{ html, plain }`.
+ */
+export function getAnsiFor(line: LineWithContent): AnsiParts {
+  const hit = ansiCache.get(line)
+  if (hit !== undefined) return hit
+  const fresh = ansiToHtml(line.content)
+  ansiCache.set(line, fresh)
+  return fresh
+}
+
 export function ansiToHtml(input: string): AnsiParts {
   if (!input) return { html: '', plain: '' }
 

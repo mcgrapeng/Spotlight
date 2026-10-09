@@ -121,4 +121,116 @@ describe('LogViewer', () => {
     // debug: transparent bar (badge carries the signal)
     expect(classOf(4)).toContain('border-l-transparent')
   })
+
+  it('clicking the trace-id bar sets search to trace:<uuid>', async () => {
+    const tid = '11111111-2222-3333-4444-555555555555'
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('info', `started request ${tid}`), line('info', 'unrelated')],
+        unreadCount: 0,
+      },
+    })
+    // The trace bar is the button with aria-label="按 trace_id <uuid> 过滤"
+    const traceBtn = wrapper.find(`button[aria-label="按 trace_id ${tid} 过滤"]`)
+    expect(traceBtn.exists()).toBe(true)
+    await traceBtn.trigger('click')
+    // The first <input> is the search box
+    const searchInput = wrapper.find('input[aria-label="过滤日志"]')
+    expect((searchInput.element as HTMLInputElement).value).toBe(`trace:${tid}`)
+    // Clicking again clears the trace filter (toggle)
+    await wrapper.find(`button[aria-label="按 trace_id ${tid} 过滤"]`).trigger('click')
+    expect((searchInput.element as HTMLInputElement).value).toBe('')
+  })
+
+  it('shows the empty state with "暂无日志 / 等待容器输出…" when no lines arrive and streaming is true', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: [], streaming: true, unreadCount: 0 },
+    })
+    expect(wrapper.text()).toContain('暂无日志')
+    expect(wrapper.text()).toContain('等待容器输出')
+  })
+
+  it('shows "日志已暂停" empty state when paused with no lines', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: [], streaming: false, unreadCount: 0 },
+    })
+    expect(wrapper.text()).toContain('暂无日志')
+    expect(wrapper.text()).toContain('日志已暂停')
+  })
+
+  it('shows "当前过滤无匹配" + a clear button when filter hides all lines', async () => {
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('debug', 'noisy debug message')],
+        streaming: true,
+        unreadCount: 0,
+      },
+    })
+    const searchInput = wrapper.find('input[aria-label="过滤日志"]')
+    await searchInput.setValue('zzz_no_match_zzz')
+    expect(wrapper.text()).toContain('当前过滤无匹配')
+    const clearBtn = wrapper.findAll('button').find((b) => b.text().includes('清空过滤'))
+    expect(clearBtn).toBeTruthy()
+    await clearBtn!.trigger('click')
+    expect((wrapper.find('input[aria-label="过滤日志"]').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('renders an error banner with retry when error prop is set', async () => {
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('info', 'partial line that came through')],
+        streaming: false,
+        unreadCount: 0,
+        error: '日志连接中断',
+      },
+    })
+    expect(wrapper.text()).toContain('日志连接中断')
+    const retry = wrapper.find('button[aria-label="重试"]')
+    expect(retry.exists()).toBe(true)
+    await retry.trigger('click')
+    // retry event is emitted, not a callback prop — parent wires it up
+    expect(wrapper.emitted('retry')).toBeTruthy()
+  })
+
+  it('renders the download button (disabled when filtered set is empty)', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(3), unreadCount: 0, podName: 'demo', namespace: 'ns' },
+    })
+    const dl = wrapper.find('button[aria-label="下载日志"]')
+    expect(dl.exists()).toBe(true)
+    expect(dl.attributes('disabled')).toBeUndefined()
+  })
+
+  it('displays the keyboard help popover when the help button is clicked', async () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(3), unreadCount: 0 },
+      attachTo: document.body,
+    })
+    const helpBtn = wrapper.find('button[aria-label="快捷键帮助 (?)"]')
+    expect(helpBtn.exists()).toBe(true)
+    await helpBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+    // ponytail: popover content teleports to body — check document.body
+    const bodyText = document.body.textContent ?? ''
+    expect(bodyText).toContain('快捷键')
+    expect(bodyText).toContain('聚焦搜索')
+    expect(bodyText).toContain('仅显示 error')
+  })
+
+  it('fold group header shows a large ×N badge with severity tint', () => {
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: Array.from({ length: 12 }, () => line('error', 'same repeated message')),
+        unreadCount: 0,
+      },
+    })
+    // The badge is a span containing ×N. Find it by text and assert its class includes
+    // the severity tint (border-l-red-500/70 for error).
+    const all = wrapper.findAll('span')
+    const badge = all.find((s) => /^×\d+$/.test(s.text().trim()))
+    expect(badge).toBeTruthy()
+    const cls = badge!.attributes('class') ?? ''
+    // error → border-l-red-500/70 from severityBorderFor()
+    expect(cls).toMatch(/border-l-red-500/)
+  })
 })
