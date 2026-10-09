@@ -12,6 +12,15 @@ export interface UsePodLogsOptions {
   streaming?: Ref<boolean>
   tailLines?: number
   maxBuffered?: number
+  /**
+   * True when the user wants new lines to appear at the top immediately
+   * (auto-follow the tail). False when the user has scrolled down to read
+   * history — new lines must NOT prepend in that case or they shove the
+   * user's viewport up while they try to scroll (the "scrollbar jitters
+   * while pulling" symptom). The same ref is read by the LogViewer's pill
+   * toggle and the SSE flush() here.
+   */
+  autoFollow?: Ref<boolean>
 }
 
 const MAX_BUFFERED_DEFAULT = 10000
@@ -47,6 +56,11 @@ export function usePodLogs(opts: UsePodLogsOptions) {
   const error = ref<string | null>(null)
   const unreadCount = ref(0)
 
+  // Lives in the composable scope (not inside start()) so the autoFollow
+  // watcher can reach it across reconnects and the deferred backlog
+  // survives a fresh history fetch. Reset only by clear() (user action).
+  const deferred: LogLineOut[] = []
+
   const max = opts.maxBuffered ?? MAX_BUFFERED_DEFAULT
   const tail = opts.tailLines ?? TAIL_LINES_DEFAULT
 
@@ -59,10 +73,30 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     streaming.value = false
   }
 
+  function commitDeferred() {
+    if (deferred.length === 0) return
+    const batch = deferred.slice().reverse()
+    lines.value = [...batch, ...lines.value]
+    if (lines.value.length > max) {
+      lines.value = lines.value.slice(0, max)
+    }
+    deferred.length = 0
+    unreadCount.value = 0
+  }
+
+  // When the user re-engages auto-follow (clicks the pill or scrolls to
+  // the top), flush whatever the SSE stream was holding back. Without this
+  // watcher the deferred backlog would stay invisible until the next history
+  // re-fetch.
+  watch(() => opts.autoFollow?.value, (v) => {
+    if (alive && v === true) commitDeferred()
+  })
+
   async function start() {
     if (!alive || !opts.name.value) return
     closeStream()
     lines.value = []
+    deferred.length = 0
     unreadCount.value = 0
     error.value = null
 
@@ -121,13 +155,21 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       flushTimer = null
       if (pending.length === 0) return
       // Backend yields lines in chronological order (oldest first within batch).
-      // Store newest-first: reverse pending before prepending.
       const batch = pending.slice().reverse()
-      lines.value = [...batch, ...lines.value]
-      if (lines.value.length > max) {
-        lines.value = lines.value.slice(0, max)
+      if (opts.autoFollow?.value) {
+        // User is at the top — prepend immediately (live tail experience).
+        lines.value = [...batch, ...lines.value]
+        if (lines.value.length > max) {
+          lines.value = lines.value.slice(0, max)
+        }
+      } else {
+        // User is scrolled away — buffer for later and count for the pill.
+        deferred.push(...batch)
+        if (deferred.length > max) {
+          deferred.splice(0, deferred.length - max)
+        }
+        unreadCount.value = deferred.length
       }
-      unreadCount.value += pending.length
       pending = []
     }
 
@@ -186,12 +228,20 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     else if (opts.enabled.value) start()
   })
 
+  // When the user re-engages auto-follow (clicks the pill or scrolls to
+  // the top), flush whatever the SSE stream was holding back. Without this
+  // watcher the deferred backlog would stay invisible until the next history
+  // re-fetch.
+  watch(() => opts.autoFollow?.value, (v) => {
+    if (alive && v === true) commitDeferred()
+  })
+
   onBeforeUnmount(() => {
     alive = false
     closeStream()
   })
 
-  function clear() { lines.value = []; unreadCount.value = 0 }
+  function clear() { lines.value = []; unreadCount.value = 0; deferred.length = 0 }
 
   return { lines, streaming, error, unreadCount, start, close: closeStream, clear }
 }

@@ -100,9 +100,15 @@ async function runAI(content: string) {
   }
 }
 
+// Shared auto-follow ref: usePodLogs reads it to decide whether new SSE
+// lines are prepended or held back; LogViewer reads/writes it for the pill
+// toggle and scroll-to-top detection. A single ref is the source of truth.
+const logAutoFollow = ref(true)
+
 const { lines: logLines, unreadCount, error: logError, start: logStart } = usePodLogs({
   cluster, namespace, name, enabled: logsTabActive,
   streaming: logStreaming,
+  autoFollow: logAutoFollow,
 })
 
 const filteredLogsForAI = ref<readonly LogLineOut[]>([])
@@ -248,6 +254,7 @@ function back() { router.push({ name: 'pods' }) }
               <LogViewer
                 :lines="logLines"
                 v-model:streaming="logStreaming"
+                v-model:auto-follow="logAutoFollow"
                 :unread-count="logUnread"
                 :containers="pod.containers.map(c => c.name)"
                 :pod-name="name"

@@ -25,16 +25,22 @@ const props = withDefaults(defineProps<{
   namespace?: string
   error?: string | null
   downloadScope?: 'all' | 'visible'
+  /** Shared with usePodLogs: true = new lines are prepended immediately
+   *  (auto-follow the tail); false = buffered as deferred backlog. The
+   *  parent owns this ref so SSE flush and the UI pill stay in sync. */
+  autoFollow?: boolean
 }>(), {
   podName: '',
   namespace: '',
   error: null,
   downloadScope: 'visible',
+  autoFollow: true,
 })
 
 const emit = defineEmits<{
   clear: []
   'update:streaming': [value: boolean]
+  'update:autoFollow': [value: boolean]
   'consume-unread': []
   'update:filtered': [value: readonly LogLineOut[]]
   retry: []
@@ -42,7 +48,13 @@ const emit = defineEmits<{
 
 // === State ===
 const search = ref('')
-const autoFollow = ref(true)
+// `autoFollow` is owned by the parent (PodDetailView shares the same ref
+// with usePodLogs). We mirror it into a local ref so v-if / watchers can
+// react synchronously; mutations are pushed back via 'update:autoFollow'.
+const autoFollow = ref(props.autoFollow ?? true)
+watch(() => props.autoFollow, (v) => {
+  if (typeof v === 'boolean') autoFollow.value = v
+})
 const wrapMode = ref<'wrap' | 'nowrap'>(
   (localStorage.getItem(STORAGE_KEYS.appLogWrap) as 'wrap' | 'nowrap') ?? 'nowrap',
 )
@@ -323,6 +335,7 @@ function onScroll() {
     // User is back at the top — re-engage auto-follow and clear unread.
     if (!autoFollow.value) {
       autoFollow.value = true
+      emit('update:autoFollow', true)
       emit('consume-unread')
     }
   } else if (top > 50 && autoFollow.value) {
@@ -333,6 +346,7 @@ function onScroll() {
 
 function toggleAutoFollow() {
   autoFollow.value = !autoFollow.value
+  emit('update:autoFollow', autoFollow.value)
   if (autoFollow.value) {
     emit('consume-unread')
     jumpToTop()
