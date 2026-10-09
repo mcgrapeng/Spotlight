@@ -1,5 +1,9 @@
-"""Client-pool isolation: per-context ApiClients must never share the SDK's
-process-global Configuration (that was the credential-cross-wiring bug)."""
+"""Client-pool isolation:
+- per-context ApiClients must never share the SDK's process-global Configuration
+  (the credential-cross-wiring bug from the audit round).
+- per-session isolation: two different session tokens each get their own
+  ApiClient for the same context, and drop_session() evicts only that session.
+"""
 from __future__ import annotations
 
 from kubernetes import client
@@ -37,8 +41,9 @@ def _pool_for(monkeypatch, tmp_path) -> KubernetesClientPool:
 
 def test_clients_have_distinct_configurations(monkeypatch, tmp_path):
     pool = _pool_for(monkeypatch, tmp_path)
-    api_a, ctx_a = pool.get("ctx-a")
-    api_b, ctx_b = pool.get("ctx-b")
+    path = str(tmp_path / "kubeconfig.yaml")
+    api_a, ctx_a = pool.get("s1", path, "ctx-a")
+    api_b, ctx_b = pool.get("s1", path, "ctx-b")
     assert (ctx_a, ctx_b) == ("ctx-a", "ctx-b")
     ca = api_a.api_client.configuration
     cb = api_b.api_client.configuration
@@ -49,24 +54,51 @@ def test_clients_have_distinct_configurations(monkeypatch, tmp_path):
 
 def test_get_is_cached_per_context(monkeypatch, tmp_path):
     pool = _pool_for(monkeypatch, tmp_path)
-    a1, _ = pool.get("ctx-a")
-    a2, _ = pool.get("ctx-a")
+    path = str(tmp_path / "kubeconfig.yaml")
+    a1, _ = pool.get("s1", path, "ctx-a")
+    a2, _ = pool.get("s1", path, "ctx-a")
     assert a1.api_client is a2.api_client
-    assert pool.get("ctx-b")[0].api_client is not a1.api_client
+    assert pool.get("s1", path, "ctx-b")[0].api_client is not a1.api_client
 
 
 def test_reload_drops_cached_clients(monkeypatch, tmp_path):
     pool = _pool_for(monkeypatch, tmp_path)
-    before = pool.get("ctx-a")[0].api_client
+    path = str(tmp_path / "kubeconfig.yaml")
+    before = pool.get("s1", path, "ctx-a")[0].api_client
     pool.reload()
-    after = pool.get("ctx-a")[0].api_client
+    after = pool.get("s1", path, "ctx-a")[0].api_client
     assert after is not before
 
 
 def test_current_context_cached(monkeypatch, tmp_path):
     pool = _pool_for(monkeypatch, tmp_path)
-    assert pool.current() == "ctx-a"
-    # default get() resolves through the cached current context
-    _, name = pool.get()
+    path = str(tmp_path / "kubeconfig.yaml")
+    assert pool.current(path) == "ctx-a"
+    # default get() resolves through the kubeconfig's current context
+    _, name = pool.get("s1", path)
     assert name == "ctx-a"
-    assert isinstance(pool.get()[0], client.CoreV1Api)
+    assert isinstance(pool.get("s1", path)[0], client.CoreV1Api)
+
+
+def test_sessions_do_not_share_clients(monkeypatch, tmp_path):
+    pool = _pool_for(monkeypatch, tmp_path)
+    path = str(tmp_path / "kubeconfig.yaml")
+    a1, _ = pool.get("s1", path, "ctx-a")
+    b1, _ = pool.get("s2", path, "ctx-a")
+    assert a1.api_client is not b1.api_client
+    a2, _ = pool.get("s1", path, "ctx-a")
+    assert a2.api_client is a1.api_client
+
+
+def test_drop_session_evicts_only_that_session(monkeypatch, tmp_path):
+    pool = _pool_for(monkeypatch, tmp_path)
+    path = str(tmp_path / "kubeconfig.yaml")
+    a1, _ = pool.get("s1", path, "ctx-a")
+    pool.get("s2", path, "ctx-a")
+    pool.drop_session("s1")
+    a2, _ = pool.get("s1", path, "ctx-a")
+    assert a2.api_client is not a1.api_client
+    # s2's client must survive the s1 eviction
+    b2, _ = pool.get("s2", path, "ctx-a")
+    b1, _ = pool.get("s2", path, "ctx-a")
+    assert b2.api_client is b1.api_client
