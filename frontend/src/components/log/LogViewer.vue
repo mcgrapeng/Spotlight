@@ -481,16 +481,10 @@ function severityBorderFor(s: string): string {
   return 'border-l-transparent'
 }
 
-// === Time-gradient opacity (newest=100%, oldest=30%) ===
-function timeOpacity(ts: string): number {
-  const ageMs = Date.now() - new Date(ts).getTime()
-  if (ageMs < 30_000) return 1
-  if (ageMs < 300_000) return 0.95
-  if (ageMs < 3_600_000) return 0.8
-  if (ageMs < 21_600_000) return 0.6
-  if (ageMs < 86_400_000) return 0.45
-  return 0.3
-}
+// ponytail: per-row opacity fade by age removed — a log panel's job is to
+// make OLD lines readable (that's what scrolling back is for); fading them
+// to 30% opacity made history look like a veil. The timestamp column already
+// communicates recency.
 
 function isNewestLine(group: Group): boolean {
   // ponytail: under virtualization, v-for idx is local to the rendered slice —
@@ -1131,7 +1125,6 @@ const helpRows = [
                 severityBgFor(group.line.raw.severity),
                 severityBorderFor(group.line.raw.severity),
               )"
-              :style="{ opacity: timeOpacity(group.line.raw.timestamp) }"
               v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content)]"
             >
               <button
@@ -1215,7 +1208,6 @@ const helpRows = [
                 severityBgFor(group.lines[0].raw.severity),
                 severityBorderFor(group.lines[0].raw.severity),
               )"
-              :style="{ opacity: timeOpacity(group.lines[0].raw.timestamp) }"
               v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId]"
               role="button"
               tabindex="0"
@@ -1318,7 +1310,6 @@ const helpRows = [
                 <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
                   <div
                     class="grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-muted-foreground relative"
-                    :style="{ opacity: timeOpacity(line.raw.timestamp) }"
                     v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content)]"
                   >
                   <button
