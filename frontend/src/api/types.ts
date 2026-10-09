@@ -16,17 +16,12 @@ export type DashboardOut = Schemas['DashboardOut']
 export type EventOut = Schemas['EventOut']
 export type FavoriteCreate = Schemas['FavoriteCreate']
 export type FavoriteOut = Schemas['FavoriteOut']
-export type KubeLoginIn = Schemas['KubeLoginIn']
-export type KubeLoginOut = Schemas['KubeLoginOut']
 export type LogHistoryOut = Schemas['LogHistoryOut']
 export type LogStreamParams = Schemas['LogStreamParams']
-export type LoginIn = Schemas['LoginIn']
-export type LoginOut = Schemas['LoginOut']
 export type NamespaceOut = Schemas['NamespaceOut']
 export type NodeOut = Schemas['NodeOut']
 export type PodListOut = Schemas['PodListOut']
 export type PodOut = Schemas['PodOut']
-export type StatusOut = Schemas['StatusOut']
 
 /** Wire name is LogStreamParams; call sites still say LogLineOut. */
 export type LogLineOut = LogStreamParams

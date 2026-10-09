@@ -30,16 +30,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Post Login
-         * @description Authenticate against the Teleport proxy and return the K8s clusters
-         *     the user has access to. Does NOT fetch kube creds — that's a separate
-         *     call so the UI can show a dropdown.
-         *
-         *     Without Teleport, a configured API_TOKEN can be presented as the
-         *     password to open a session (host-bound deployments).
-         */
+        /** Post Login */
         post: operations["post_login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/cluster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Cluster */
+        post: operations["post_cluster_api_v1_auth_cluster_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -53,36 +62,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Kube Clusters
-         * @description Re-list K8s clusters available to the current tsh session. Useful
-         *     when the frontend wants to refresh the dropdown without re-entering
-         *     password.
-         */
+        /** Get Kube Clusters */
         get: operations["get_kube_clusters_api_v1_auth_kube_clusters_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/kube-login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Post Kube Login
-         * @description Run `tsh kube login <cluster>` against the existing tsh session and
-         *     reload the in-process kubeconfig.
-         */
-        post: operations["post_kube_login_api_v1_auth_kube_login_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -96,16 +79,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Permissions
-         * @description For each common K8s resource, ask `kubectl auth can-i list <res>` and
-         *     return whether the current Teleport role allows it.
-         *
-         *     The frontend uses this to distinguish "no data because the cluster is
-         *     empty" from "no data because RBAC denied access" — most commonly the
-         *     latter for `nodes` and `persistentvolumes` when a Teleport role wasn't
-         *     given an explicit `kubernetes_resources` entry.
-         */
+        /** Get Permissions */
         get: operations["get_permissions_api_v1_auth_permissions_get"];
         put?: never;
         post?: never;
@@ -124,11 +98,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Post Logout
-         * @description Revoke this caller's session and clear the cookie. Harmless to call
-         *     without a session.
-         */
+        /** Post Logout */
         post: operations["post_logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -549,6 +519,14 @@ export interface components {
              */
             is_current: boolean;
         };
+        /**
+         * ClusterSelectIn
+         * @description Pick a K8s cluster to log into. Whitelisted to alphanumeric + . _ -.
+         */
+        ClusterSelectIn: {
+            /** Cluster */
+            cluster: string;
+        };
         /** ContainerOut */
         ContainerOut: {
             /** Name */
@@ -669,23 +647,6 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** KubeLoginIn */
-        KubeLoginIn: {
-            /** Cluster */
-            cluster: string;
-        };
-        /** KubeLoginOut */
-        KubeLoginOut: {
-            /** Ok */
-            ok: boolean;
-            /** Cluster */
-            cluster: string;
-            /**
-             * Message
-             * @default
-             */
-            message: string;
-        };
         /** LogHistoryOut */
         LogHistoryOut: {
             /** Total */
@@ -707,26 +668,25 @@ export interface components {
              */
             severity: string;
         };
-        /** LoginIn */
+        /**
+         * LoginIn
+         * @description Login payload: username + dynamic form fields from the active provider.
+         */
         LoginIn: {
-            /** Password */
-            password: string;
-            /**
-             * Otp
-             * @default
-             */
-            otp: string;
+            /** Username */
+            username: string;
+            /** Fields */
+            fields?: {
+                [key: string]: string;
+            };
         };
-        /** LoginOut */
+        /**
+         * LoginOut
+         * @description Login response: success flag + kube clusters available after auth.
+         */
         LoginOut: {
             /** Ok */
             ok: boolean;
-            /** Proxy */
-            proxy: string;
-            /** User */
-            user: string;
-            /** Cluster */
-            cluster: string;
             /**
              * Kube Clusters
              * @default []
@@ -820,6 +780,35 @@ export interface components {
             /** Owner Name */
             owner_name?: string | null;
         };
+        /**
+         * ProviderFieldOut
+         * @description One form field the frontend should render.
+         */
+        ProviderFieldOut: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Type */
+            type: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+        };
+        /**
+         * ProviderInfoOut
+         * @description Active provider metadata for the login page.
+         */
+        ProviderInfoOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Fields */
+            fields: components["schemas"]["ProviderFieldOut"][];
+        };
         /** RestartTopItem */
         RestartTopItem: {
             /** Pod */
@@ -827,24 +816,27 @@ export interface components {
             /** Restarts */
             restarts: number;
         };
-        /** StatusOut */
+        /**
+         * SessionInfoOut
+         * @description Per-session info returned in /auth/status when the caller is logged in.
+         */
+        SessionInfoOut: {
+            /** Username */
+            username: string;
+        };
+        /**
+         * StatusOut
+         * @description Public status: tells the frontend whether/how to show a login form.
+         */
         StatusOut: {
             /** Configured */
             configured: boolean;
-            /** Available */
-            available: boolean;
-            /** Proxy */
-            proxy: string;
-            /** User */
-            user: string;
-            /** Cluster */
-            cluster: string;
-            /** Session Valid */
-            session_valid: boolean;
+            provider?: components["schemas"]["ProviderInfoOut"] | null;
             /** Auth Required */
             auth_required: boolean;
             /** Client Session */
             client_session: boolean;
+            session?: components["schemas"]["SessionInfoOut"] | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -921,6 +913,41 @@ export interface operations {
             };
         };
     };
+    post_cluster_api_v1_auth_cluster_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClusterSelectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_kube_clusters_api_v1_auth_kube_clusters_get: {
         parameters: {
             query?: never;
@@ -937,39 +964,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": string[];
-                };
-            };
-        };
-    };
-    post_kube_login_api_v1_auth_kube_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["KubeLoginIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KubeLoginOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1012,7 +1006,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: boolean;
+                        [key: string]: unknown;
                     };
                 };
             };
