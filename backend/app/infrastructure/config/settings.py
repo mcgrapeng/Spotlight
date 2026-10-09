@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     api_token: str = ""
     session_ttl_seconds: int = 43200  # 12h
 
+    # 活跃认证插件 id（见 infrastructure/auth/plugins/REGISTRY）。空 = 开发开放模式。
+    auth_provider: str = ""
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
