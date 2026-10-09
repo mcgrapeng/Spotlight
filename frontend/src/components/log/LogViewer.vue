@@ -155,6 +155,22 @@ interface DecoratedLine {
   traceId: string | null
   isJson: boolean
 }
+
+// ponytail: stable identity per LogLineOut object. Index-based group keys
+// broke under prepend (SSE flush shifts every index) — virtual-scroll +
+// v-memo then patched stale DOM refs and crashed with insertBefore(null).
+// Ids survive prepends; distinct-but-identical payloads (history + SSE
+// replay) also get distinct ids, so keys never collide.
+const lineIdCache = new WeakMap<LogLineOut, string>()
+let lineIdSeq = 0
+function lineId(line: LogLineOut): string {
+  let v = lineIdCache.get(line)
+  if (v === undefined) {
+    v = `l${++lineIdSeq}`
+    lineIdCache.set(line, v)
+  }
+  return v
+}
 const decorated = computed<DecoratedLine[]>(() =>
   filtered.value.map(line => ({
     raw: line,
@@ -166,18 +182,18 @@ const decorated = computed<DecoratedLine[]>(() =>
 interface FoldGroup {
   kind: 'single'
   line: DecoratedLine
-  key: number
+  key: string
 }
 interface FoldRun {
   kind: 'run'
   lines: DecoratedLine[]
-  key: number
+  key: string
   sig: string
   expanded: boolean
 }
 type Group = FoldGroup | FoldRun
 
-const expanded = ref(new Set<number>())
+const expanded = ref(new Set<string>())
 
 const groups = computed<Group[]>(() => {
   const out: Group[] = []
@@ -188,16 +204,22 @@ const groups = computed<Group[]>(() => {
     let j = i + 1
     while (j < arr.length && cachedSig(arr[j].raw) === sig) j++
     if (j - i >= 3) {
+      // Run key = the OLDEST line of the run (slice tail). displayedLines is
+      // newest-first and prepends only extend runs at their front, so the
+      // tail is the stable anchor across SSE flushes.
+      const key = lineId(arr[j - 1].raw)
       out.push({
         kind: 'run',
         lines: arr.slice(i, j),
-        key: i,
+        key,
         sig,
-        expanded: expanded.value.has(i),
+        expanded: expanded.value.has(key),
       })
       i = j
     } else {
-      for (let k = i; k < j; k++) out.push({ kind: 'single', line: arr[k], key: k })
+      for (let k = i; k < j; k++) {
+        out.push({ kind: 'single', line: arr[k], key: lineId(arr[k].raw) })
+      }
       i = j
     }
   }
@@ -241,7 +263,7 @@ const padBottom = computed(() =>
   Math.max(0, (groups.value.length - virtualRange.value.end) * LINE_HEIGHT),
 )
 
-function toggleExpand(key: number) {
+function toggleExpand(key: string) {
   const s = new Set(expanded.value)
   if (s.has(key)) s.delete(key); else s.add(key)
   expanded.value = s
@@ -457,10 +479,10 @@ function timeOpacity(ts: string): number {
 }
 
 function isNewestLine(group: Group): boolean {
-  // ponytail: under virtualization, v-for idx is local to the rendered slice — use
-  // group.key (= position in displayedLines) so the pulse follows the actual newest
-  // line, not "first row currently in viewport".
-  return props.streaming && group.key === 0
+  // ponytail: under virtualization, v-for idx is local to the rendered slice —
+  // compare against the head of the FULL group list so the pulse follows the
+  // actual newest line, not "first row currently in viewport".
+  return props.streaming && groups.value[0]?.key === group.key
 }
 
 // === Severity badge (per-row label, replaces single-char icon) ===

@@ -17,6 +17,18 @@ export interface UsePodLogsOptions {
 const MAX_BUFFERED_DEFAULT = 10000
 const TAIL_LINES_DEFAULT = 500
 
+/** SSE `log` events carry a JSON *array* of entries (the backend batches up
+ * to 100 per flush). Tolerate a single object too (older wire shapes / test
+ * mocks). Entries without a string `content` are dropped — that's exactly
+ * the shape that used to crash `splitLogLines` with
+ * "Cannot read properties of undefined (reading 'split')". */
+export function normalizeStreamPayload(data: unknown): LogLineOut[] {
+  const arr = Array.isArray(data) ? data : [data]
+  return arr.filter(
+    (x): x is LogLineOut => !!x && typeof (x as LogLineOut).content === 'string',
+  )
+}
+
 /**
  * Pod logs composable.
  *
@@ -54,6 +66,16 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     unreadCount.value = 0
     error.value = null
 
+    // Dedup the SSE backlog against the history backfill. The follow-stream
+    // replays `tail_lines` on connect — and on every EventSource
+    // auto-reconnect — which would otherwise double every line (500 → 1000).
+    // Declared before the history try-block so the SSE closure is safe even
+    // when the backfill fetch fails. ponytail: sigs are content strings,
+    // bounded by session length × maxBuffered (~2MB at 10k lines) — fine for
+    // an ops panel.
+    const seen = new Set<string>()
+    const sigOf = (t: string, c: string) => `${t}\u0000${c}`
+
     try {
       const { items } = await podsApi.historyLogs(
         opts.cluster.activeCluster,
@@ -75,6 +97,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       }
       flat.reverse()
       lines.value = flat
+      for (const l of flat) seen.add(sigOf(l.timestamp, l.content))
     } catch (e: any) {
       if (!alive) return
       error.value = e?.response?.data?.detail ?? e?.message ?? '日志加载失败'
@@ -111,21 +134,39 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     es.addEventListener('log', (e) => {
       if (!alive) return
       try {
-        const raw = JSON.parse((e as MessageEvent).data) as LogLineOut
-        const container = raw.container || '—'
-        const severity = raw.severity || 'info'
-        for (const content of splitLogLines(raw.content)) {
-          pending.push({ timestamp: raw.timestamp, content, container, severity })
+        // Data flowing = connection healthy. Clears any stale "连接中断"
+        // banner left by a transient drop / auto-reconnect cycle.
+        if (error.value !== null) error.value = null
+        streaming.value = true
+        const entries = normalizeStreamPayload(JSON.parse((e as MessageEvent).data))
+        for (const raw of entries) {
+          const container = raw.container || '—'
+          const severity = raw.severity || 'info'
+          for (const content of splitLogLines(raw.content)) {
+            const sig = sigOf(raw.timestamp, content)
+            if (seen.has(sig)) continue
+            seen.add(sig)
+            pending.push({ timestamp: raw.timestamp, content, container, severity })
+          }
         }
-        if (!flushTimer) {
+        if (flushTimer === null) {
           flushTimer = setTimeout(flush, 100)
         }
       } catch (err) { console.error('parse log', err) }
     })
     es.addEventListener('error', () => {
       if (!alive) return
-      streaming.value = false
-      error.value = '日志连接中断'
+      // EventSource fires 'error' both for transient reconnect cycles and for
+      // a hard closure. readyState === CLOSED (2) means the browser has
+      // given up and the server is unreachable; readyState === CONNECTING
+      // (0) just means the next retry is in progress. Since `since_seconds=5`
+      // closes the response after every snapshot, every reconnect looked
+      // like an error to the client — only the terminal CLOSED state is
+      // worth surfacing to the user.
+      if (es && es.readyState === 2 /* CLOSED */) {
+        streaming.value = false
+        error.value = '日志连接中断'
+      }
     })
   }
 

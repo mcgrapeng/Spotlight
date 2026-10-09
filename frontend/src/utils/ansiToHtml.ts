@@ -12,10 +12,10 @@
  */
 
 const FG: Record<number, string> = {
-  30: 'text-gray-500', 31: 'text-red-500', 32: 'text-green-500', 33: 'text-yellow-500',
-  34: 'text-blue-500', 35: 'text-fuchsia-500', 36: 'text-cyan-500', 37: 'text-white',
-  90: 'text-gray-400', 91: 'text-red-400', 92: 'text-green-400', 93: 'text-yellow-400',
-  94: 'text-blue-400', 95: 'text-fuchsia-400', 96: 'text-cyan-400', 97: 'text-white',
+  30: 'text-gray-400', 31: 'text-red-400', 32: 'text-green-400', 33: 'text-yellow-400',
+  34: 'text-blue-400', 35: 'text-fuchsia-400', 36: 'text-cyan-400', 37: 'text-white',
+  90: 'text-gray-300', 91: 'text-red-300', 92: 'text-green-300', 93: 'text-yellow-300',
+  94: 'text-blue-300', 95: 'text-fuchsia-300', 96: 'text-cyan-300', 97: 'text-white',
 }
 
 const BG: Record<number, string> = {

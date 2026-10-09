@@ -48,7 +48,7 @@ describe('LogViewer', () => {
     })
     // The row content should include a span wrapping "boom" with red class
     const html = wrapper.html()
-    expect(html).toContain('class="text-red-500"')
+    expect(html).toContain('class="text-red-400"')
     expect(html).toContain('boom')
     // Plain text content is also present, escapes are dropped
     expect(html).toContain(' rest')
