@@ -330,6 +330,12 @@ function onScroll() {
   recomputeVirtualRange()
   if (!scrollEl.value) return
   const top = scrollEl.value.scrollTop
+  // Restore-on-remount: switching tabs unmounts the LogViewer; persist the
+  // reading position so coming back resumes where the user was (only worth
+  // it when not auto-following — followers want the newest line at top).
+  try {
+    sessionStorage.setItem(`k8s-log-scroll:${props.namespace}:${props.podName}`, String(top))
+  } catch { /* quota / disabled */ }
   // Newest-at-top: scrollTop=0 means we're at the newest line.
   if (top < 4) {
     // User is back at the top — re-engage auto-follow and clear unread.
@@ -435,7 +441,18 @@ onMounted(() => {
   // Mounting/unmounting of `document` listeners is handled by the composable's
   // watchEffect. We still need an initial focus state for SSR safety.
   shortcutsActive.value = false
-  nextTick(jumpToTop)
+  // Followers land on the newest line; readers resume their saved position
+  // (tab switches remount this component and used to reset scrollTop to 0).
+  if (autoFollow.value) {
+    nextTick(jumpToTop)
+  } else {
+    nextTick(() => {
+      try {
+        const saved = sessionStorage.getItem(`k8s-log-scroll:${props.namespace}:${props.podName}`)
+        if (saved && scrollEl.value) scrollEl.value.scrollTop = Number(saved)
+      } catch { /* quota / disabled */ }
+    })
+  }
 })
 
 onUnmounted(() => {
@@ -449,29 +466,22 @@ onUnmounted(() => {
 // === Visual helpers ===
 const SEV_ICON: Record<string, string> = {
   trace: '·', debug: '·', info: 'i', notice: 'i',
-  warn: '!', warning: '!', error: '×', err: '×',
-  critical: '×', fatal: '×', alert: '×', emergency: '×',
+  warn: '!', warning: '!', error: '▲', err: '▲',
+  critical: '▲', fatal: '▲', alert: '▲', emergency: '▲',
   unknown: '?',
 }
 const SEV_CLASS: Record<string, string> = {
-  trace: 'text-muted-foreground/70', debug: 'text-muted-foreground/70',
+  trace: 'text-muted-foreground', debug: 'text-muted-foreground',
   info: 'text-foreground', notice: 'text-foreground',
   warn: 'text-warning', warning: 'text-warning',
-  error: 'text-error', err: 'text-error',
-  critical: 'text-error font-semibold', fatal: 'text-error font-bold',
-  alert: 'text-error font-bold', emergency: 'text-error font-bold',
+  error: 'text-red-700', err: 'text-red-700',
+  critical: 'text-red-700 font-semibold', fatal: 'text-red-700 font-bold',
+  alert: 'text-red-700 font-bold', emergency: 'text-red-700 font-bold',
   unknown: 'text-foreground',
 }
 const SEV_ERROR_KEYS = new Set(['error', 'err', 'critical', 'fatal', 'alert', 'emergency'])
 const SEV_FATAL_KEYS = new Set(['critical', 'fatal', 'alert', 'emergency'])
 
-function severityBgFor(s: string): string {
-  const k = s.toLowerCase()
-  if (SEV_FATAL_KEYS.has(k)) return 'bg-red-500/10'
-  if (SEV_ERROR_KEYS.has(k)) return 'bg-red-500/5'
-  if (k === 'warn' || k === 'warning') return 'bg-amber-500/5'
-  return ''
-}
 function severityBorderFor(s: string): string {
   const k = s.toLowerCase()
   if (SEV_FATAL_KEYS.has(k)) return 'border-l-red-500'
@@ -499,14 +509,14 @@ const SEV_BADGE_CLASS: Record<string, string> = {
   fatal: 'bg-error text-background border-error font-bold',
   alert: 'bg-error text-background border-error font-bold',
   emergency: 'bg-error text-background border-error font-bold',
-  error: 'bg-error/15 text-error border-error/40 font-semibold',
-  err: 'bg-error/15 text-error border-error/40 font-semibold',
+  error: 'bg-error/15 text-red-700 border-error/40 font-semibold',
+  err: 'bg-error/15 text-red-700 border-error/40 font-semibold',
   warn: 'bg-warning/15 text-warning border-warning/40 font-medium',
   warning: 'bg-warning/15 text-warning border-warning/40 font-medium',
   info: 'bg-muted text-foreground border-border font-medium',
   notice: 'bg-muted text-foreground border-border font-medium',
-  trace: 'bg-transparent text-muted-foreground/70 border-transparent',
-  debug: 'bg-transparent text-muted-foreground/70 border-transparent',
+  trace: 'bg-transparent text-muted-foreground border-transparent',
+  debug: 'bg-transparent text-muted-foreground border-transparent',
   unknown: 'bg-muted text-muted-foreground border-border',
 }
 const SEV_BADGE_TEXT: Record<string, string> = {
@@ -619,9 +629,9 @@ function tokenizeJsonLine(line: string): string {
         if (str !== undefined) {
           return colon !== undefined
             ? `<span class="text-info">${str}</span>${colon}`
-            : `<span class="text-success">${str}</span>`
+            : `<span class="text-green-800">${str}</span>`
         }
-        if (bool !== undefined) return `<span class="text-error">${bool}</span>`
+        if (bool !== undefined) return `<span class="text-red-700">${bool}</span>`
         if (num !== undefined) return `<span class="text-warning">${num}</span>`
         return m
       },
@@ -1030,7 +1040,7 @@ const helpRows = [
       </button>
       <button
         type="button"
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ml-auto"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-red-700 hover:border-error/30 transition-colors ml-auto"
         title="清除字段过滤"
         aria-label="清除字段过滤"
         @click="clearFieldFilter"
@@ -1056,7 +1066,7 @@ const helpRows = [
            user sees at the top of the buffer. -->
       <div
         v-if="error"
-        class="sticky top-0 z-20 flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-error"
+        class="sticky top-0 z-20 flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-red-700"
         role="alert"
       >
         <AlertCircle :size="14" :stroke-width="2" />
@@ -1064,7 +1074,7 @@ const helpRows = [
         <Button
           variant="outline"
           size="sm"
-          class="h-6 px-2 text-2xs border-error/40 text-error hover:bg-error/15"
+          class="h-6 px-2 text-2xs border-error/40 text-red-700 hover:bg-error/15"
           @click="emit('retry')"
           aria-label="重试"
         >
@@ -1120,12 +1130,11 @@ const helpRows = [
           <template v-if="group.kind === 'single'">
             <div
               :class="cn(
-                'grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
+                'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
                 'hover:bg-muted/40 transition-colors',
-                severityBgFor(group.line.raw.severity),
                 severityBorderFor(group.line.raw.severity),
               )"
-              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content)]"
+              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content), wrapMode]"
             >
               <button
                 v-if="group.line.traceId"
@@ -1139,7 +1148,7 @@ const helpRows = [
               <span
                 v-if="isNewestLine(group)"
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
-                aria-label="实时"
+                aria-hidden="true"
               />
               <!-- Col 1: timestamp (sticky) -->
               <span
@@ -1149,7 +1158,7 @@ const helpRows = [
                 {{ fmtLocalTime(group.line.raw.timestamp) }}
               </span>
               <!-- Col 2: severity badge (sticky) -->
-              <span :class="cn('sticky left-[100px] bg-card z-10 inline-flex items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.raw.severity))">{{ sevBadgeText(group.line.raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.raw.severity))">{{ sevBadgeText(group.line.raw.severity) }}</span>
               <!-- Col 3: content (inline-prefix chips + ANSI-colored text + truncate toggle) -->
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
@@ -1170,7 +1179,7 @@ const helpRows = [
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                   <ChevronUp v-else :size="9" :stroke-width="2.5" />
                 </button>
-                <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" v-html="lineHtml(group.line.raw)" />
+                <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.line.raw.content : undefined" v-html="lineHtml(group.line.raw)" />
                 <button
                   v-if="plainLength(group.line.raw) > TRUNCATE_LIMIT"
                   type="button"
@@ -1203,12 +1212,11 @@ const helpRows = [
           <template v-else>
             <div
               :class="cn(
-                'grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
+                'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
                 'hover:bg-muted/40 transition-colors',
-                severityBgFor(group.lines[0].raw.severity),
                 severityBorderFor(group.lines[0].raw.severity),
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, wrapMode]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"
@@ -1228,7 +1236,7 @@ const helpRows = [
               <span
                 v-if="isNewestLine(group)"
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
-                aria-label="实时"
+                aria-hidden="true"
               />
               <span
                 class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
@@ -1236,7 +1244,7 @@ const helpRows = [
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
-              <span :class="cn('sticky left-[100px] bg-card z-10 inline-flex items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
@@ -1260,7 +1268,7 @@ const helpRows = [
                   v-if="!group.expanded"
                   class="group/fold relative flex-1 min-w-0 font-mono truncate"
                 >
-                  <span v-html="lineHtml(group.lines[0].raw)" class="font-mono text-foreground" :class="wrapClass" />
+                  <span v-html="lineHtml(group.lines[0].raw)" class="font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.lines[0].raw.content : undefined" />
                   <!-- ponytail: hover preview — when a user hovers the collapsed
                        content cell, float a tooltip showing up to 3 distinct
                        timestamps. CSS hover is enough; no per-row state needed. -->
@@ -1287,15 +1295,14 @@ const helpRows = [
                     </span>
                   </span>
                 </span>
-                <span v-else class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" v-html="lineHtml(group.lines[0].raw)" />
+                <span v-else class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.lines[0].raw.content : undefined" v-html="lineHtml(group.lines[0].raw)" />
                 <!-- ponytail: large ×N badge on the left of the row signals
                      "this is folded". Color follows severity for instant
                      scanability — error fold = red, warn = amber, etc. -->
                 <span
                   :class="cn(
                     'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors',
-                    severityBgFor(group.lines[0].raw.severity),
-                    severityBorderFor(group.lines[0].raw.severity),
+                        severityBorderFor(group.lines[0].raw.severity),
                   )"
                   :title="`本组 ${group.lines.length} 条相同的日志 · 点击展开`"
                 >
@@ -1309,8 +1316,8 @@ const helpRows = [
               <div v-if="group.expanded" class="contents">
                 <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
                   <div
-                    class="grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-muted-foreground relative"
-                    v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content)]"
+                    class="grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-foreground relative"
+                    v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content), wrapMode]"
                   >
                   <button
                     v-if="line.traceId"
@@ -1342,7 +1349,7 @@ const helpRows = [
                       <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
                       <ChevronUp v-else :size="9" :stroke-width="2.5" />
                     </button>
-                    <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" v-html="lineHtml(line.raw)" />
+                    <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? line.raw.content : undefined" v-html="lineHtml(line.raw)" />
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
@@ -1388,7 +1395,7 @@ const helpRows = [
         行
       </span>
       <div class="flex items-center gap-3">
-        <span v-if="streaming" class="flex items-center gap-1 text-success">
+        <span v-if="streaming" class="flex items-center gap-1 text-green-800">
           <span class="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
           实时
         </span>

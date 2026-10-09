@@ -13,13 +13,14 @@
 
 // ANSI bright codes (90-97) use COLORED tiers for vivid terminal look on
 // a light card bg. Hue-compensated: at the same Tailwind tier, cool hues
-// (blue L=53%, fuchsia L=49%) read LIGHTER than warm (yellow L=40%) —
-// pushing blue/fuchsia/cyan down one tier equalises perceived weight so
-// "debug" (blue) and "warn" (yellow) look equally dark.
+// render LIGHTER than warm — pushing blue/fuchsia/cyan/green down a tier
+// equalises perceived weight so "debug" (blue) and "warn" (yellow) look
+// equally dark. Yellow is also the only hue that must go to -700 to clear
+// WCAG AA (yellow-600 #ca8a04 = 2.94:1; yellow-700 #a16207 = 4.92:1).
 const FG: Record<number, string> = {
-  30: 'text-gray-600', 31: 'text-red-600', 32: 'text-green-700', 33: 'text-yellow-600',
+  30: 'text-gray-600', 31: 'text-red-600', 32: 'text-green-700', 33: 'text-yellow-700',
   34: 'text-blue-800', 35: 'text-fuchsia-700', 36: 'text-cyan-700', 37: 'text-gray-900',
-  90: 'text-gray-600', 91: 'text-red-600', 92: 'text-green-700', 93: 'text-yellow-600',
+  90: 'text-gray-600', 91: 'text-red-600', 92: 'text-green-700', 93: 'text-yellow-700',
   94: 'text-blue-800', 95: 'text-fuchsia-700', 96: 'text-cyan-700', 97: 'text-gray-900',
 };
 

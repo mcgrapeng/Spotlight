@@ -26,7 +26,7 @@ describe('ansiToHtml', () => {
 
   it('handles 256-style bright color (90-97) with bold override', () => {
     const { html } = ansiToHtml('\x1b[1;93mwarn\x1b[0m')
-    expect(html).toBe('<span class="font-bold text-yellow-600">warn</span>')
+    expect(html).toBe('<span class="font-bold text-yellow-700">warn</span>')
   })
 
   it('closes the span on reset (\x1b[0m) so trailing text is unwrapped', () => {

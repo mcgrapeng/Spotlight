@@ -1,5 +1,6 @@
 import { computed, type Ref } from 'vue'
 import type { LogLineOut } from '@/api/types'
+import { stripAnsi } from '@/domain/services/logFormat'
 
 export const SEVERITY_RANK: Record<string, number> = {
   trace: 0, debug: 0, info: 1, notice: 1,

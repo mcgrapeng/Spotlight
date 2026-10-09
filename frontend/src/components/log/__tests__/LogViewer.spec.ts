@@ -87,7 +87,7 @@ describe('LogViewer', () => {
     expect(wrapper.props('containers')).toEqual(['a', 'b'])
   })
 
-  it('paints per-severity row tint + 3px left bar (fatal/error/warn/info/debug)', () => {
+  it('paints per-severity 3px left bar (fatal/error/warn/info/debug)', () => {
     const wrapper = mount(LogViewer, {
       props: {
         lines: [
@@ -100,23 +100,21 @@ describe('LogViewer', () => {
         unreadCount: 0,
       },
     })
-    // Each row is the first-level div with the 88/72/1fr grid template
-    const rows = wrapper.findAll('div.grid.grid-cols-\\[88px_72px_1fr\\]')
+    // Rows use the responsive grid (sm:+ keeps the 72px badge column).
+    // The per-row 5% severity background tint was removed as vestigial —
+    // the 3px left bar is the scan signal.
+    const rows = wrapper.findAll('div.grid[class*="sm:grid-cols"]')
     expect(rows.length).toBeGreaterThanOrEqual(5)
     const classOf = (i: number) => rows[i]!.attributes('class') ?? ''
-    // critical: deeper red bg + full-opacity red 3px bar
-    expect(classOf(0)).toContain('bg-red-500/10')
+    // critical: full-opacity red 3px bar
     expect(classOf(0)).toContain('border-l-[3px]')
     expect(classOf(0)).toContain('border-l-red-500')
-    // error: lighter red bg + 70% red bar
-    expect(classOf(1)).toContain('bg-red-500/5')
+    // error: 70% red bar
     expect(classOf(1)).toContain('border-l-[3px]')
     expect(classOf(1)).toContain('border-l-red-500/70')
-    // warn: amber tint + 60% amber bar
-    expect(classOf(2)).toContain('bg-amber-500/5')
+    // warn: 60% amber bar
     expect(classOf(2)).toContain('border-l-amber-500/60')
-    // info: no bg, faint blue 30% bar
-    expect(classOf(3)).not.toContain('bg-amber-500')
+    // info: faint blue 30% bar
     expect(classOf(3)).toContain('border-l-blue-500/30')
     // debug: transparent bar (badge carries the signal)
     expect(classOf(4)).toContain('border-l-transparent')
