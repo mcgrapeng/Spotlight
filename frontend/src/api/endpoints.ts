@@ -1,29 +1,59 @@
 import { http } from './client'
 import type {
   AIAnalyzeOut, AIProviderOut, AIProviderIn, ClusterOut, DashboardOut,
-  EventOut, FavoriteOut, KubeLoginOut, LogHistoryOut, LogLineOut,
-  LoginOut, NamespaceOut, NodeOut, PodOut, PodListOut, StatusOut,
+  EventOut, FavoriteOut, LogHistoryOut, LogLineOut,
+  NamespaceOut, NodeOut, PodOut, PodListOut,
 } from '@/api/types'
 
 const ctx = (c?: string | null) => ({ params: { context: c || undefined } })
 
-// Call-site names kept stable over the generated OpenAPI types.
-export type AuthStatus = StatusOut
-export type LoginResult = LoginOut
-export type KubeLoginResult = KubeLoginOut
+// Auth shapes live inline (not in types.gen.ts) because the OpenAPI types
+// haven't been regenerated against the T7 plugin-backed endpoints yet.
+export interface ProviderField {
+  name: string
+  label: string
+  type: string      // "text" | "password" | "otp"
+  required: boolean
+}
+export interface ProviderInfo {
+  id: string
+  label: string
+  fields: ProviderField[]
+}
+export interface AuthSessionInfo {
+  username: string
+}
+export interface AuthStatus {
+  configured: boolean
+  provider: ProviderInfo | null
+  auth_required: boolean
+  client_session: boolean
+  session: AuthSessionInfo | null
+}
+export interface LoginResult {
+  ok: boolean
+  kube_clusters: string[]
+  message: string
+}
+export interface ChooseClusterResult {
+  ok: boolean
+  cluster: string
+  context: string
+}
 
 export const authApi = {
   status: () => http.get<AuthStatus>('/auth/status').then((r) => r.data),
-  // Login can take a while when the cluster enforces MFA (we feed password +
-  // OTP + wait for tsh to negotiate certs) — override the 30s default with
-  // 60s so the user gets a real error rather than an axios timeout.
-  login: (password: string, otp = '') =>
+  // Login can take a while when the cluster enforces MFA — `tsh` negotiates
+  // certs, etc. — so override the 30s default with 60s so the user gets a
+  // real error rather than an axios timeout.
+  login: (username: string, fields: Record<string, string>) =>
     http.post<LoginResult>(
-      '/auth/login', { password, otp }, { timeout: 60_000 },
+      '/auth/login', { username, fields }, { timeout: 60_000 },
     ).then((r) => r.data),
-  kubeLogin: (cluster: string) =>
-    http.post<KubeLoginResult>('/auth/kube-login', { cluster }, { timeout: 60_000 })
-      .then((r) => r.data),
+  chooseCluster: (cluster: string) =>
+    http.post<ChooseClusterResult>(
+      '/auth/cluster', { cluster }, { timeout: 60_000 },
+    ).then((r) => r.data),
   kubeClusters: () =>
     http.get<string[]>('/auth/kube-clusters', { timeout: 15_000 }).then((r) => r.data),
   permissions: () =>

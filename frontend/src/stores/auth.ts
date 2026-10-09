@@ -4,11 +4,11 @@ import { authApi, type AuthStatus, type LoginResult } from '@/api/endpoints'
 import { useClusterStore } from './cluster'
 
 /**
- * Auth store — controls the login screen for environments that route K8s
- * access through Teleport. The store now reflects a two-step flow:
+ * Auth store — drives the login screen for environments that route K8s
+ * access through an AuthPlugin (token / teleport / …).
  *
- *   step 1: login(password, otp)        — auth only; returns kube clusters
- *   step 2: kubeLogin(cluster)          — fetch kube creds for one cluster
+ *   step 1: login(username, fields)   — plugin-backed auth + create session
+ *   step 2: chooseCluster(cluster)    — write per-session kubeconfig
  *
  * `required` only flips to false after BOTH steps succeed.
  */
@@ -18,17 +18,16 @@ export const useAuthStore = defineStore('auth', () => {
   const busy = ref(false)
   const error = ref<string | null>(null)
 
-  // Set after login() succeeds, before kubeLogin() runs. Cleared once
-  // kubeLogin() lands (or fails terminally). UI uses this to show the
+  // Set after login() succeeds, before chooseCluster() runs. Cleared once
+  // chooseCluster() lands (or fails terminally). UI uses this to show the
   // cluster dropdown.
   const pendingClusters = ref<string[]>([])
-  const pendingProxy = ref<string>('')
 
   async function refreshStatus() {
     try {
       status.value = await authApi.status()
       // "required" means "this browser must log in". The server demands a
-      // session (Teleport and/or API_TOKEN configured) and this caller
+      // session (plugin and/or API_TOKEN configured) and this caller
       // doesn't hold one yet.
       required.value = status.value.auth_required && !status.value.client_session
     } catch {
@@ -42,27 +41,29 @@ export const useAuthStore = defineStore('auth', () => {
     required.value = true
   }
 
-  /** Step 1: `tsh login`. Returns the LoginResult so the caller can decide
-   *  what to do next (typically render the cluster dropdown). */
-  async function login(password: string, otp = ''): Promise<LoginResult | null> {
+  /** Step 1: plugin.login → create_session + cookie. Returns LoginResult so
+   *  the caller can decide what to do next (auto-connect, show cluster
+   *  dropdown, redirect). */
+  async function login(username: string, fields: Record<string, string>): Promise<LoginResult | null> {
     busy.value = true
     error.value = null
     try {
-      const r = await authApi.login(password, otp)
+      const r = await authApi.login(username, fields)
       if (r.ok) {
         pendingClusters.value = r.kube_clusters ?? []
-        pendingProxy.value = r.proxy
         if (!pendingClusters.value.length) {
-          // Token login (host-bound deployment): no kube-cluster step.
+          // Token login (host-bound deployment) or Teleport with zero
+          // accessible clusters — no kube-cluster step needed.
           required.value = false
         }
-        // else: required stays true until kubeLogin() lands
+        // else: required stays true until chooseCluster() lands
         return r
       }
       error.value = r.message || '登录失败'
       return null
     } catch (e: any) {
-      // detail is either a plain string or {code, message} (mfa_required).
+      // detail is either a plain string or {code, message} (mfa_required
+      // / invalid_credentials / bad_otp / unavailable).
       const d = e?.response?.data?.detail
       error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? '登录失败')
       return null
@@ -71,12 +72,12 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /** Step 2: `tsh kube login <cluster>`. */
-  async function kubeLogin(cluster: string): Promise<boolean> {
+  /** Step 2: plugin.acquire → write session kubeconfig + drop pool. */
+  async function chooseCluster(cluster: string): Promise<boolean> {
     busy.value = true
     error.value = null
     try {
-      const r = await authApi.kubeLogin(cluster)
+      const r = await authApi.chooseCluster(cluster)
       if (r.ok) {
         required.value = false
         pendingClusters.value = []
@@ -86,26 +87,24 @@ export const useAuthStore = defineStore('auth', () => {
         if (status.value === null) {
           status.value = {
             configured: true,
-            available: true,
-            proxy: '',
-            user: '',
-            cluster: '',
-            session_valid: true,
+            provider: null,
             auth_required: true,
             client_session: true,
+            session: null,
           }
         }
         // Ponytail: 同步全局 cluster 选中态,否则 LoginView 选完集群跳走
-        // 后,UI 顶部的 ClusterCombobox 还是空的(namespace 选不到、PodListView
-        // 拿不到 activeCluster)。setCluster 内部会触发 namespaces 重 fetch。
-        useClusterStore().setCluster(cluster)
+        // 后,UI 顶部的 ClusterCombobox 还是空的(namespace 选不到、
+        // PodListView 拿不到 activeCluster)。setCluster 内部会触发
+        // namespaces 重 fetch。
+        useClusterStore().setCluster(r.cluster)
         return true
       }
-      error.value = r.message || 'kube login 失败'
+      error.value = '选择集群失败'
       return false
     } catch (e: any) {
       const d = e?.response?.data?.detail
-      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? 'kube login 失败')
+      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? '选择集群失败')
       return false
     } finally {
       busy.value = false
@@ -115,13 +114,12 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     required.value = true
     pendingClusters.value = []
-    pendingProxy.value = ''
     // Revoke the server session; ignore network errors (local state is
     // already cleared — the TTL will reap the cookie anyway).
     authApi.logout().catch(() => {})
   }
 
   return { status, required, busy, error,
-           pendingClusters, pendingProxy,
-           refreshStatus, requireLogin, login, kubeLogin, logout }
+           pendingClusters,
+           refreshStatus, requireLogin, login, chooseCluster, logout }
 })

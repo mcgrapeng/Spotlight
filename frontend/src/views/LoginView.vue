@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KeyRound, LogIn, Loader2, Server } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
@@ -8,23 +8,43 @@ import { Card, CardContent } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import LogoMark from '@/components/common/LogoMark.vue'
 import { useAuthStore } from '@/stores/auth'
+import type { ProviderField } from '@/api/endpoints'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-const password = ref('')
-const otp = ref('')
+const username = ref('')
+// One reactive bag per field, named by f.name — empty string default so the
+// final payload `fields` is always shaped exactly like the provider wants.
+const fieldValues = reactive<Record<string, string>>({})
 const cluster = ref('')
 
-// Token mode: Teleport is not configured but the server does demand auth —
-// the password field carries the API access token instead.
-const tokenMode = computed(() => auth.status !== null && !auth.status.configured)
 const availableClusters = computed(() => auth.pendingClusters)
+const fields = computed<ProviderField[]>(() => auth.status?.provider?.fields ?? [])
 const singleCluster = computed(() =>
   availableClusters.value.length === 1 ? availableClusters.value[0] : null,
 )
 if (singleCluster.value) cluster.value = singleCluster.value
+
+function inputTypeFor(f: ProviderField): string {
+  if (f.type === 'password') return 'password'
+  // 'otp' and 'text' both render as <input type="text">; the difference is
+  // picked up by inputmode/autocomplete attrs below.
+  return 'text'
+}
+
+function autoCompleteFor(f: ProviderField): string {
+  if (f.type === 'password') return 'current-password'
+  if (f.type === 'otp') return 'one-time-code'
+  return 'off'
+}
+
+function clearForm() {
+  username.value = ''
+  for (const f of fields.value) fieldValues[f.name] = ''
+  cluster.value = ''
+}
 
 function redirectAfterLogin() {
   const next = (route.query.next as string) || '/dashboard'
@@ -32,33 +52,34 @@ function redirectAfterLogin() {
 }
 
 async function submitAuth() {
-  if (!password.value || auth.busy) return
-  const r = await auth.login(password.value, otp.value.trim())
+  if (!username.value.trim() || auth.busy) return
+  // Snapshot only the fields the provider asked for — empty strings are
+  // intentional so optional fields like `otp` arrive as `""`, not undefined.
+  const payload: Record<string, string> = {}
+  for (const f of fields.value) payload[f.name] = (fieldValues[f.name] ?? '').trim()
+  const r = await auth.login(username.value.trim(), payload)
   if (!r) return
   if (r.kube_clusters.length === 0) {
-    // Token login (host-bound deployment): no kube-cluster step.
-    password.value = ''
+    // Token plugin or Teleport returning zero clusters — straight in.
+    clearForm()
     redirectAfterLogin()
     return
   }
   if (r.kube_clusters.length === 1) {
-    const ok = await auth.kubeLogin(r.kube_clusters[0])
+    const ok = await auth.chooseCluster(r.kube_clusters[0])
     if (ok) {
-      password.value = ''
-      otp.value = ''
+      clearForm()
       redirectAfterLogin()
     }
-    return
   }
+  // else: render the cluster-picker form (v-if on availableClusters.length > 1)
 }
 
 async function submitPick() {
   if (!cluster.value || auth.busy) return
-  const ok = await auth.kubeLogin(cluster.value.trim())
+  const ok = await auth.chooseCluster(cluster.value.trim())
   if (ok) {
-    password.value = ''
-    otp.value = ''
-    cluster.value = ''
+    clearForm()
     redirectAfterLogin()
   }
 }
@@ -77,60 +98,65 @@ async function submitPick() {
           </div>
           <h1 class="text-2xl font-bold tracking-tight">Spotlight</h1>
           <p class="text-sm text-muted-foreground mt-1">集群驾驶舱</p>
-          <!-- 连接信息：让用户知道正在向哪个 proxy 认证 -->
           <p
-            v-if="auth.status?.configured && auth.status.proxy"
+            v-if="auth.status?.session?.username"
             class="mt-2 text-2xs text-muted-foreground font-mono break-all"
           >
-            {{ auth.status.user }}@{{ auth.status.proxy }} · {{ auth.status.cluster }}
+            {{ auth.status.session.username }}
           </p>
         </div>
 
-        <!-- Step 1: Teleport auth -->
+        <!-- Step 1: plugin auth -->
         <form
           v-if="availableClusters.length === 0"
           class="space-y-3"
           @submit.prevent="submitAuth"
         >
           <div>
-            <label class="text-sm font-medium mb-1.5 block" for="login-pass">
-              {{ tokenMode ? '访问令牌' : '密码' }}
+            <label class="text-sm font-medium mb-1.5 block" for="login-user">
+              用户名
             </label>
             <Input
-              id="login-pass"
-              v-model="password"
-              type="password"
-              :placeholder="tokenMode ? 'API 访问令牌' : 'Teleport 用户密码'"
-              autocomplete="current-password"
+              id="login-user"
+              v-model="username"
+              type="text"
+              autocomplete="username"
+              placeholder="Teleport / API 用户名"
               :disabled="auth.busy"
               required
             />
           </div>
 
-          <!-- MFA / OTP（集群启用 MFA 时必填；token 模式无 MFA） -->
-          <div v-if="!tokenMode">
-            <label class="text-sm font-medium mb-1.5 block" for="login-otp">
-              MFA 一次性码
-              <span class="text-xs font-normal text-muted-foreground ml-1">(6 位 TOTP，集群启用 MFA 时必填)</span>
+          <!-- Dynamic fields driven by provider.fields — token plugin shows
+               ONE token field, teleport shows password + optional otp. -->
+          <div v-for="f in fields" :key="f.name">
+            <label class="text-sm font-medium mb-1.5 block" :for="`login-${f.name}`">
+              {{ f.label }}
+              <span
+                v-if="!f.required"
+                class="text-xs font-normal text-muted-foreground ml-1"
+              >(可选)</span>
             </label>
-            <div class="relative">
+            <div :class="f.type === 'otp' ? 'relative' : ''">
               <KeyRound
+                v-if="f.type === 'otp'"
                 :size="13"
                 :stroke-width="1.75"
                 class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
                 aria-hidden="true"
               />
               <Input
-                id="login-otp"
-                v-model="otp"
-                type="text"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-                placeholder="例如 123456"
-                pattern="[0-9]*"
-                maxlength="9"
-                class="pl-8"
+                :id="`login-${f.name}`"
+                v-model="fieldValues[f.name]"
+                :type="inputTypeFor(f)"
+                :inputmode="f.type === 'otp' ? 'numeric' : undefined"
+                :autocomplete="autoCompleteFor(f)"
+                :pattern="f.type === 'otp' ? '[0-9]*' : undefined"
+                :maxlength="f.type === 'otp' ? 9 : undefined"
+                :class="f.type === 'otp' ? 'pl-8' : ''"
                 :disabled="auth.busy"
+                :required="f.required"
+                :placeholder="f.type === 'otp' ? '例如 123456' : ''"
               />
             </div>
           </div>
@@ -152,7 +178,9 @@ async function submitPick() {
           @submit.prevent="submitPick"
         >
           <div class="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            已通过 <span class="font-mono">{{ auth.pendingProxy }}</span> 验证身份
+            已通过
+            <span class="font-mono">{{ auth.status?.session?.username ?? auth.status?.provider?.id ?? 'plugin' }}</span>
+            验证身份
           </div>
           <div>
             <label class="text-sm font-medium mb-1.5 block" for="login-cluster">
@@ -183,7 +211,7 @@ async function submitPick() {
             type="button"
             class="text-xs text-muted-foreground hover:text-foreground"
             :disabled="auth.busy"
-            @click="auth.logout(); password=''; otp=''"
+            @click="auth.logout(); clearForm()"
           >
             重新登录
           </button>
