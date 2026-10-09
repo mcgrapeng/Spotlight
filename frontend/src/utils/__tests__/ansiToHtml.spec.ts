@@ -21,7 +21,7 @@ describe('ansiToHtml', () => {
 
   it('combines bold + color codes', () => {
     const { html } = ansiToHtml('\x1b[1;34mbold blue\x1b[0m')
-    expect(html).toBe('<span class="font-bold text-blue-600">bold blue</span>')
+    expect(html).toBe('<span class="font-bold text-blue-800">bold blue</span>')
   })
 
   it('handles 256-style bright color (90-97) with bold override', () => {
@@ -41,7 +41,7 @@ describe('ansiToHtml', () => {
 
   it('handles adjacent color change without reset (\x1b[31m red then \x1b[34m blue)', () => {
     const { html } = ansiToHtml('\x1b[31mred\x1b[34mblue\x1b[0m')
-    expect(html).toBe('<span class="text-red-600">red</span><span class="text-blue-600">blue</span>')
+    expect(html).toBe('<span class="text-red-600">red</span><span class="text-blue-800">blue</span>')
   })
 
   it('drops non-SGR escape sequences without swallowing surrounding text', () => {

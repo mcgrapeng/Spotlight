@@ -12,14 +12,15 @@
  */
 
 // ANSI bright codes (90-97) use COLORED tiers for vivid terminal look on
-// a light card bg — gray tiers (text-gray-300/400) read as washed-out gray.
-// Dim codes (30-37) are intentionally gray (terminals use "default" gray)
-// but darker than gray-300/400 so they stay legible on a white card.
+// a light card bg. Hue-compensated: at the same Tailwind tier, cool hues
+// (blue L=53%, fuchsia L=49%) read LIGHTER than warm (yellow L=40%) —
+// pushing blue/fuchsia/cyan down one tier equalises perceived weight so
+// "debug" (blue) and "warn" (yellow) look equally dark.
 const FG: Record<number, string> = {
-  30: 'text-gray-500', 31: 'text-red-600', 32: 'text-green-600', 33: 'text-yellow-600',
-  34: 'text-blue-600', 35: 'text-fuchsia-600', 36: 'text-cyan-600', 37: 'text-gray-900',
-  90: 'text-gray-600', 91: 'text-red-600', 92: 'text-green-600', 93: 'text-yellow-600',
-  94: 'text-blue-600', 95: 'text-fuchsia-600', 96: 'text-cyan-600', 97: 'text-gray-900',
+  30: 'text-gray-600', 31: 'text-red-600', 32: 'text-green-700', 33: 'text-yellow-600',
+  34: 'text-blue-800', 35: 'text-fuchsia-700', 36: 'text-cyan-700', 37: 'text-gray-900',
+  90: 'text-gray-600', 91: 'text-red-600', 92: 'text-green-700', 93: 'text-yellow-600',
+  94: 'text-blue-800', 95: 'text-fuchsia-700', 96: 'text-cyan-700', 97: 'text-gray-900',
 };
 
 const BG: Record<number, string> = {
