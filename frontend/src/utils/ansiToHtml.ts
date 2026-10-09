@@ -11,12 +11,16 @@
  * because they have no HTML equivalent and would just be noise in copy.
  */
 
+// ANSI bright codes (90-97) use COLORED tiers for vivid terminal look on
+// a light card bg — gray tiers (text-gray-300/400) read as washed-out gray.
+// Dim codes (30-37) are intentionally gray (terminals use "default" gray)
+// but darker than gray-300/400 so they stay legible on a white card.
 const FG: Record<number, string> = {
-  30: 'text-gray-400', 31: 'text-red-400', 32: 'text-green-400', 33: 'text-yellow-400',
-  34: 'text-blue-400', 35: 'text-fuchsia-400', 36: 'text-cyan-400', 37: 'text-white',
-  90: 'text-gray-300', 91: 'text-red-300', 92: 'text-green-300', 93: 'text-yellow-300',
-  94: 'text-blue-300', 95: 'text-fuchsia-300', 96: 'text-cyan-300', 97: 'text-white',
-}
+  30: 'text-gray-500', 31: 'text-red-600', 32: 'text-green-600', 33: 'text-yellow-600',
+  34: 'text-blue-600', 35: 'text-fuchsia-600', 36: 'text-cyan-600', 37: 'text-gray-900',
+  90: 'text-gray-600', 91: 'text-red-600', 92: 'text-green-600', 93: 'text-yellow-600',
+  94: 'text-blue-600', 95: 'text-fuchsia-600', 96: 'text-cyan-600', 97: 'text-gray-900',
+};
 
 const BG: Record<number, string> = {
   40: 'bg-gray-500/30', 41: 'bg-red-500/30', 42: 'bg-green-500/30', 43: 'bg-yellow-500/30',

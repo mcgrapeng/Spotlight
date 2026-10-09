@@ -1177,7 +1177,7 @@ const helpRows = [
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                   <ChevronUp v-else :size="9" :stroke-width="2.5" />
                 </button>
-                <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(group.line.raw)" />
+                <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" v-html="lineHtml(group.line.raw)" />
                 <button
                   v-if="plainLength(group.line.raw) > TRUNCATE_LIMIT"
                   type="button"
@@ -1268,7 +1268,7 @@ const helpRows = [
                   v-if="!group.expanded"
                   class="group/fold relative flex-1 min-w-0 font-mono truncate"
                 >
-                  <span v-html="lineHtml(group.lines[0].raw)" />
+                  <span v-html="lineHtml(group.lines[0].raw)" class="font-mono text-foreground" :class="wrapClass" />
                   <!-- ponytail: hover preview — when a user hovers the collapsed
                        content cell, float a tooltip showing up to 3 distinct
                        timestamps. CSS hover is enough; no per-row state needed. -->
@@ -1295,7 +1295,7 @@ const helpRows = [
                     </span>
                   </span>
                 </span>
-                <span v-else class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(group.lines[0].raw)" />
+                <span v-else class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" v-html="lineHtml(group.lines[0].raw)" />
                 <!-- ponytail: large ×N badge on the left of the row signals
                      "this is folded". Color follows severity for instant
                      scanability — error fold = red, warn = amber, etc. -->
@@ -1351,7 +1351,7 @@ const helpRows = [
                       <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
                       <ChevronUp v-else :size="9" :stroke-width="2.5" />
                     </button>
-                    <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(line.raw)" />
+                    <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" v-html="lineHtml(line.raw)" />
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
