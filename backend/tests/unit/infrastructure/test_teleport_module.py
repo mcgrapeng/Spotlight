@@ -4,6 +4,10 @@ We avoid actually shelling out to `tsh` in tests (CI might not have it
 installed, and the network call would flake). Instead we cover the pure
 guard conditions: presence of binary, missing configuration.
 
+After Task 4 the helpers moved to `app.infrastructure.auth.plugins.teleport`;
+this file keeps the PTY + MFA detection regression tests under their new
+import path so the behaviour pins survive the move.
+
 `_run_with_pty` is exercised against a benign `/bin/sh` invocation that just
 echoes what it reads back, so we can prove the PTY path works without
 needing a real Teleport proxy.
@@ -12,18 +16,29 @@ from __future__ import annotations
 
 import pytest
 
-from app.infrastructure.auth.teleport import _is_mfa_prompt, _run_with_pty, tsh_available
+from app.infrastructure.auth.plugins.teleport import (
+    _is_mfa_prompt,
+    _run_with_pty,
+    tsh_available,
+)
 from app.infrastructure.config.settings import Settings
 
 
 def test_settings_exposes_teleport_configured():
+    # `teleport_user` is gone (per-session field now); proxy alone is
+    # enough to flip `teleport_configured` to True.
     s = Settings(
-        teleport_proxy="proxy.example:443", teleport_user="alice",
+        teleport_proxy="proxy.example:443",
         teleport_cluster="pvg1", teleport_insecure=False,
     )
     assert s.teleport_configured is True
     s2 = Settings()
     assert s2.teleport_configured is False
+
+
+def test_settings_drops_teleport_user_field():
+    s = Settings()
+    assert "teleport_user" not in s.model_fields
 
 
 def test_tsh_available_uses_path():

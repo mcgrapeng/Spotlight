@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     kubeconfig_path: str = ""
     k8s_request_timeout: int = 15
 
-    # Teleport tsh (optional). When enabled, the backend can authenticate against a
-    # Teleport proxy at startup so kubeconfig is already populated when the UI opens.
-    # Leave empty to use a host-bound kubeconfig (in-cluster config, or env KUBECONFIG).
+    # Teleport tsh (optional). The username is now a per-session login field
+    # (not a server-wide setting), so only the proxy / auth / cluster knobs
+    # remain. Leave empty to use a host-bound kubeconfig (in-cluster config,
+    # or env KUBECONFIG).
     teleport_proxy: str = ""           # e.g. "proxy.example.com:443"
-    teleport_user: str = ""            # your Teleport username
     teleport_auth: str = "local"       # local | password | oidc | ...
     teleport_cluster: str = ""         # e.g. "cluster-name"
     teleport_insecure: bool = False
@@ -55,7 +55,9 @@ class Settings(BaseSettings):
 
     @property
     def teleport_configured(self) -> bool:
-        return bool(self.teleport_proxy and self.teleport_user)
+        # Per-session username replaced the global `teleport_user`; "configured"
+        # now means the proxy endpoint is set.
+        return bool(self.teleport_proxy)
 
 
 @lru_cache(maxsize=1)

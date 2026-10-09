@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.infrastructure.auth.teleport import startup_login_if_configured
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.k8s.client.pool import get_pool
 from app.infrastructure.logging import configure_logging, get_logger
@@ -32,15 +31,6 @@ async def lifespan(_: FastAPI):
         log.info("k8s.pool.ready", contexts=len(get_pool().list_contexts()))
     except Exception as e:
         log.warning("k8s.pool.deferred", error=str(e))
-
-    # If Teleport is configured AND a password env-var is present, authenticate
-    # at startup. Otherwise the operator can use the /api/v1/auth/login endpoint.
-    try:
-        res = await startup_login_if_configured()
-        if res is not None:
-            log.info("tsh.autologin", ok=res.ok, message=res.message)
-    except Exception as e:
-        log.warning("tsh.autologin.failed", error=str(e))
 
     await init_db()
     log.info("db.ready")

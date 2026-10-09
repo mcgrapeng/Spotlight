@@ -36,13 +36,14 @@ def test_status_unconfigured(monkeypatch):
 
 def test_status_configured(monkeypatch):
     monkeypatch.setenv("TELEPORT_PROXY", "proxy.example:443")
-    monkeypatch.setenv("TELEPORT_USER", "alice")
     monkeypatch.setenv("TELEPORT_CLUSTER", "pvg1")
     get_settings.cache_clear()
     out = auth_status(_fake_request())
     assert out.configured is True
     assert out.proxy == "proxy.example:443"
-    assert out.user == "alice"
+    # Username is per-session now (TeleportPlugin.login takes it as a
+    # parameter); the global TELEPORT_USER setting was retired in Task 4.
+    assert out.user == ""
     assert out.cluster == "pvg1"
     assert out.auth_required is True
 

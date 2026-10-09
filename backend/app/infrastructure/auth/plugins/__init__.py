@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from app.infrastructure.auth.plugins.base import AuthPlugin
+from app.infrastructure.auth.plugins.teleport import TeleportPlugin
 from app.infrastructure.auth.plugins.token import TokenPlugin
 
-REGISTRY: dict[str, type] = {"token": TokenPlugin}
+REGISTRY: dict[str, type] = {"token": TokenPlugin, "teleport": TeleportPlugin}
 
 
 def create_plugin(provider_id: str) -> AuthPlugin:
