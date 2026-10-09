@@ -4,9 +4,11 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-# RFC3339Nano (k8s CRI emits this) — first non-whitespace token
+# ISO 8601 with T separator (k8s CRI default) OR space separator (Node.js /
+# many app frameworks that don't bother). Both forms may be followed by an
+# optional fractional second + Z / timezone offset.
 _TS_RE = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z?(?:[+-]\d{2}:?\d{2})?)\s+(?P<rest>.*)$"
+    r"^(?P<ts>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z?(?:[+-]\d{2}:?\d{2})?)\s+(?P<rest>.*)$"
 )
 
 

@@ -20,8 +20,8 @@ describe('splitLogLines', () => {
     expect(splitLogLines('a\nb\n\nc')).toEqual(['a', 'b', 'c'])
   })
 
-  it('strips ANSI before splitting', () => {
-    expect(splitLogLines('\x1b[31mfoo\x1b[0m\n\x1b[32mbar\x1b[0m')).toEqual(['foo', 'bar'])
+  it('preserves ANSI sequences for display', () => {
+    expect(splitLogLines('\x1b[31mfoo\x1b[0m\n\x1b[32mbar\x1b[0m')).toEqual(['\x1b[31mfoo\x1b[0m', '\x1b[32mbar\x1b[0m'])
   })
 
   it('handles empty input', () => {

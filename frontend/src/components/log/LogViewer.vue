@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { useLogFilters, SEVERITY_RANK as SEV_RANK } from '@/composables/useLogFilters'
+import { useLogFilters } from '@/composables/useLogFilters'
+import { useLogSeverityCounts, SEVERITY_CHIP_THRESHOLDS } from '@/composables/useLogSeverityCounts'
+import { ansiToHtml } from '@/utils/ansiToHtml'
 import { STORAGE_KEYS } from '@/storage-keys'
 import type { LogLineOut } from '@/api/types'
 
@@ -30,7 +32,7 @@ const emit = defineEmits<{
 const search = ref('')
 const autoFollow = ref(true)
 const wrapMode = ref<'wrap' | 'nowrap'>(
-  (localStorage.getItem(STORAGE_KEYS.appLogWrap) as 'wrap' | 'nowrap') ?? 'wrap',
+  (localStorage.getItem(STORAGE_KEYS.appLogWrap) as 'wrap' | 'nowrap') ?? 'nowrap',
 )
 watch(wrapMode, (m) => {
   try { localStorage.setItem(STORAGE_KEYS.appLogWrap, m) } catch { /* quota / disabled */ }
@@ -38,10 +40,13 @@ watch(wrapMode, (m) => {
 function toggleWrap() {
   wrapMode.value = wrapMode.value === 'wrap' ? 'nowrap' : 'wrap'
 }
+// ponytail: nowrap mode lets long lines trigger horizontal scroll on the
+// grid row (ts + badge stay sticky on the left via `position: sticky`), so
+// we drop text-ellipsis here. wrap mode still wraps inside col 3.
 const wrapClass = computed(() =>
   wrapMode.value === 'wrap'
     ? 'whitespace-pre-wrap break-all'
-    : 'whitespace-nowrap overflow-hidden text-ellipsis',
+    : 'whitespace-nowrap',
 )
 const scrollEl = ref<HTMLElement | null>(null)
 const searchInput = ref<InstanceType<typeof HTMLInputElement> | null>(null)
@@ -230,15 +235,8 @@ function toggleExpand(key: number) {
   expanded.value = s
 }
 
-// === Severity counts (over full unfiltered set, so chips stay stable while searching) ===
-const counts = computed(() => {
-  const c: Record<string, number> = { trace: 0, debug: 0, info: 0, warn: 0, error: 0 }
-  for (const l of props.lines) {
-    const s = l.severity.toLowerCase()
-    if (s in c) c[s]++
-  }
-  return c
-})
+// === Severity counts (4 aggregated buckets, over full unfiltered set) ===
+const counts = useLogSeverityCounts(toRef(props, 'lines'))
 
 // === Additional filter pipeline: container ===
 const selectedContainer = ref<string | null>(null)
@@ -285,8 +283,16 @@ watch(() => props.lines.length, () => {
 function onScroll() {
   recomputeVirtualRange()
   if (!scrollEl.value) return
-  // If user scrolled away from top, disable auto-follow (show unread pill)
-  if (scrollEl.value.scrollTop > 50 && autoFollow.value) {
+  const top = scrollEl.value.scrollTop
+  // Newest-at-top: scrollTop=0 means we're at the newest line.
+  if (top < 4) {
+    // User is back at the top — re-engage auto-follow and clear unread.
+    if (!autoFollow.value) {
+      autoFollow.value = true
+      emit('consume-unread')
+    }
+  } else if (top > 50 && autoFollow.value) {
+    // User scrolled away from top — disable auto-follow, show unread pill.
     autoFollow.value = false
   }
 }
@@ -366,12 +372,22 @@ const SEV_CLASS: Record<string, string> = {
   unknown: 'text-foreground',
 }
 const SEV_ERROR_KEYS = new Set(['error', 'err', 'critical', 'fatal', 'alert', 'emergency'])
+const SEV_FATAL_KEYS = new Set(['critical', 'fatal', 'alert', 'emergency'])
 
 function severityBgFor(s: string): string {
-  return SEV_ERROR_KEYS.has(s.toLowerCase()) ? 'bg-error/5' : ''
+  const k = s.toLowerCase()
+  if (SEV_FATAL_KEYS.has(k)) return 'bg-red-500/10'
+  if (SEV_ERROR_KEYS.has(k)) return 'bg-red-500/5'
+  if (k === 'warn' || k === 'warning') return 'bg-amber-500/5'
+  return ''
 }
 function severityBorderFor(s: string): string {
-  return SEV_ERROR_KEYS.has(s.toLowerCase()) ? 'border-l-error' : 'border-l-transparent'
+  const k = s.toLowerCase()
+  if (SEV_FATAL_KEYS.has(k)) return 'border-l-red-500'
+  if (SEV_ERROR_KEYS.has(k)) return 'border-l-red-500/70'
+  if (k === 'warn' || k === 'warning') return 'border-l-amber-500/60'
+  if (k === 'info' || k === 'notice') return 'border-l-blue-500/30'
+  return 'border-l-transparent'
 }
 
 // === Time-gradient opacity (newest=100%, oldest=30%) ===
@@ -452,15 +468,6 @@ function escapeHtml(s: string): string {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function highlight(content: string): string {
-  const q = search.value.trim()
-  if (!q) return escapeHtml(content)
-  return escapeHtml(content).replace(
-    new RegExp(`(${escapeRegex(q)})`, 'gi'),
-    '<mark class="bg-warning/30 text-foreground rounded-sm px-0.5">$1</mark>',
-  )
 }
 
 function togglePause() {
@@ -602,17 +609,49 @@ function toggleTruncate(content: string) {
   truncatedExpanded.value = s
 }
 
-function truncatedHtml(content: string): string {
-  if (content.length <= TRUNCATE_LIMIT || truncatedExpanded.value.has(content)) {
-    return highlight(content)
+// === ANSI-aware line rendering (preserves pod-supplied colors) ===
+// ponytail: ansiToHtml does the heavy lifting. For truncation we slice on
+// plain-char count, then find the safe byte offset in the raw content so
+// we don't cut through an ANSI sequence.
+const ANSI_TRUNC_SCAN_RE = /\x1b\[[0-9;]*[a-zA-Z]/g
+function safeCutAt(content: string, plainLimit: number): number {
+  let plain = 0
+  let i = 0
+  ANSI_TRUNC_SCAN_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = ANSI_TRUNC_SCAN_RE.exec(content)) !== null) {
+    if (plain + (m.index - i) >= plainLimit) return i + (plainLimit - plain)
+    plain += m.index - i
+    i = m.index + m[0].length
   }
-  return highlight(content.slice(0, TRUNCATE_LIMIT)) + '<span class="text-muted-foreground/60 select-none">…</span>'
+  if (plain + (content.length - i) >= plainLimit) return i + (plainLimit - plain)
+  return content.length
+}
+function plainLength(content: string): number {
+  return ansiToHtml(content).plain.length
+}
+function lineHtml(content: string): string {
+  const expanded = truncatedExpanded.value.has(content)
+  const parts = ansiToHtml(content)
+  if (expanded || parts.plain.length <= TRUNCATE_LIMIT) return applySearchHighlight(parts.html)
+  const cut = safeCutAt(content, TRUNCATE_LIMIT)
+  const { html: cutHtml } = ansiToHtml(content.slice(0, cut))
+  return applySearchHighlight(cutHtml) + '<span class="text-muted-foreground/60 select-none">…</span>'
+}
+function applySearchHighlight(html: string): string {
+  const q = search.value.trim()
+  if (!q) return html
+  const qEsc = escapeHtml(q)
+  return html.replace(
+    new RegExp(`(${escapeRegex(qEsc)})`, 'gi'),
+    '<mark class="bg-warning/30 text-foreground rounded-sm px-0.5">$1</mark>',
+  )
 }
 </script>
 
 <template>
   <div class="flex flex-col h-full rounded-lg border border-border bg-card overflow-hidden font-mono text-xs">
-    <!-- Severity filter chips -->
+    <!-- Severity filter chips (4 aggregated buckets: ERROR / WARN / INFO / DEBUG) -->
     <div class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
       <button
         type="button"
@@ -623,7 +662,7 @@ function truncatedHtml(content: string): string {
             ? 'border-foreground bg-foreground text-background'
             : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
-        @click="minSeverity = 0"
+        @click="setSeverity(0)"
       >
         <Filter :size="11" :stroke-width="1.75" />
         全部
@@ -631,27 +670,27 @@ function truncatedHtml(content: string): string {
       </button>
       <span class="text-muted-foreground/30 mx-0.5">·</span>
       <button
-        v-for="(count, sev) in counts"
-        :key="sev"
+        v-for="(rank, bucket) in SEVERITY_CHIP_THRESHOLDS"
+        :key="bucket"
         type="button"
-        :disabled="count === 0"
-        :aria-pressed="minSeverity === SEV_RANK[sev]"
+        :disabled="counts[bucket] === 0"
+        :aria-pressed="minSeverity === rank"
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors text-2xs',
           'disabled:opacity-30 disabled:cursor-default',
-          minSeverity === SEV_RANK[sev]
+          minSeverity === rank
             ? 'border-foreground bg-foreground text-background'
             : cn(
                 'border-transparent hover:bg-accent hover:text-foreground',
-                SEV_CLASS[sev] ?? 'text-muted-foreground',
+                SEV_CLASS[bucket] ?? 'text-muted-foreground',
               ),
         )"
-        @click="setSeverity(SEV_RANK[sev])"
-        :title="`${sev} · ${count.toLocaleString()} 行`"
+        @click="setSeverity(rank)"
+        :title="`${bucket} · ${counts[bucket].toLocaleString()} 行`"
       >
-        <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[sev] }}</span>
-        <span class="uppercase tracking-wider">{{ sev }}</span>
-        <span class="tabular-nums">{{ count.toLocaleString() }}</span>
+        <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[bucket] }}</span>
+        <span class="uppercase tracking-wider">{{ bucket }}</span>
+        <span class="tabular-nums">{{ counts[bucket].toLocaleString() }}</span>
       </button>
     </div>
 
@@ -857,17 +896,17 @@ function truncatedHtml(content: string): string {
       </div>
       <div v-else class="relative">
         <div :style="{ height: padTop + 'px' }" aria-hidden="true" />
-        <template v-for="(group, idx) in renderedGroups" :key="group.key">
+<template v-for="(group, idx) in renderedGroups" :key="group.key">
           <template v-if="group.kind === 'single'">
             <div
               :class="cn(
-                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 relative',
+                'grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
                 'hover:bg-muted/40 transition-colors',
                 severityBgFor(group.line.raw.severity),
                 severityBorderFor(group.line.raw.severity),
               )"
               :style="{ opacity: timeOpacity(group.line.raw.timestamp) }"
-              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId]"
+              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content)]"
             >
               <span
                 v-if="group.line.traceId"
@@ -881,45 +920,50 @@ function truncatedHtml(content: string): string {
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
-              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.raw.severity))">{{ sevBadgeText(group.line.raw.severity) }}</span>
+              <!-- Col 1: timestamp (sticky) -->
               <span
-                class="shrink-0 w-[88px] text-muted-foreground/80 tabular-nums truncate pt-0.5"
+                class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.line.raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.line.raw.timestamp) }}
               </span>
-              <span
-                v-if="group.line.raw.container && group.line.raw.container !== '—'"
-                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-                :title="group.line.raw.container"
-              >{{ group.line.raw.container }}</span>
-              <button
-                v-if="group.line.isJson"
-                type="button"
-                @click="toggleJson(`${group.key}`)"
-                class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
-                :aria-expanded="jsonExpanded.has(`${group.key}`)"
-                aria-label="切换 JSON 展开"
-              >
-                JSON
-                <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
-                <ChevronUp v-else :size="9" :stroke-width="2.5" />
-              </button>
-              <span class="flex-1 min-w-0" :class="wrapClass" v-html="truncatedHtml(group.line.raw.content)" />
-              <button
-                v-if="group.line.raw.content.length > TRUNCATE_LIMIT"
-                type="button"
-                class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                :title="truncatedExpanded.has(group.line.raw.content) ? '收起' : `展开剩余 ${(group.line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
-                @click.stop="toggleTruncate(group.line.raw.content)"
-              >
-                {{ truncatedExpanded.has(group.line.raw.content) ? '收起' : `+${(group.line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
-              </button>
+              <!-- Col 2: severity badge (sticky) -->
+              <span :class="cn('sticky left-[100px] bg-card z-10 inline-flex items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.raw.severity))">{{ sevBadgeText(group.line.raw.severity) }}</span>
+              <!-- Col 3: content (inline-prefix chips + ANSI-colored text + truncate toggle) -->
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span
+                  v-if="group.line.raw.container && group.line.raw.container !== '—'"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  :title="group.line.raw.container"
+                >{{ group.line.raw.container }}</span>
+                <button
+                  v-if="group.line.isJson"
+                  type="button"
+                  @click="toggleJson(`${group.key}`)"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                  :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
+                  :aria-expanded="jsonExpanded.has(`${group.key}`)"
+                  aria-label="切换 JSON 展开"
+                >
+                  JSON
+                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
+                  <ChevronUp v-else :size="9" :stroke-width="2.5" />
+                </button>
+                <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(group.line.raw.content)" />
+                <button
+                  v-if="plainLength(group.line.raw.content) > TRUNCATE_LIMIT"
+                  type="button"
+                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                  :title="truncatedExpanded.has(group.line.raw.content) ? '收起' : `展开剩余 ${(plainLength(group.line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                  @click.stop="toggleTruncate(group.line.raw.content)"
+                >
+                  {{ truncatedExpanded.has(group.line.raw.content) ? '收起' : `+${(plainLength(group.line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                </button>
+              </div>
             </div>
             <div
               v-if="group.line.isJson && jsonExpanded.has(`${group.key}`)"
-              class="ml-12 mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
+              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
             >
               <div
                 v-for="jl in formatJsonLines(group.line.raw)"
@@ -938,7 +982,7 @@ function truncatedHtml(content: string): string {
           <template v-else>
             <div
               :class="cn(
-                'flex items-start gap-3 px-3 leading-[22px] min-h-[22px] border-l-2 cursor-pointer select-none relative',
+                'grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
                 'hover:bg-muted/40 transition-colors',
                 severityBgFor(group.lines[0].raw.severity),
                 severityBorderFor(group.lines[0].raw.severity),
@@ -964,44 +1008,46 @@ function truncatedHtml(content: string): string {
                 class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
                 aria-label="实时"
               />
-              <span :class="cn('shrink-0 mt-[3px] px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <span
-                class="shrink-0 w-[88px] text-muted-foreground/80 tabular-nums truncate pt-0.5"
+                class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
-              <span
-                v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-                :title="group.lines[0].raw.container"
-              >{{ group.lines[0].raw.container }}</span>
-              <button
-                v-if="group.lines[0].isJson"
-                type="button"
-                @click.stop="toggleJson(`${group.key}`)"
-                class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
-                :aria-expanded="jsonExpanded.has(`${group.key}`)"
-                aria-label="切换 JSON 展开"
-              >
-                JSON
-                <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
-                <ChevronUp v-else :size="9" :stroke-width="2.5" />
-              </button>
-              <span class="flex-1 min-w-0 truncate">{{ group.lines[0].raw.content }}</span>
-              <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground text-background text-2xs font-semibold tabular-nums">
-                <ChevronDown v-if="group.expanded" :size="10" :stroke-width="2.5" />
-                <ChevronRight v-else :size="10" :stroke-width="2.5" />
-                ×{{ group.lines.length }}
-              </span>
+              <span :class="cn('sticky left-[100px] bg-card z-10 inline-flex items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span
+                  v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  :title="group.lines[0].raw.container"
+                >{{ group.lines[0].raw.container }}</span>
+                <button
+                  v-if="group.lines[0].isJson"
+                  type="button"
+                  @click.stop="toggleJson(`${group.key}`)"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                  :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
+                  :aria-expanded="jsonExpanded.has(`${group.key}`)"
+                  aria-label="切换 JSON 展开"
+                >
+                  JSON
+                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
+                  <ChevronUp v-else :size="9" :stroke-width="2.5" />
+                </button>
+                <span class="flex-1 min-w-0 font-mono truncate" v-html="lineHtml(group.lines[0].raw.content)" />
+                <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground text-background text-2xs font-semibold tabular-nums">
+                  <ChevronDown v-if="group.expanded" :size="10" :stroke-width="2.5" />
+                  <ChevronRight v-else :size="10" :stroke-width="2.5" />
+                  ×{{ group.lines.length }}
+                </span>
+              </div>
             </div>
             <template v-if="group.expanded">
               <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
                 <div
-                  class="flex items-start gap-3 pl-10 pr-3 leading-[22px] min-h-[22px] border-l-2 border-l-foreground/20 ml-3 text-muted-foreground relative"
+                  class="grid grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-muted-foreground relative"
                   :style="{ opacity: timeOpacity(line.raw.timestamp) }"
-                  v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId]"
+                  v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content)]"
                 >
                   <span
                     v-if="line.traceId"
@@ -1011,38 +1057,41 @@ function truncatedHtml(content: string): string {
                     aria-hidden="true"
                   />
                   <span
-                    class="shrink-0 w-[88px] text-muted-foreground tabular-nums truncate pt-0.5"
+                    class="sticky left-0 bg-card text-2xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                     :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
                   </span>
-                  <button
-                    v-if="line.isJson"
-                    type="button"
-                    @click="toggleJson(`${group.key + idx + 1}`)"
-                    class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                    :title="jsonExpanded.has(`${group.key + idx + 1}`) ? '折叠 JSON' : '展开 JSON'"
-                    :aria-expanded="jsonExpanded.has(`${group.key + idx + 1}`)"
-                    aria-label="切换 JSON 展开"
-                  >
-                    JSON
-                    <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
-                    <ChevronUp v-else :size="9" :stroke-width="2.5" />
-                  </button>
-                  <span class="flex-1 min-w-0" :class="wrapClass" v-html="truncatedHtml(line.raw.content)" />
-                  <button
-                    v-if="line.raw.content.length > TRUNCATE_LIMIT"
-                    type="button"
-                    class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                    :title="truncatedExpanded.has(line.raw.content) ? '收起' : `展开剩余 ${(line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字`"
-                    @click.stop="toggleTruncate(line.raw.content)"
-                  >
-                    {{ truncatedExpanded.has(line.raw.content) ? '收起' : `+${(line.raw.content.length - TRUNCATE_LIMIT).toLocaleString()} 字` }}
-                  </button>
+                  <span class="sticky left-[100px] bg-card z-10" />
+                  <div class="flex items-baseline gap-2 min-w-0">
+                    <button
+                      v-if="line.isJson"
+                      type="button"
+                      @click="toggleJson(`${group.key + idx + 1}`)"
+                      class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                      :title="jsonExpanded.has(`${group.key + idx + 1}`) ? '折叠 JSON' : '展开 JSON'"
+                      :aria-expanded="jsonExpanded.has(`${group.key + idx + 1}`)"
+                      aria-label="切换 JSON 展开"
+                    >
+                      JSON
+                      <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
+                      <ChevronUp v-else :size="9" :stroke-width="2.5" />
+                    </button>
+                    <span class="flex-1 min-w-0 font-mono" :class="wrapClass" v-html="lineHtml(line.raw.content)" />
+                    <button
+                      v-if="plainLength(line.raw.content) > TRUNCATE_LIMIT"
+                      type="button"
+                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                      :title="truncatedExpanded.has(line.raw.content) ? '收起' : `展开剩余 ${(plainLength(line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                      @click.stop="toggleTruncate(line.raw.content)"
+                    >
+                      {{ truncatedExpanded.has(line.raw.content) ? '收起' : `+${(plainLength(line.raw.content) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                    </button>
+                  </div>
                 </div>
                 <div
                   v-if="line.isJson && jsonExpanded.has(`${group.key + idx + 1}`)"
-                  class="ml-[170px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
+                  class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
                 >
                   <div
                     v-for="jl in formatJsonLines(line.raw)"

@@ -28,7 +28,10 @@ async def lifespan(_: FastAPI):
     log.info("app.starting", name=_settings.app_name)
     try:
         get_pool()
-        log.info("k8s.pool.ready", contexts=len(get_pool().list_contexts()))
+        import os as _os
+        # pool.list_contexts now requires the kubeconfig path (T5+ per-session);
+        # lifespan has no Session, so resolve from env or fall through to defaults.
+        log.info("k8s.pool.ready", contexts=len(get_pool().list_contexts(_os.environ.get("KUBECONFIG"))))
     except Exception as e:
         log.warning("k8s.pool.deferred", error=str(e))
 

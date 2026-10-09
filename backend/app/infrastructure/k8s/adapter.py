@@ -7,6 +7,7 @@ SSE log stream, which must keep ticking).
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import re
 import threading
@@ -15,6 +16,41 @@ from typing import Iterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from kubernetes import watch
+
+
+def _decode_sdk_log_content(value: object) -> str:
+    """Normalize a value from the kubernetes SDK's pod-log endpoints into
+    a proper UTF-8 string with real newlines.
+
+    The kubernetes Python SDK 36.x falls back to ``repr(bytes_object)`` when
+    its strict text decode fails on a single non-UTF-8 byte in the response
+    body (e.g. an ANSI ESC ``\\x1b`` mid-stream). The fallback is
+    lossless but the resulting string is unusable: ``\\n`` is two characters
+    (backslash + n), not a newline, so downstream ``splitlines()`` returns a
+    single "line" containing the whole log blob.
+
+    This helper unwraps both raw ``bytes`` and the ``repr`` string form, so
+    ``read_logs`` and ``stream_logs`` share one decoder. Empty / ``None`` →
+    empty string. Anything that is neither ``bytes`` nor a recognizable
+    ``b'…'`` / ``b"…"`` repr is returned as-is (passthrough keeps a
+    legitimate log line that happens to start with ``b`` intact, and any
+    malformed literal raises inside ``ast.literal_eval`` and is caught).
+    """
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        # repr-of-bytes form: b'…' or b"…", matching outer quote. Length
+        # guard rejects trivial false positives (e.g. the literal two-char
+        # string "b'" which is not a valid bytes literal anyway).
+        if len(value) >= 4 and value[:2] in ("b'", 'b"') and value[-1] == value[1]:
+            try:
+                return ast.literal_eval(value).decode("utf-8", errors="replace")
+            except (SyntaxError, ValueError):
+                return value  # not a real repr — pass through untouched
+        return value
+    return str(value)
 
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.entities.resources import Cluster, K8sEvent, LogEntry, Namespace, Node, Pod
@@ -172,6 +208,7 @@ class KubernetesAdapter(K8sRepositoryPort):
             content = await run_in_threadpool(
                 lambda: api.read_namespaced_pod_log(**kw)
             )
+        content = _decode_sdk_log_content(content)
         # Use the timestamp parser so downstream code can sort/filter by ISO time.
         # Content stripping happens in the use-case layer so we preserve the raw line.
         return [
@@ -205,6 +242,9 @@ class KubernetesAdapter(K8sRepositoryPort):
             ):
                 if stop_event is not None and stop_event.is_set():
                     return
+                # Same SDK quirk as read_logs: the watch yields repr-of-bytes
+                # strings when the underlying body isn't strict UTF-8.
+                line = _decode_sdk_log_content(line)
                 ts, _ = parse_log_line(line, container or "")
                 yield LogEntry(timestamp=ts, content=line, container=container or "")
         finally:
