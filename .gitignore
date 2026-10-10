@@ -162,3 +162,6 @@ out/
 .superpowers
 backend/data
 frontend/e2e
+
+# Local audit tooling (visual README audit server) — dev-only, not shipped
+.audit/
