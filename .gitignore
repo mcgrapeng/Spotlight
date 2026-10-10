@@ -83,6 +83,48 @@ Desktop.ini
 config.local.*
 settings.local.*
 
+# --- Secrets / credentials / keys (defense in depth) ---
+# Anything resembling a private key, cert, or credential must NOT land here.
+# Even though we don't currently carry any, listing the patterns guards future
+# contributors against accidentally `git add -A`ing a stray .pem/.kube/.ssh.
+*.pem
+*.key
+*.p12
+*.pfx
+*.der
+*.crt
+*.cer
+*.p7b
+*.p7c
+*.keystore
+*.jks
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_ecdsa
+id_ecdsa.pub
+known_hosts
+authorized_keys
+# Kubernetes / cloud client config & secrets
+kubeconfig*
+.kube/
+.aws/
+.gcloud/
+.azure/
+.ssh/
+.netrc
+.ghp.credentials
+.ghe.credentials
+# Generic "secret"-named files & dirs
+*.secret
+*.secrets
+secrets/
+credentials/
+# Bare tokens accidentally dropped as files
+*.token
+*.tokens
+
 # --- Agent / tooling caches ---
 .serena/
 .codegraph/
