@@ -97,10 +97,9 @@ settings.local.*
 .screenshots/
 .worktrees/
 .worktree/
-# docs/ is git-tracked (README screenshots, brand assets) — only ignore the
-# auto-generated audit/ + superpowers/ subtrees inside it.
-docs/audit/
-docs/superpowers/
+# docs/ is intentionally untracked — scratch & iteration artifacts.
+# README brand assets live in `assets/`.
+docs/
 *.tmp
 *.temp
 .tmp/
