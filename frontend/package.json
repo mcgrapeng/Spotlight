@@ -6,7 +6,7 @@
   "type": "module",
   "author": "Spotlight contributors",
   "license": "MIT",
-  "homepage": "https://github.com/anomalyco/Spotlight",
+  "homepage": "https://github.com/mcgrapeng/Spotlight",
   "scripts": {
     "dev": "vite",
     "build": "pnpm run types:check && vue-tsc --noEmit && vite build",

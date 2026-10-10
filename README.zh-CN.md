@@ -65,7 +65,7 @@
 
 <a href="#-quick-start"><img src="https://img.shields.io/badge/▶_三分钟上手-18181B?style=for-the-badge&logoColor=white" alt="Quick start" /></a>&nbsp;
 <a href="#-star-history"><img src="https://img.shields.io/badge/★_点_Star-EFADF7?style=for-the-badge&logoColor=18181B" alt="Star" /></a>&nbsp;
-<a href="https://github.com/anomalyco/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_讨论区-8EC5FF?style=for-the-badge&logoColor=18181B" alt="Discussions" /></a>&nbsp;
+<a href="https://github.com/mcgrapeng/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_讨论区-8EC5FF?style=for-the-badge&logoColor=18181B" alt="Discussions" /></a>&nbsp;
 <a href="#-sponsor--funding"><img src="https://img.shields.io/badge/❤_赞助-FFD69B?style=for-the-badge&logoColor=18181B" alt="Sponsor" /></a>
 
 <br/>
@@ -528,7 +528,7 @@ Spotlight/
     一笔赞助可以让它继续迭代。
   </div>
   <div style="margin-top: 12px;">
-    <a href="https://github.com/sponsors/anomalyco" style="display:inline-block; padding: 8px 16px; background:#18181B; color:#FFD69B; border-radius:6px; font-weight:600; text-decoration:none; font-size: 14px;">❤ &nbsp;在 GitHub 上赞助</a>
+    <a href="https://github.com/sponsors/mcgrapeng" style="display:inline-block; padding: 8px 16px; background:#18181B; color:#FFD69B; border-radius:6px; font-weight:600; text-decoration:none; font-size: 14px;">❤ &nbsp;在 GitHub 上赞助</a>
   </div>
 </td>
 </tr>
@@ -544,11 +544,11 @@ Spotlight/
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; ⭐ Star 历史
 
-<a href="https://star-history.com/#anomalyco/Spotlight&Date">
+<a href="https://star-history.com/#mcgrapeng/Spotlight&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mcgrapeng/Spotlight&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mcgrapeng/Spotlight&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mcgrapeng/Spotlight&type=Date" />
   </picture>
 </a>
 
@@ -582,13 +582,13 @@ Spotlight 站在这些肩膀上：**FastAPI**、**Pydantic**、**SQLAlchemy**、
 <tr>
 <td align="center" style="padding: 4px 14px;"><a href="./README.zh-CN.md"><b>📖 文档</b></a></td>
 <td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/issues"><b>🐛 问题</b></a></td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/mcgrapeng/Spotlight/issues"><b>🐛 问题</b></a></td>
 <td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/discussions"><b>💬 讨论</b></a></td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/mcgrapeng/Spotlight/discussions"><b>💬 讨论</b></a></td>
 <td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/releases"><b>📦 发布</b></a></td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/mcgrapeng/Spotlight/releases"><b>📦 发布</b></a></td>
 <td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/sponsors/anomalyco"><b>❤ 赞助</b></a></td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/sponsors/mcgrapeng"><b>❤ 赞助</b></a></td>
 </tr>
 </table>
 
