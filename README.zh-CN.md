@@ -1,42 +1,8 @@
 <!--
-  Layout philosophy (top -> bottom) · 布局哲学：
-
-  1.  Banner 品牌大图（视觉锚点）
-  2.  TL;DR 卡片（4 颗彩 chip，一屏看完，可扫读）
-  3.  CTA 按钮条（黑 / 粉 / 蓝 / 黄四枚品牌色）
-  4.  极小徽章行（许可 / python / node / k8s）
-  5.  语言切换
-  6.  品牌分隔线
-  7.  THE PITCH · 一句话（左 brand-color 边、渐变高亮）
-  8.  分隔线
-  9.  60-SECOND TOUR（2x2 网格，截图更大更有空气）
- 10.  分隔线
- 11.  WHAT YOU GET 4x2 特性网格
- 12.  分隔线
- 13.  VS THE FIELD 对比表（精简）
- 14.  分隔线
- 15.  AI IN ACTION 终端代码块
- 16.  分隔线
- 17.  ARCHITECTURE Mermaid（品牌色）
- 18.  分隔线
- 19.  QUICK START 三分钟上手
- 20.  分隔线
- 21.  STACK 徽章矩阵
- 22.  分隔线
- 23.  AI PROVIDERS
- 24.  分隔线
- 25.  COMING NEXT 路线图
- 26.  分隔线
- 27.  CONTRIBUTING 参与贡献
- 28.  分隔线
- 29.  PROJECT LAYOUT
- 30.  分隔线
- 31.  SPONSOR 赞助卡片
- 32.  分隔线
- 33.  STAR HISTORY
- 34.  分隔线
- 35.  LICENCE · ACKNOWLEDGEMENTS
- 36.  FOOTER 品牌结尾
+  Spotlight README（简体中文）— GitHub 渲染宽度 980px。
+  结构：hero → 导航 → 目录 → 一句话 → 起源 → 巡览 → 特性 → 对比 →
+  AI 演示 → 架构 → 上手 → 技术栈 → 提供商 → 路线图 → 贡献 →
+  目录树 → FAQ → 开发 → 社区 → 赞助 → Star 历史 → 页脚
 -->
 
 <div align="center">
@@ -80,7 +46,71 @@
 <a href="./README.zh-CN.md"><b>简体中文</b></a> &nbsp;·&nbsp;
 <a href="./README.md">English</a>
 
+<br/>
+
+**快速跳转：**
+<a href="#-一句话">一句话</a> ·
+<a href="#-为什么做这个">为什么</a> ·
+<a href="#-60-秒走完一圈">巡览</a> ·
+<a href="#-这一屏全特性">特性</a> ·
+<a href="#-和熟悉工具的对比">对比</a> ·
+<a href="#-ai-是怎么工作的">AI 演示</a> ·
+<a href="#-三分钟上手">上手</a> ·
+<a href="#-faq">FAQ</a> ·
+<a href="#-社区">社区</a>
+
 </div>
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 一屏概览
+
+Spotlight 是给「已经会用 `kubectl` 的人」准备的 Kubernetes 驾驶舱——把你 `kubeconfig` 里所有集群收进同一个界面，实时流式拉取 Pod 日志，再把乱七八糟的内容交给**你自己选的**大模型，要一份带上下文的解释。
+
+- 🧭 **多集群，一块屏幕** — 沿用 shell 已有的 `KUBECONFIG`，热切换 context
+- 📜 **实时日志（SSE 流）** — 多 Pod 选、ANSI 颜色保留、分组去重、一键下载
+- 🤖 **AI 日志解读，模型自选** — OpenAI · Anthropic · Bedrock · Gemini · Ollama · LiteLLM 支持 100+
+- ⌨️ **键盘先行** — `⌘K` 命令面板 · `g d / p / n / e / f / a` 跳转页面
+- 🧱 **可插拔鉴权** — Bearer · Session · Teleport tsh · 你自己的插件（一个文件）
+- 🔍 **端到端强类型** — Pydantic v2 → OpenAPI → `openapi-typescript`
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 目录
+
+| 章节 | 内容 |
+|---|---|
+| [一句话](#-一句话) | 三行讲清楚 |
+| [为什么做这个](#-为什么做这个) | 起源故事 |
+| [60 秒走完一圈](#-60-秒走完一圈) | 每个关键界面的截图 |
+| [这一屏，全特性](#-这一屏全特性) | 8 项核心能力 |
+| [和熟悉工具的对比](#-和熟悉工具的对比) | vs kubectl / Dashboard / Lens |
+| [AI 是怎么工作的](#-ai-是怎么工作的) | AI 分析器真实输出 |
+| [它怎么造的](#-它怎么造的) | 六边形架构图 |
+| [三分钟上手](#-三分钟上手) | 3 条命令跑起来 |
+| [技术栈](#-技术栈) | 徽章矩阵 |
+| [AI 提供商](#-ai-提供商) | LiteLLM 提供商表 |
+| [路线图](#-路线图) | 接下来做什么 |
+| [参与贡献](#-参与贡献) | 怎么帮忙 |
+| [仓库布局](#-仓库布局) | 目录结构 |
+| [FAQ](#-faq) | 常见问题 |
+| [开发](#-开发) | 本地开发环境 |
+| [社区](#-社区) | 讨论、问题、聊天 |
+| [赞助](#-赞助) | 支持项目 |
+| [Star 历史](#-star-历史) | 增长曲线 |
+| [许可证 · 致谢](#-许可证--致谢) | MIT + 鸣谢 |
 
 <br/>
 
@@ -98,7 +128,7 @@
   <p style="margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 19px; line-height: 1.65; color: #0B0B12;">
     <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">kubectl</code>
     告诉你 <strong>发生了什么</strong>。<br/>
-    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">Kubernetes&nbsp;Dashboard</code>
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B1B; font-weight: 700;">Kubernetes&nbsp;Dashboard</code>
     告诉你 <strong>东西在哪</strong>。<br/>
     <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #18181B; font-weight: 700;">Spotlight</code>
     告诉你 <strong style="background: linear-gradient(90deg, #8EC5FF, #EFADF7, #FFD69B); -webkit-background-clip: text; background-clip: text; color: transparent;"><em>为什么</em></strong>。
@@ -109,7 +139,19 @@
 
 <br/>
 
-Spotlight 是给「已经会用 `kubectl` 的人」准备的、有主张的 Kubernetes 驾驶舱：把你 `kubeconfig` 里所有集群收进同一个界面，实时流式拉取 Pod 日志，再把乱七八糟的内容交给**你自己选的**大模型，要一份带上下文的解释——**没有云端 SaaS，没有供应商锁定**，你的集群、你的数据、你的模型。
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 为什么做这个
+
+> *凌晨两点，线上出事了。Pod 在反复重启。`kubectl logs` 显示 21,320 次重启。Dashboard 显示这个 Pod "Running"。但两者都没告诉你**为什么**。我们花了 40 分钟 grep 日志，才在第 88 行找到一个 OOMKilled。那一刻我们决定：那个给你看仪表盘的工具，也应该给你看诊断结果。*
+
+每个 AI 团队最终都会撞上同一堵墙：**kubectl 给你看"发生了什么"，Dashboard 给你看"东西在哪"，但没人给你看"为什么"。** 日志散落在各个 Pod、重启记录、事件里。答案一直在——只是埋在一份 200 行的日志里，没人想在凌晨两点读它。
+
+Spotlight 是位于其上的一层：把所有集群拉进一个界面，实时流式拉取日志，再把乱七八糟的内容交给**你自己选的**大模型，要一份带上下文的解释。没有云端 SaaS，没有供应商锁定，你的集群、你的数据、你的模型。
 
 <br/>
 
@@ -458,7 +500,7 @@ pnpm dev
 任何规模的贡献都欢迎——bug 报告、文档、代码、AI 提供商适配器。
 
 ```bash
-git clone https://github.com/<you>/Spotlight.git && cd Spotlight
+git clone https://github.com/mcgrapeng/Spotlight.git && cd Spotlight
 
 cd backend && source .venv/bin/activate
 pip install -r requirements.txt
@@ -506,6 +548,120 @@ Spotlight/
 ├── README.md  ·  README.zh-CN.md
 └── …                          配置与工具链
 ```
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; FAQ
+
+<details>
+<summary><b>Spotlight 能上生产吗？</b></summary>
+
+能。v2.0 带六边形架构、强类型 API 契约、SSE 日志流、覆盖每个端口的测试套件。AI 分析器是唯一依赖外部 LLM 的功能——其它全部离线可跑。
+
+</details>
+
+<details>
+<summary><b>和 Lens / k9s 比怎么样？</b></summary>
+
+Lens 是 K8s 的全功能 IDE——探索资源很好用，但没有 AI 日志分析。k9s 是终端 UI——快而极简，但没有 Web 面板。Spotlight 介于两者之间：Web 面板 + AI 日志诊断。详见上方[对比表](#-和熟悉工具的对比)。
+
+</details>
+
+<details>
+<summary><b>能用自己的 LLM 端点吗？</b></summary>
+
+能。设 `AI_PROVIDER=custom`，`AI_API_BASE` 指向任何 OpenAI 兼容端点（Ollama、vLLM、LM Studio 等）。模型在 UI 里切——不需要重启。
+
+</details>
+
+<details>
+<summary><b>Spotlight 会存我的集群凭证吗？</b></summary>
+
+不会。Spotlight 运行时读 `KUBECONFIG`，不持久化集群凭证。登录用的 `API_TOKEN` 存在 `backend/.env`（已 gitignore）。Teleport 会话是按会话的，会过期。
+
+</details>
+
+<details>
+<summary><b>怎么加新的鉴权方式？</b></summary>
+
+在 `backend/app/infrastructure/auth/plugins/` 实现 `AuthPlugin` 接口，注册到插件表，在 `.env` 里设 `AUTH_PROVIDER=<你的插件 ID>`。登录表单会自动适配插件的 `form_fields()`。
+
+</details>
+
+<details>
+<summary><b>有 Docker 镜像吗？</b></summary>
+
+还没有——v2.1 路线图里有 Helm chart 和单二进制模式。目前直接跑两个进程（见[三分钟上手](#-三分钟上手)）。
+
+</details>
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 开发
+
+### 前置条件
+
+- Python 3.11+ · Node.js 20+ · pnpm
+- 一个 `kubeconfig`，至少一个 context（任何集群，包括 `minikube` / `kind`）
+
+### 本地开发
+
+```bash
+# 后端（端口 8002，热重载）
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8002
+
+# 前端（端口 5173，热重载）
+cd frontend && pnpm dev
+```
+
+### 测试
+
+```bash
+# 后端 —— 单元 + 集成
+cd backend && pytest -q
+
+# 前端 —— 单元（Vitest）
+cd frontend && pnpm test
+
+# 前端 —— E2E（Playwright，无头 Chromium）
+cd frontend && pnpm test:e2e
+```
+
+### 类型检查
+
+```bash
+cd frontend && pnpm types:check   # OpenAPI → TS 契约校验
+```
+
+> **架构规则：** `app/` 不许直接 import `kubernetes` 或 `litellm`。一切通过 `domain/` 里定义的端口。想加新的鉴权、LLM、日志源——实现匹配的适配器并注册。
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 社区
+
+- 💬 **[讨论区](https://github.com/mcgrapeng/Spotlight/discussions)** — 提问、分享用例、提功能建议
+- 🐛 **[Issues](https://github.com/mcgrapeng/Spotlight/issues)** — Bug 报告和功能请求
+- 📖 **[贡献指南](#-参与贡献)** — 怎么开始
+- 📦 **[Releases](https://github.com/mcgrapeng/Spotlight/releases)** — 更新日志和版本历史
 
 <br/>
 

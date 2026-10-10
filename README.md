@@ -1,47 +1,8 @@
 <!--
-  Layout philosophy (top -> bottom):
-
-  1.  Banner (the visual identity, dark, hero)
-  2.  TL;DR card (4 chips, single screenful, scannable)
-  3.  CTAs (4 brand-colored chips, black / pink / cyan / yellow)
-  4.  Tiny badge row (license / python / node)
-  5.  Language switch
-  6.  Divider hairline (brand gradient)
-  7.  THE PITCH (large pull-quote with brand color + brand mark)
-  8.  Divider hairline
-  9.  60-SECOND TOUR (2x2 grid — larger screenshots than 1x4)
- 10.  Divider hairline
- 11.  WHAT YOU GET (4x2 feature grid)
- 12.  Divider hairline
- 13.  VS THE FIELD (compact comparison)
- 14.  Divider hairline
- 15.  AI IN ACTION (terminal block)
- 16.  Divider hairline
- 17.  ARCHITECTURE (Mermaid with brand colors)
- 18.  Divider hairline
- 19.  QUICK START
- 20.  Divider hairline
- 21.  STACK (curated badge rows)
- 22.  Divider hairline
- 23.  AI PROVIDERS
- 24.  Divider hairline
- 25.  COMING NEXT
- 26.  Divider hairline
- 27.  CONTRIBUTING
- 28.  Divider hairline
- 29.  PROJECT LAYOUT
- 30.  Divider hairline
- 31.  SPONSOR (clear card)
- 32.  Divider hairline
- 33.  STAR HISTORY
- 34.  Divider hairline
- 35.  LICENCE · ACKNOWLEDGEMENTS
- 36.  FOOTER (mini-nav, brand mark)
-
-  Section headers use a custom inline-styled <h2>:
-    - centered
-    - no GitHub-default bottom-border
-    - dot indicator (brand-color) replacing the underline hairline
+  Spotlight README — designed for GitHub rendering at 980px.
+  Structure: hero → nav → ToC → pitch → origin → tour → features → comparison →
+  AI demo → architecture → quickstart → stack → providers → roadmap → contributing →
+  layout → FAQ → development → community → sponsor → star history → footer
 -->
 
 <div align="center">
@@ -85,7 +46,71 @@
 <a href="./README.md"><b>English</b></a> &nbsp;·&nbsp;
 <a href="./README.zh-CN.md">简体中文</a>
 
+<br/>
+
+**Quick links:**
+<a href="#-the-pitch">Pitch</a> ·
+<a href="#-why-we-built-this">Why</a> ·
+<a href="#-60-second-tour">Tour</a> ·
+<a href="#-what-you-get">Features</a> ·
+<a href="#-vs-the-field">Compare</a> ·
+<a href="#-ai-in-action">AI Demo</a> ·
+<a href="#-quick-start">Quickstart</a> ·
+<a href="#-faq">FAQ</a> ·
+<a href="#-community">Community</a>
+
 </div>
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; At a glance
+
+Spotlight is the **Kubernetes dashboard for the dev who already knows `kubectl`** — it pulls every cluster in your kubeconfig into one view, streams Pod logs in real time, and hands the messy ones to an LLM **you pick** for an instant, contextual explanation.
+
+- 🧭 **Multi-cluster kubeconfig, one UI** — switch contexts live, no restart
+- 📜 **Real-time log streaming (SSE)** — multi-pod select, ANSI preserved, dedup, download
+- 🤖 **AI log explainer, any model** — OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via LiteLLM
+- ⌨️ **Keyboard-first** — `⌘K` palette, `g d / p / n / e / f / a` page jumps
+- 🧱 **Pluggable auth** — bearer · session · Teleport tsh · your own plugin (one file)
+- 🔍 **Type-safe end-to-end** — Pydantic v2 → OpenAPI → `openapi-typescript`
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Table of contents
+
+| Section | What you'll find |
+|---|---|
+| [The pitch](#-the-pitch) | The one-liner that explains everything |
+| [Why we built this](#-why-we-built-this) | The origin story |
+| [60-second tour](#-60-second-tour) | Screenshots of every key screen |
+| [What you get](#-what-you-get) | Feature grid — 8 capabilities |
+| [vs. the field](#-vs-the-field) | Spotlight vs kubectl / Dashboard / Lens |
+| [AI in action](#-ai-in-action) | Real output shape from the AI analyzer |
+| [How it's built](#-how-it-s-built) | Hexagonal architecture diagram |
+| [Quick start](#-quick-start) | 3 commands to run |
+| [Stack](#-stack) | Tech stack badges |
+| [AI providers](#-ai-providers) | LiteLLM provider table |
+| [Coming next](#-coming-next) | Roadmap |
+| [Contributing](#-contributing) | How to help |
+| [Project layout](#-project-layout) | Repo structure |
+| [FAQ](#-faq) | Frequently asked questions |
+| [Development](#-development) | Local dev setup |
+| [Community](#-community) | Discussions, issues, chat |
+| [Sponsor / funding](#-sponsor--funding) | Support the project |
+| [Star history](#-star-history) | Growth chart |
+| [Licence · Acknowledgements](#-licence--acknowledgements) | MIT + credits |
 
 <br/>
 
@@ -114,7 +139,19 @@
 
 <br/>
 
-Spotlight is an opinionated Kubernetes dashboard for the dev who *already* knows `kubectl`. It pulls every cluster in your kubeconfig into one view, streams Pod logs in real time, and hands the messy ones to an LLM **you pick** for a contextual explanation — *no SaaS, no vendor lock, your cluster, your data, your model.*
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Why we built this
+
+> *We were debugging a production incident at 2 a.m. The pod was crash-looping. `kubectl logs` showed 21,320 restarts. The Dashboard showed the pod was "Running". Neither told us **why**. We spent 40 minutes grepping through logs before finding an OOMKilled line buried at position 88. That was the moment we decided: the tool that shows you the dashboard should also show you the diagnosis.*
+
+Every AI team eventually hits the same wall: **kubectl gives you the what, the Dashboard gives you the where, but nobody gives you the why.** Logs are scattered across pods, restarts, and events. The answer is always there — buried in a 200-line log dump that no human wants to read at 2 a.m.
+
+Spotlight is the layer on top that connects the dots. It pulls every cluster into one view, streams logs in real time, and hands the messy ones to an LLM **you pick** for a contextual explanation. No SaaS, no vendor lock, your cluster, your data, your model.
 
 <br/>
 
@@ -463,7 +500,7 @@ Powered by **LiteLLM**. One env-var to swap, model picked from the UI.
 Any-size contribution is welcome — bug reports, docs, code, AI provider adapters.
 
 ```bash
-git clone https://github.com/<you>/Spotlight.git && cd Spotlight
+git clone https://github.com/mcgrapeng/Spotlight.git && cd Spotlight
 
 cd backend && source .venv/bin/activate
 pip install -r requirements.txt
@@ -511,6 +548,120 @@ Spotlight/
 ├── README.md  ·  README.zh-CN.md
 └── …                          config + tooling
 ```
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; FAQ
+
+<details>
+<summary><b>Is Spotlight production-ready?</b></summary>
+
+Yes. v2.0 ships with hexagonal architecture, typed API contracts, SSE log streaming, and a test suite that covers every port. The AI analyzer is the only feature that depends on an external LLM — everything else runs entirely offline.
+
+</details>
+
+<details>
+<summary><b>How does Spotlight compare to Lens or k9s?</b></summary>
+
+Lens is a full IDE for Kubernetes — great for exploring resources, but it doesn't do AI log analysis. k9s is a terminal UI — fast and minimal, but no web dashboard. Spotlight sits between them: a web dashboard with AI-powered log diagnosis. See the [comparison table](#-vs-the-field) above.
+
+</details>
+
+<details>
+<summary><b>Can I use my own LLM endpoint?</b></summary>
+
+Yes. Set `AI_PROVIDER=custom` and `AI_API_BASE` to any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, etc.). The model is picked from the UI — no restart needed.
+
+</details>
+
+<details>
+<summary><b>Does Spotlight store my cluster credentials?</b></summary>
+
+No. Spotlight reads your `KUBECONFIG` at runtime and never persists cluster credentials. The `API_TOKEN` for login is stored in `backend/.env` (gitignored). Teleport sessions are per-session and expire.
+
+</details>
+
+<details>
+<summary><b>How do I add a new auth provider?</b></summary>
+
+Implement the `AuthPlugin` interface in `backend/app/infrastructure/auth/plugins/`, register it in the plugin registry, and set `AUTH_PROVIDER=<your-plugin-id>` in `.env`. The login form auto-adapts to the plugin's `form_fields()`.
+
+</details>
+
+<details>
+<summary><b>Is there a Docker image?</b></summary>
+
+Not yet — v2.1 roadmap includes a Helm chart and single-binary mode. For now, run the two processes directly (see [Quick start](#-quick-start)).
+
+</details>
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Development
+
+### Prerequisites
+
+- Python 3.11+ · Node.js 20+ · pnpm
+- A `kubeconfig` with at least one context (any cluster, including `minikube` / `kind`)
+
+### Local dev
+
+```bash
+# Backend (port 8002, hot-reload)
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8002
+
+# Frontend (port 5173, hot-reload)
+cd frontend && pnpm dev
+```
+
+### Tests
+
+```bash
+# Backend — unit + integration
+cd backend && pytest -q
+
+# Frontend — unit (Vitest)
+cd frontend && pnpm test
+
+# Frontend — E2E (Playwright, headless Chromium)
+cd frontend && pnpm test:e2e
+```
+
+### Type checking
+
+```bash
+cd frontend && pnpm types:check   # OpenAPI → TS contract check
+```
+
+> **Architecture rule:** `app/` never imports `kubernetes` or `litellm` directly. Everything crosses a port defined in `domain/`. To add a new auth provider, LLM, or log source — implement the matching adapter and register it.
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Community
+
+- 💬 **[Discussions](https://github.com/mcgrapeng/Spotlight/discussions)** — ask questions, share use cases, propose features
+- 🐛 **[Issues](https://github.com/mcgrapeng/Spotlight/issues)** — bug reports and feature requests
+- 📖 **[Contributing guide](#-contributing)** — how to get started
+- 📦 **[Releases](https://github.com/mcgrapeng/Spotlight/releases)** — changelog and version history
 
 <br/>
 
