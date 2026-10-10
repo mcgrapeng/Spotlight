@@ -8,9 +8,9 @@
 
 <br/>
 
-<a href="#-quick-start"><img src="https://img.shields.io/badge/▶_三分钟上手-18181B?style=for-the-badge&logoColor=white" alt="三分钟上手" /></a>&nbsp;
+<a href="#-三分钟上手"><img src="https://img.shields.io/badge/▶_三分钟上手-18181B?style=for-the-badge&logoColor=white" alt="三分钟上手" /></a>&nbsp;
 <a href="https://github.com/mcgrapeng/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_讨论-8EC5FF?style=for-the-badge&logoColor=18181B" alt="讨论" /></a>&nbsp;
-<a href="#-sponsor"><img src="https://img.shields.io/badge/❤_赞助-FFD69B?style=for-the-badge&logoColor=18181B" alt="赞助" /></a>
+<a href="#-赞助"><img src="https://img.shields.io/badge/❤_赞助-FFD69B?style=for-the-badge&logoColor=18181B" alt="赞助" /></a>
 
 <br/>
 
