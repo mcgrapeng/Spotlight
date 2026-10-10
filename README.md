@@ -1,38 +1,16 @@
-<!--
-  Spotlight README — designed for GitHub rendering at 980px.
-  Structure: hero → nav → ToC → pitch → origin → tour → features → comparison →
-  AI demo → architecture → quickstart → stack → providers → roadmap → contributing →
-  layout → FAQ → development → community → sponsor → star history → footer
--->
-
 <div align="center">
 
 <img src="assets/banner.svg" alt="Spotlight — A Kubernetes dashboard that thinks with you." />
 
 <br/>
 
-<table align="center" cellpadding="0" cellspacing="0" style="margin: 8px auto 12px; border-collapse:collapse;">
-  <tr>
-    <td align="center" style="padding:8px 18px;background:#0B0B12;color:#FAFAFA;border:1px solid #26253A;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🌐 multi-cluster</td>
-    <td align="center" width="8"></td>
-    <td align="center" style="padding:8px 18px;background:#EFADF7;color:#18181B;border:1px solid #EFADF7;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🤖 AI logs</td>
-    <td align="center" width="8"></td>
-    <td align="center" style="padding:8px 18px;background:#8EC5FF;color:#18181B;border:1px solid #8EC5FF;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🧠 bring your LLM</td>
-    <td align="center" width="8"></td>
-    <td align="center" style="padding:8px 18px;background:#FFD69B;color:#18181B;border:1px solid #FFD69B;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🔓 self-host</td>
-  </tr>
-</table>
-
-<p align="center" style="font-size:20px;color:#1A1A24;">
-  <strong>A Kubernetes dashboard that thinks with you.</strong>
-</p>
+**A Kubernetes dashboard that thinks with you.**
 
 <br/>
 
 <a href="#-quick-start"><img src="https://img.shields.io/badge/▶_Quick_start-18181B?style=for-the-badge&logoColor=white" alt="Quick start" /></a>&nbsp;
-<a href="#-star-history"><img src="https://img.shields.io/badge/★_Star_this_repo-EFADF7?style=for-the-badge&logoColor=18181B" alt="Star" /></a>&nbsp;
 <a href="https://github.com/mcgrapeng/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_Discussions-8EC5FF?style=for-the-badge&logoColor=18181B" alt="Discussions" /></a>&nbsp;
-<a href="#-sponsor--funding"><img src="https://img.shields.io/badge/❤_Sponsor-FFD69B?style=for-the-badge&logoColor=18181B" alt="Sponsor" /></a>
+<a href="#-sponsor"><img src="https://img.shields.io/badge/❤_Sponsor-FFD69B?style=for-the-badge&logoColor=18181B" alt="Sponsor" /></a>
 
 <br/>
 
@@ -46,30 +24,11 @@
 <a href="./README.md"><b>English</b></a> &nbsp;·&nbsp;
 <a href="./README.zh-CN.md">简体中文</a>
 
-<br/>
-
-**Quick links:**
-<a href="#-the-pitch">Pitch</a> ·
-<a href="#-why-we-built-this">Why</a> ·
-<a href="#-60-second-tour">Tour</a> ·
-<a href="#-what-you-get">Features</a> ·
-<a href="#-vs-the-field">Compare</a> ·
-<a href="#-ai-in-action">AI Demo</a> ·
-<a href="#-quick-start">Quickstart</a> ·
-<a href="#-faq">FAQ</a> ·
-<a href="#-community">Community</a>
-
 </div>
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; At a glance
+## 🛰️ At a glance
 
 Spotlight is the **Kubernetes dashboard for the dev who already knows `kubectl`** — it pulls every cluster in your kubeconfig into one view, streams Pod logs in real time, and hands the messy ones to an LLM **you pick** for an instant, contextual explanation.
 
@@ -82,70 +41,41 @@ Spotlight is the **Kubernetes dashboard for the dev who already knows `kubectl`*
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## 📑 Table of contents
 
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Table of contents
-
-| Section | What you'll find |
+| Section | |
 |---|---|
 | [The pitch](#-the-pitch) | The one-liner that explains everything |
 | [Why we built this](#-why-we-built-this) | The origin story |
 | [60-second tour](#-60-second-tour) | Screenshots of every key screen |
-| [What you get](#-what-you-get) | Feature grid — 8 capabilities |
+| [What you get](#-what-you-get) | Feature grid |
 | [vs. the field](#-vs-the-field) | Spotlight vs kubectl / Dashboard / Lens |
 | [AI in action](#-ai-in-action) | Real output shape from the AI analyzer |
-| [How it's built](#-how-it-s-built) | Hexagonal architecture diagram |
+| [How it's built](#-how-its-built) | Hexagonal architecture diagram |
 | [Quick start](#-quick-start) | 3 commands to run |
 | [Stack](#-stack) | Tech stack badges |
-| [AI providers](#-ai-providers) | LiteLLM provider table |
+| [AI providers](#-ai-providers) | How to add / swap an LLM |
 | [Coming next](#-coming-next) | Roadmap |
 | [Contributing](#-contributing) | How to help |
 | [Project layout](#-project-layout) | Repo structure |
 | [FAQ](#-faq) | Frequently asked questions |
 | [Development](#-development) | Local dev setup |
 | [Community](#-community) | Discussions, issues, chat |
-| [Sponsor / funding](#-sponsor--funding) | Support the project |
-| [Star history](#-star-history) | Growth chart |
-| [Licence · Acknowledgements](#-licence--acknowledgements) | MIT + credits |
+| [Sponsor / funding](#-sponsor) | Support the project |
+| [⭐ Star history](#-star-history) | Growth chart |
+| [License · Acknowledgements](#-license) | MIT + credits |
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## 🎯 The pitch
+
+> `kubectl` tells you **what** is happening.
+> `Kubernetes Dashboard` tells you **where** it is.
+> **Spotlight** tells you ***why***.
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; The pitch
-
-<table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse; max-width: 720px;">
-<tr>
-<td style="padding: 28px 36px; background: linear-gradient(180deg, #FAFAFA 0%, #F5F5F8 100%); border-left: 4px solid #EFADF7; border-radius: 8px;">
-  <p style="margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, 'Inter', sans-serif; font-size: 19px; line-height: 1.65; color: #0B0B12;">
-    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">kubectl</code>
-    tells you <strong>what</strong> is happening.<br/>
-    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">Kubernetes&nbsp;Dashboard</code>
-    tells you <strong>where</strong> it is.<br/>
-    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #18181B; font-weight: 700;">Spotlight</code>
-    tells you <strong style="background: linear-gradient(90deg, #8EC5FF, #EFADF7, #FFD69B); -webkit-background-clip: text; background-clip: text; color: transparent;"><em>why</em></strong>.
-  </p>
-</td>
-</tr>
-</table>
-
-<br/>
-
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Why we built this
+## 🕰️ Why we built this
 
 > *We were debugging a production incident at 2 a.m. The pod was crash-looping. `kubectl logs` showed 21,320 restarts. The Dashboard showed the pod was "Running". Neither told us **why**. We spent 40 minutes grepping through logs before finding an OOMKilled line buried at position 88. That was the moment we decided: the tool that shows you the dashboard should also show you the diagnosis.*
 
@@ -155,135 +85,28 @@ Spotlight is the layer on top that connects the dots. It pulls every cluster int
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## 📸 60-second tour
+
+| | |
+|---|---|
+| **01 · Log in**<br/><img src="assets/screenshots/login.jpeg" width="100%" alt="Login" /><br/><sub>Bearer, Teleport tsh, or session — 30 seconds, no signup.</sub> | **02 · Watch the cluster**<br/><img src="assets/screenshots/dashboard.jpeg" width="100%" alt="Dashboard" /><br/><sub>Health, pressure, signals on one screen.</sub> |
+| **03 · Pick the noisy Pod**<br/><img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" /><br/><sub>Live status, restart counts, namespace filter.</sub> | **04 · Let the LLM explain**<br/><img src="assets/screenshots/ai.jpeg" width="100%" alt="AI Analyzer" /><br/><sub>Pull the last 200 lines, click <em>Analyze</em>.</sub> |
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 60-second tour
+## ✅ What you get
 
-<table align="center">
-<tr>
-<td width="50%" valign="top" align="center" style="padding: 8px;">
-
-**01 · Log in**
-
-<img src="assets/screenshots/login.jpeg" width="100%" alt="Login" style="border-radius: 6px;" />
-
-<sub>Bearer, Teleport tsh, or session — 30 seconds, no signup.</sub>
-
-</td>
-<td width="50%" valign="top" align="center" style="padding: 8px;">
-
-**02 · Watch the cluster**
-
-<img src="assets/screenshots/dashboard.jpeg" width="100%" alt="Dashboard" style="border-radius: 6px;" />
-
-<sub>Health, pressure, signals on one screen.</sub>
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top" align="center" style="padding: 8px;">
-
-**03 · Pick the noisy Pod**
-
-<img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" style="border-radius: 6px;" />
-
-<sub>Live status, restart counts, namespace filter.</sub>
-
-</td>
-<td width="50%" valign="top" align="center" style="padding: 8px;">
-
-**04 · Let the LLM explain**
-
-<img src="assets/screenshots/ai.jpeg" width="100%" alt="AI Analyzer" style="border-radius: 6px;" />
-
-<sub>Pull the last 200 lines, click <em>Analyze</em>.</sub>
-
-</td>
-</tr>
-</table>
+- **🧭 Multi-cluster, one UI** — switch contexts live, the exact `KUBECONFIG` your shell already respects. No restart.
+- **📜 Real-time log streaming (SSE)** — multi-pod select, ANSI color preserved, deduplicated, download.
+- **🤖 AI log explainer, any model** — bring your own key; OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via LiteLLM.
+- **⌨️ Keyboard-first** — `⌘K` palette · `g d / p / n / e / f / a` to leap between pages · no mouse needed.
+- **🧱 Pluggable auth** — bearer · session · Teleport tsh · your own plugin (one file).
+- **🔍 Type-safe, end-to-end** — Pydantic v2 → OpenAPI → `openapi-typescript`. Frontend can't drift from backend.
+- **🧪 Hexagonal / clean architecture** — every port mocked, every adapter tested, e2e covers the critical paths.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; What you get
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 🧭 Multi-cluster, one UI
-Switch contexts live — the exact `KUBECONFIG` your shell already respects. No restart.
-
-</td>
-<td width="50%" valign="top">
-
-### 📜 Real-time log streaming (SSE)
-Multi-pod select, ANSI color preserved, deduplicated, download.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🤖 AI log explainer, any model
-Bring your own key — OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via LiteLLM.
-
-</td>
-<td width="50%" valign="top">
-
-### ⌨️ Keyboard-first
-`⌘K` palette · `g d / p / n / e / f / a` to leap between pages · no mouse needed.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🧱 Pluggable auth
-Bearer · session · Teleport tsh · your own plugin (one file).
-
-</td>
-<td width="50%" valign="top">
-
-### 🔍 Type-safe, end-to-end
-Pydantic v2 → OpenAPI → `openapi-typescript`. Frontend can't drift from backend.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🌑 Appica design language
-Pure black `#18181B` on pure white `#FAFAFA` · 1 px borders · one accent gradient.
-
-</td>
-<td width="50%" valign="top">
-
-### 🧪 100 % testable
-Hexagonal architecture · every port mocked · every adapter tested · e2e covers the critical paths.
-
-</td>
-</tr>
-</table>
-
-<br/>
-
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; vs. the field
+## ⚖️ vs. the field
 
 | &nbsp; | `kubectl` | Dashboard | Lens | **Spotlight** |
 |---|---|---|---|---|
@@ -298,13 +121,7 @@ Hexagonal architecture · every port mocked · every adapter tested · e2e cover
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI in action
+## 🤖 AI in action
 
 > Pull up to 200 lines from any pod, click *Analyze*, pick a model — real output shape:
 
@@ -327,28 +144,19 @@ Hexagonal architecture · every port mocked · every adapter tested · e2e cover
     • Shard the tenant — split by labels across 3 replicas.
 ```
 
-> [!TIP]
-> **Swap models without restart.** Change `AI_PROVIDER` in `.env`, save, pick a different model in the UI. The same call routes to OpenAI, Anthropic, Bedrock, Gemini, Ollama, or **any OpenAI-compatible endpoint**.
-
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## 🏗️ How it's built
 
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; How it's built
-
-Hexagonal / Clean Architecture — the **domain knows nothing about Kubernetes, AI, or HTTP**; adapters do.
+Hexagonal / Clean Architecture — **domain and application know nothing about Kubernetes, AI, or HTTP**; the infrastructure adapters do.
 
 ```mermaid
 flowchart TB
   classDef ui    fill:#1A1A24,stroke:#8EC5FF,stroke-width:1.5px,color:#FAFAFA
   classDef api   fill:#1A1A24,stroke:#EFADF7,stroke-width:1.5px,color:#FAFAFA
   classDef app   fill:#1A1A24,stroke:#FFD69B,stroke-width:1.5px,color:#FAFAFA
-  classDef dom   fill:#0F0E16,stroke:#8EC5FF,stroke-width:1px,color:#FAFAFA
   classDef port  fill:#0F0E16,stroke:#EFADF7,stroke-width:1px,color:#FAFAFA
+  classDef dom   fill:#0F0E16,stroke:#8EC5FF,stroke-width:1px,color:#FAFAFA
   classDef infra fill:#11111A,stroke:#5A5A75,stroke-width:1px,color:#CFCFD8
   classDef store fill:#0F0E16,stroke:#FFD69B,stroke-width:1px,color:#FFD69B
 
@@ -356,18 +164,19 @@ flowchart TB
     UI["shadcn-vue · Pinia · Router · Sonner"]:::ui
   end
 
-  subgraph Edge["Interface · HTTP"]
+  subgraph Edge["Interface · HTTP + SSE"]
     API["FastAPI routers · deps · CORS"]:::api
+    SSE["SSE routes · log streaming"]:::api
   end
 
   subgraph App["Application · use cases"]
-    UC["commands · queries · handlers (CQRS)"]:::app
+    UC["commands · queries · handlers"]:::app
+    PK["port: K8s"]:::port
+    PL["port: LLM"]:::port
   end
 
   subgraph Dom["Domain · pure"]
-    ENT["entities · value objects"]:::dom
-    PK["port: K8s"]:::port
-    PL["port: LLM"]:::port
+    ENT["entities · value objects · services"]:::dom
   end
 
   subgraph Infra["Infrastructure · adapters"]
@@ -377,25 +186,22 @@ flowchart TB
   end
 
   UI <-->|"axios + OpenAPI · type-safe"| API
+  UI <-->|SSE| SSE
   API --> UC
+  SSE --> UC
   UC --> ENT
   UC --> PK & PL
   PK -. implemented by .-> K8S
   PL -. implemented by .-> LLM
   K8S --> DB
+  LLM --> DB
 ```
 
 > **Want to add an auth provider, log source, or LLM?** Add an `infrastructure/<thing>/` adapter that implements the matching port, register it. Nothing else moves.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Quick start
+## 🚀 Quick start
 
 **Spotlight is two processes. Run them, point them at your kubeconfig, open `http://localhost:5173`.**
 
@@ -413,74 +219,35 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://localhost:5173>. Log in with any `Authorization: Bearer <token>` — set `API_TOKEN=<your-token>` in `backend/.env`, **or leave it empty** for local open mode (the app logs a startup warning either way).
+Open <http://localhost:5173>. Log in with any `Authorization: Bearer <token>` — set `API_TOKEN=<your-token>` in `backend/.env`. **For local dev, leave `API_TOKEN` and `TELEPORT_*` unset** — the app starts with the API open and logs a startup warning.
 
 > **Have Teleport?** Set `TELEPORT_PROXY` / `TELEPORT_AUTH` / `TELEPORT_CLUSTER` in `.env`. Spotlight issues per-session `tsh login` credentials — no kubeconfig needed.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## 🧱 Stack
+
+**Backend** — FastAPI · Pydantic v2 · kubernetes-python · LiteLLM · SQLAlchemy (async + aiosqlite) · structlog
+
+**Frontend** — Vue 3 · Vite · Tailwind CSS · reka-ui / shadcn-vue · Pinia · vue-sonner · axios · openapi-typescript
+
+**Tests** — pytest · Vitest · Playwright · axe-core
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Stack
+## 🔌 AI providers
 
-**Backend**
-<a href="#"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Pydantic%20v2-E92063?style=for-the-badge&logo=pydantic&logoColor=white" alt="Pydantic" /></a>
-<a href="#"><img src="https://img.shields.io/badge/k8s--python-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="kubernetes-python" /></a>
-<a href="#"><img src="https://img.shields.io/badge/LiteLLM-1A1A1A?style=for-the-badge" alt="LiteLLM" /></a>
-<a href="#"><img src="https://img.shields.io/badge/SQLAlchemy-D71A00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy" /></a>
+Powered by **LiteLLM**. Provider configs are **stored in SQLite (`ai_providers` table) and managed in the UI** — **Settings → AI**. Add OpenAI, Anthropic, Bedrock, Gemini, Ollama, or any OpenAI-compatible endpoint by pasting your key, picking the model, and saving.
 
-**Frontend**
-<a href="#"><img src="https://img.shields.io/badge/Vue%203-42b883?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue 3" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind" /></a>
-<a href="#"><img src="https://img.shields.io/badge/shadcn--vue-18181B?style=for-the-badge" alt="shadcn-vue" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=18181B" alt="Pinia" /></a>
+> **No `AI_PROVIDER` env var.** Switching providers is a UI action — pick a different row, no restart, no rebuild. LiteLLM routes the same call shape to whatever you saved.
 
-**Tests**
-<a href="#"><img src="https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Vitest-729B1B?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright" /></a>
-<a href="#"><img src="https://img.shields.io/badge/axe--core-30009F?style=for-the-badge" alt="axe" /></a>
+The `SQLAIProviderRepository` (in `backend/app/infrastructure/ai/providers/sql_provider.py`) is the only source of truth; `LiteLLMAIRepository` consumes it per call.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## 🛣️ Coming next
 
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI providers
-
-Powered by **LiteLLM**. One env-var to swap, model picked from the UI.
-
-| Provider | `AI_PROVIDER=` | Set in env |
-|---|---|---|
-| **OpenAI** | `openai` | `OPENAI_API_KEY` |
-| **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` |
-| **Azure OpenAI** | `azure` | `AZURE_API_KEY` · `AZURE_API_BASE` · `AZURE_API_VERSION` |
-| **AWS Bedrock** | `bedrock` | `AWS_ACCESS_KEY_ID` · `AWS_REGION` |
-| **Google Gemini / Vertex** | `gemini` / `vertex` | `GEMINI_API_KEY` / `VERTEX_PROJECT` |
-| **Ollama (local)** | `ollama` | `OLLAMA_API_BASE=http://host:11434` |
-| **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` |
-| **Any OpenAI-compatible API** | `custom` | `AI_API_BASE` · `AI_API_KEY` |
-
-<br/>
-
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Coming next
-
-- [x] <sub>`v2.0`</sub> &nbsp; **Now** — multi-cluster kubeconfig, SSE log streaming, LiteLLM, Appica UI v6, hexagonal backend.
+- [x] <sub>`v2.0`</sub> &nbsp; **Now** — multi-cluster kubeconfig, SSE log streaming, LiteLLM, Spotlight UI v6, hexagonal backend.
 - [ ] <sub>`v2.1`</sub> &nbsp; Helm chart deploy · single-binary mode · SQLite → Postgres migration.
 - [ ] <sub>`v2.2`</sub> &nbsp; RBAC-aware views · multi-user session isolation · audit log UI.
 - [ ] <sub>`v3.0`</sub> &nbsp; Plugin SDK (third-party LLM analyzers, custom log parsers) · authenticated **public read-only share** links.
@@ -489,20 +256,15 @@ Powered by **LiteLLM**. One env-var to swap, model picked from the UI.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Contributing
+## 🤝 Contributing
 
 Any-size contribution is welcome — bug reports, docs, code, AI provider adapters.
 
 ```bash
 git clone https://github.com/mcgrapeng/Spotlight.git && cd Spotlight
 
-cd backend && source .venv/bin/activate
+cd backend
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pytest -q
 
@@ -512,38 +274,33 @@ pnpm test:e2e       # Playwright — browser
 ```
 
 > Per-package dev guide: [`backend/README.md`](./backend/README.md) · [`frontend/README.md`](./frontend/README.md)
-> Architecture rule: **ports and adapters only** — `app/` never imports `kubernetes` or `litellm` directly.
+>
+> Architecture rule: `domain/` and `application/` never import `kubernetes` or `litellm` directly — they cross the ports declared in `application/ports/`. To add a new auth provider, LLM, or log source — implement the matching adapter in `infrastructure/` and wire it through DI.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Project layout
+## 🗂️ Project layout
 
 ```
 Spotlight/
 ├── backend/                   FastAPI · hexagonal / clean architecture
 │   ├── app/
-│   │   ├── application/       commands · queries · handlers (use cases)
-│   │   ├── domain/            entities · value objects · ports
-│   │   ├── infrastructure/    adapters: k8s, db, logging, LLM, auth
-│   │   ├── interface/api/     FastAPI routers / DTOs
+│   │   ├── application/       use cases + ports (outbound interfaces)
+│   │   ├── domain/            entities · value objects · services
+│   │   ├── infrastructure/    adapters: ai, auth, cache, config, k8s, logging, persistence
+│   │   ├── interface/         api/ (routers · DTOs) + sse/ (event streams)
 │   │   └── main.py
 │   ├── tests/                 pytest — unit + integration
 │   └── requirements.txt
 ├── frontend/                  Vue 3 + Vite + Tailwind + shadcn-vue
 │   ├── src/
 │   │   ├── components/        ui/, layout/, common/, pod/, dashboard/, log/, ai/
-│   │   ├── views/             8 pages (Login, Dashboard, Pods, PodDetail, Nodes, …)
+│   │   ├── views/             9 pages (Login, Dashboard, Pods, PodDetail, Nodes, Events, Favorites, AISettings, Settings)
 │   │   ├── stores/            Pinia
 │   │   ├── api/               axios + openapi-typescript generated
 │   │   └── styles/            design tokens
 │   └── package.json
-├── assets/                    brand banner / mark / divider / README screenshots
+├── assets/                    banner, divider, logo, README screenshots
 ├── LICENSE                    MIT
 ├── README.md  ·  README.zh-CN.md
 └── …                          config + tooling
@@ -551,18 +308,12 @@ Spotlight/
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; FAQ
+## ❓ FAQ
 
 <details>
 <summary><b>Is Spotlight production-ready?</b></summary>
 
-Yes. v2.0 ships with hexagonal architecture, typed API contracts, SSE log streaming, and a test suite that covers every port. The AI analyzer is the only feature that depends on an external LLM — everything else runs entirely offline.
+Yes. v2.0 ships with hexagonal architecture, typed API contracts, SSE log streaming, and a test suite that covers the critical ports. The AI analyzer is the only feature that depends on an external LLM — everything else runs entirely offline.
 
 </details>
 
@@ -576,7 +327,7 @@ Lens is a full IDE for Kubernetes — great for exploring resources, but it does
 <details>
 <summary><b>Can I use my own LLM endpoint?</b></summary>
 
-Yes. Set `AI_PROVIDER=custom` and `AI_API_BASE` to any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, etc.). The model is picked from the UI — no restart needed.
+Yes. Open **Settings → AI**, click **Add provider**, pick `custom`, and paste the base URL of any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, etc.). The model name comes from the same form. The row is saved to SQLite and used on the next call — no restart.
 
 </details>
 
@@ -590,7 +341,7 @@ No. Spotlight reads your `KUBECONFIG` at runtime and never persists cluster cred
 <details>
 <summary><b>How do I add a new auth provider?</b></summary>
 
-Implement the `AuthPlugin` interface in `backend/app/infrastructure/auth/plugins/`, register it in the plugin registry, and set `AUTH_PROVIDER=<your-plugin-id>` in `.env`. The login form auto-adapts to the plugin's `form_fields()`.
+Implement the `AuthPlugin` interface in `backend/app/infrastructure/auth/plugins/`, register it in the plugin `REGISTRY` (`backend/app/infrastructure/auth/plugins/__init__.py`), and set `AUTH_PROVIDER=<your-plugin-id>` in `.env`. The login form auto-adapts to the plugin's `form_fields()`.
 
 </details>
 
@@ -603,13 +354,7 @@ Not yet — v2.1 roadmap includes a Helm chart and single-binary mode. For now, 
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Development
+## 🛠️ Development
 
 ### Prerequisites
 
@@ -643,20 +388,15 @@ cd frontend && pnpm test:e2e
 ### Type checking
 
 ```bash
-cd frontend && pnpm types:check   # OpenAPI → TS contract check
+# Backend must be running on :8002 — the script reads /openapi.json
+cd frontend && pnpm types:check
 ```
 
-> **Architecture rule:** `app/` never imports `kubernetes` or `litellm` directly. Everything crosses a port defined in `domain/`. To add a new auth provider, LLM, or log source — implement the matching adapter and register it.
+> **Architecture rule:** `domain/` and `application/` never import `kubernetes` or `litellm` directly. Everything crosses a port declared in `application/ports/`. To add a new auth provider, LLM, or log source — implement the matching adapter and register it.
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Community
+## 💬 Community
 
 - 💬 **[Discussions](https://github.com/mcgrapeng/Spotlight/discussions)** — ask questions, share use cases, propose features
 - 🐛 **[Issues](https://github.com/mcgrapeng/Spotlight/issues)** — bug reports and feature requests
@@ -665,40 +405,15 @@ cd frontend && pnpm types:check   # OpenAPI → TS contract check
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
+## ❤ Sponsor / funding
+
+Spotlight is MIT-licensed, free for everyone. If it saved your team at 2 a.m., a sponsorship keeps the build moving.
+
+<a href="https://github.com/sponsors/mcgrapeng">💖 Sponsor on GitHub</a>
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Sponsor / funding
-
-<table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse; max-width: 640px;">
-<tr>
-<td style="padding: 22px 28px; background: linear-gradient(135deg, #FFF7E6 0%, #FFE6F6 100%); border: 1px solid #FFD69B; border-radius: 12px; text-align: left;">
-  <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 18px; font-weight: 700; color: #18181B; margin-bottom: 8px;">
-    ❤ &nbsp;Built nights &amp; weekends.
-  </div>
-  <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; color: #1A1A24; line-height: 1.6;">
-    Spotlight is MIT-licensed, free for everyone. If it saved your team at 2 a.m.,
-    a sponsorship keeps the build moving.
-  </div>
-  <div style="margin-top: 12px;">
-    <a href="https://github.com/sponsors/mcgrapeng" style="display:inline-block; padding: 8px 16px; background:#18181B; color:#FFD69B; border-radius:6px; font-weight:600; text-decoration:none; font-size: 14px;">❤ &nbsp;Sponsor on GitHub</a>
-  </div>
-</td>
-</tr>
-</table>
-
-<br/>
-
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; ⭐ Star history
+## ⭐ Star history
 
 <a href="https://star-history.com/#mcgrapeng/Spotlight&Date">
   <picture>
@@ -710,42 +425,23 @@ cd frontend && pnpm types:check   # OpenAPI → TS contract check
 
 <br/>
 
-<p align="center">
-  <img src="assets/divider.svg" alt="" width="200" />
-</p>
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Licence · Acknowledgements
+## 📄 License · Acknowledgements
 
 [MIT](./LICENSE) — do anything, just keep the copyright.
 
-Spotlight rides on **FastAPI**, **Pydantic**, **SQLAlchemy**, **LiteLLM**, **kubernetes-python**, **Vue 3**, **Vite**, **Tailwind CSS**, **shadcn-vue**, **Radix Vue**, **Pinia**, **Lucide**, **Axios**, **Playwright**, **Vitest**, **pytest**, **structlog**.
+Spotlight rides on **FastAPI**, **Pydantic**, **SQLAlchemy**, **LiteLLM**, **kubernetes-python**, **Vue 3**, **Vite**, **Tailwind CSS**, **shadcn-vue**, **reka-ui**, **Pinia**, **vue-sonner**, **axios**, **Playwright**, **Vitest**, **pytest**, **structlog**.
 
 <br/>
 
 <div align="center" style="padding: 40px 0 16px;">
 
-<img src="assets/logo-mark.svg" alt="" width="48" />
-
-<br/><br/>
-
 <sub>Spotlight · built for the dev who already knows <code>kubectl</code>.</sub>
 
-<br/><br/>
+<br/>
 
-<table align="center" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 auto;">
-<tr>
-<td align="center" style="padding: 4px 14px;"><a href="./README.md"><b>📖 Docs</b></a></td>
-<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/mcgrapeng/Spotlight/issues"><b>🐛 Issues</b></a></td>
-<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/mcgrapeng/Spotlight/discussions"><b>💬 Discussions</b></a></td>
-<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/mcgrapeng/Spotlight/releases"><b>📦 Releases</b></a></td>
-<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
-<td align="center" style="padding: 4px 14px;"><a href="https://github.com/sponsors/mcgrapeng"><b>❤ Sponsor</b></a></td>
-</tr>
-</table>
+<a href="https://github.com/mcgrapeng/Spotlight/issues"><b>🐛 Issues</b></a> · 
+<a href="https://github.com/mcgrapeng/Spotlight/discussions"><b>💬 Discussions</b></a> · 
+<a href="https://github.com/mcgrapeng/Spotlight/releases"><b>📦 Releases</b></a> · 
+<a href="https://github.com/sponsors/mcgrapeng"><b>❤ Sponsor</b></a>
 
 </div>
