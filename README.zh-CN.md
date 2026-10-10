@@ -1,14 +1,65 @@
+<!--
+  Layout philosophy (top -> bottom) · 布局哲学：
+
+  1.  Banner 品牌大图（视觉锚点）
+  2.  TL;DR 卡片（4 颗彩 chip，一屏看完，可扫读）
+  3.  CTA 按钮条（黑 / 粉 / 蓝 / 黄四枚品牌色）
+  4.  极小徽章行（许可 / python / node / k8s）
+  5.  语言切换
+  6.  品牌分隔线
+  7.  THE PITCH · 一句话（左 brand-color 边、渐变高亮）
+  8.  分隔线
+  9.  60-SECOND TOUR（2x2 网格，截图更大更有空气）
+ 10.  分隔线
+ 11.  WHAT YOU GET 4x2 特性网格
+ 12.  分隔线
+ 13.  VS THE FIELD 对比表（精简）
+ 14.  分隔线
+ 15.  AI IN ACTION 终端代码块
+ 16.  分隔线
+ 17.  ARCHITECTURE Mermaid（品牌色）
+ 18.  分隔线
+ 19.  QUICK START 三分钟上手
+ 20.  分隔线
+ 21.  STACK 徽章矩阵
+ 22.  分隔线
+ 23.  AI PROVIDERS
+ 24.  分隔线
+ 25.  COMING NEXT 路线图
+ 26.  分隔线
+ 27.  CONTRIBUTING 参与贡献
+ 28.  分隔线
+ 29.  PROJECT LAYOUT
+ 30.  分隔线
+ 31.  SPONSOR 赞助卡片
+ 32.  分隔线
+ 33.  STAR HISTORY
+ 34.  分隔线
+ 35.  LICENCE · ACKNOWLEDGEMENTS
+ 36.  FOOTER 品牌结尾
+-->
+
 <div align="center">
 
 <img src="assets/banner.svg" alt="Spotlight — 让 Kubernetes 与你对话的驾驶舱。" />
 
 <br/>
 
-# Spotlight
+<table align="center" cellpadding="0" cellspacing="0" style="margin: 8px auto 12px; border-collapse:collapse;">
+  <tr>
+    <td align="center" style="padding:8px 18px;background:#0B0B12;color:#FAFAFA;border:1px solid #26253A;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🌐 多集群</td>
+    <td align="center" width="8"></td>
+    <td align="center" style="padding:8px 18px;background:#EFADF7;color:#18181B;border:1px solid #EFADF7;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🤖 AI 日志</td>
+    <td align="center" width="8"></td>
+    <td align="center" style="padding:8px 18px;background:#8EC5FF;color:#18181B;border:1px solid #8EC5FF;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🧠 自带 LLM</td>
+    <td align="center" width="8"></td>
+    <td align="center" style="padding:8px 18px;background:#FFD69B;color:#18181B;border:1px solid #FFD69B;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🔓 自托管</td>
+  </tr>
+</table>
 
-**让 Kubernetes 与你对话的驾驶舱。**
-
-<sub>实时多集群可视化 &nbsp;·&nbsp; AI 日志解读 &nbsp;·&nbsp; 自带 LLM &nbsp;·&nbsp; 自托管，无 SaaS 锁定</sub>
+<p align="center" style="font-size:20px;color:#1A1A24;">
+  <strong>让 Kubernetes 与你对话的驾驶舱。</strong>
+</p>
 
 <br/>
 
@@ -16,6 +67,13 @@
 <a href="#-star-history"><img src="https://img.shields.io/badge/★_点_Star-EFADF7?style=for-the-badge&logoColor=18181B" alt="Star" /></a>&nbsp;
 <a href="https://github.com/anomalyco/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_讨论区-8EC5FF?style=for-the-badge&logoColor=18181B" alt="Discussions" /></a>&nbsp;
 <a href="#-sponsor--funding"><img src="https://img.shields.io/badge/❤_赞助-FFD69B?style=for-the-badge&logoColor=18181B" alt="Sponsor" /></a>
+
+<br/>
+
+<img src="https://img.shields.io/badge/license-MIT-18181B?style=flat-square" alt="MIT" />
+<img src="https://img.shields.io/badge/python-3.11%2B-326CE5?style=flat-square&logo=python&logoColor=white" alt="Python" />
+<img src="https://img.shields.io/badge/node-%E2%89%A520-42b883?style=flat-square&logo=node.js&logoColor=white" alt="Node" />
+<img src="https://img.shields.io/badge/K8s-1.30%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="K8s" />
 
 <br/>
 
@@ -34,11 +92,20 @@
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 一句话
 
-<p align="center">
-  <em><code>kubectl</code> 告诉你 <b>发生了什么</b>。</em><br/>
-  <em><code>Kubernetes&nbsp;Dashboard</code> 告诉你 <b>东西在哪</b>。</em><br/>
-  <em><code>Spotlight</code> 告诉你 <b><i>为什么</i></b>。</em>
-</p>
+<table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse; max-width: 720px;">
+<tr>
+<td style="padding: 28px 36px; background: linear-gradient(180deg, #FAFAFA 0%, #F5F5F8 100%); border-left: 4px solid #EFADF7; border-radius: 8px;">
+  <p style="margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 19px; line-height: 1.65; color: #0B0B12;">
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">kubectl</code>
+    告诉你 <strong>发生了什么</strong>。<br/>
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">Kubernetes&nbsp;Dashboard</code>
+    告诉你 <strong>东西在哪</strong>。<br/>
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #18181B; font-weight: 700;">Spotlight</code>
+    告诉你 <strong style="background: linear-gradient(90deg, #8EC5FF, #EFADF7, #FFD69B); -webkit-background-clip: text; background-clip: text; color: transparent;"><em>为什么</em></strong>。
+  </p>
+</td>
+</tr>
+</table>
 
 <br/>
 
@@ -54,42 +121,44 @@ Spotlight 是给「已经会用 `kubectl` 的人」准备的、有主张的 Kube
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 60 秒走完一圈
 
-<table>
+<table align="center">
 <tr>
-<td width="25%" valign="top" align="center">
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **01 · 登录**
 
-<img src="assets/screenshots/login.jpeg" width="100%" alt="登录" />
+<img src="assets/screenshots/login.jpeg" width="100%" alt="登录" style="border-radius: 6px;" />
 
 <sub>Bearer / Teleport tsh / Session——30 秒搞定。</sub>
 
 </td>
-<td width="25%" valign="top" align="center">
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **02 · 看一眼集群**
 
-<img src="assets/screenshots/dashboard.jpeg" width="100%" alt="仪表盘" />
+<img src="assets/screenshots/dashboard.jpeg" width="100%" alt="仪表盘" style="border-radius: 6px;" />
 
 <sub>健康度、压力、信号，一屏看完。</sub>
 
 </td>
-<td width="25%" valign="top" align="center">
+</tr>
+<tr>
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **03 · 选那个吵闹的 Pod**
 
-<img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" />
+<img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" style="border-radius: 6px;" />
 
 <sub>实时状态、重启计数、命名空间筛选。</sub>
 
 </td>
-<td width="25%" valign="top" align="center">
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **04 · 让大模型解释**
 
-<img src="assets/screenshots/ai.jpeg" width="100%" alt="AI 分析器" />
+<img src="assets/screenshots/ai.jpeg" width="100%" alt="AI 分析器" style="border-radius: 6px;" />
 
-<sub>抓最后 200 行，点 *Analyze*。</sub>
+<sub>抓最后 200 行，点 <em>Analyze</em>。</sub>
 
 </td>
 </tr>
@@ -448,9 +517,22 @@ Spotlight/
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 赞助
 
-Spotlight 是 MIT 协议，人人免费。如果它在凌晨两点救过你的命，而你想支持一把开发节奏，欢迎任何额度的赞助。
-
-> **[在 GitHub 上赞助](https://github.com/sponsors/anomalyco)** &nbsp;·&nbsp; 一次性或月度，随你。
+<table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse; max-width: 640px;">
+<tr>
+<td style="padding: 22px 28px; background: linear-gradient(135deg, #FFF7E6 0%, #FFE6F6 100%); border: 1px solid #FFD69B; border-radius: 12px; text-align: left;">
+  <div style="font-family: ui-sans-serif, system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 18px; font-weight: 700; color: #18181B; margin-bottom: 8px;">
+    ❤ &nbsp;这是 0 收入项目，靠夜里和周末的副产物。
+  </div>
+  <div style="font-family: ui-sans-serif, system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; color: #1A1A24; line-height: 1.6;">
+    Spotlight 是 MIT 协议，人人免费。如果它在凌晨两点救过你的命，
+    一笔赞助可以让它继续迭代。
+  </div>
+  <div style="margin-top: 12px;">
+    <a href="https://github.com/sponsors/anomalyco" style="display:inline-block; padding: 8px 16px; background:#18181B; color:#FFD69B; border-radius:6px; font-weight:600; text-decoration:none; font-size: 14px;">❤ &nbsp;在 GitHub 上赞助</a>
+  </div>
+</td>
+</tr>
+</table>
 
 <br/>
 
@@ -486,9 +568,9 @@ Spotlight 站在这些肩膀上：**FastAPI**、**Pydantic**、**SQLAlchemy**、
 
 <br/>
 
-<div align="center">
+<div align="center" style="padding: 40px 0 16px;">
 
-<img src="assets/logo-mark.svg" alt="" width="44" />
+<img src="assets/logo-mark.svg" alt="" width="48" />
 
 <br/><br/>
 
@@ -496,6 +578,18 @@ Spotlight 站在这些肩膀上：**FastAPI**、**Pydantic**、**SQLAlchemy**、
 
 <br/><br/>
 
-<sub>📚 &nbsp; 文档 · 🐛 &nbsp; 问题 · 💬 &nbsp; 讨论 · 📦 &nbsp; 发布 · ❤️ &nbsp; 赞助</sub>
+<table align="center" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 auto;">
+<tr>
+<td align="center" style="padding: 4px 14px;"><a href="./README.zh-CN.md"><b>📖 文档</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/issues"><b>🐛 问题</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/discussions"><b>💬 讨论</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/releases"><b>📦 发布</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/sponsors/anomalyco"><b>❤ 赞助</b></a></td>
+</tr>
+</table>
 
 </div>

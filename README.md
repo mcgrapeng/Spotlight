@@ -1,14 +1,70 @@
+<!--
+  Layout philosophy (top -> bottom):
+
+  1.  Banner (the visual identity, dark, hero)
+  2.  TL;DR card (4 chips, single screenful, scannable)
+  3.  CTAs (4 brand-colored chips, black / pink / cyan / yellow)
+  4.  Tiny badge row (license / python / node)
+  5.  Language switch
+  6.  Divider hairline (brand gradient)
+  7.  THE PITCH (large pull-quote with brand color + brand mark)
+  8.  Divider hairline
+  9.  60-SECOND TOUR (2x2 grid — larger screenshots than 1x4)
+ 10.  Divider hairline
+ 11.  WHAT YOU GET (4x2 feature grid)
+ 12.  Divider hairline
+ 13.  VS THE FIELD (compact comparison)
+ 14.  Divider hairline
+ 15.  AI IN ACTION (terminal block)
+ 16.  Divider hairline
+ 17.  ARCHITECTURE (Mermaid with brand colors)
+ 18.  Divider hairline
+ 19.  QUICK START
+ 20.  Divider hairline
+ 21.  STACK (curated badge rows)
+ 22.  Divider hairline
+ 23.  AI PROVIDERS
+ 24.  Divider hairline
+ 25.  COMING NEXT
+ 26.  Divider hairline
+ 27.  CONTRIBUTING
+ 28.  Divider hairline
+ 29.  PROJECT LAYOUT
+ 30.  Divider hairline
+ 31.  SPONSOR (clear card)
+ 32.  Divider hairline
+ 33.  STAR HISTORY
+ 34.  Divider hairline
+ 35.  LICENCE · ACKNOWLEDGEMENTS
+ 36.  FOOTER (mini-nav, brand mark)
+
+  Section headers use a custom inline-styled <h2>:
+    - centered
+    - no GitHub-default bottom-border
+    - dot indicator (brand-color) replacing the underline hairline
+-->
+
 <div align="center">
 
 <img src="assets/banner.svg" alt="Spotlight — A Kubernetes dashboard that thinks with you." />
 
 <br/>
 
-# Spotlight
+<table align="center" cellpadding="0" cellspacing="0" style="margin: 8px auto 12px; border-collapse:collapse;">
+  <tr>
+    <td align="center" style="padding:8px 18px;background:#0B0B12;color:#FAFAFA;border:1px solid #26253A;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🌐 multi-cluster</td>
+    <td align="center" width="8"></td>
+    <td align="center" style="padding:8px 18px;background:#EFADF7;color:#18181B;border:1px solid #EFADF7;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🤖 AI logs</td>
+    <td align="center" width="8"></td>
+    <td align="center" style="padding:8px 18px;background:#8EC5FF;color:#18181B;border:1px solid #8EC5FF;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🧠 bring your LLM</td>
+    <td align="center" width="8"></td>
+    <td align="center" style="padding:8px 18px;background:#FFD69B;color:#18181B;border:1px solid #FFD69B;border-radius:999px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;">🔓 self-host</td>
+  </tr>
+</table>
 
-**A Kubernetes dashboard that thinks with you.**
-
-<sub>Real-time multi-cluster visibility &nbsp;·&nbsp; AI log explainer &nbsp;·&nbsp; bring-your-own LLM &nbsp;·&nbsp; self-host, no SaaS lock-in</sub>
+<p align="center" style="font-size:20px;color:#1A1A24;">
+  <strong>A Kubernetes dashboard that thinks with you.</strong>
+</p>
 
 <br/>
 
@@ -16,6 +72,13 @@
 <a href="#-star-history"><img src="https://img.shields.io/badge/★_Star_this_repo-EFADF7?style=for-the-badge&logoColor=18181B" alt="Star" /></a>&nbsp;
 <a href="https://github.com/anomalyco/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_Discussions-8EC5FF?style=for-the-badge&logoColor=18181B" alt="Discussions" /></a>&nbsp;
 <a href="#-sponsor--funding"><img src="https://img.shields.io/badge/❤_Sponsor-FFD69B?style=for-the-badge&logoColor=18181B" alt="Sponsor" /></a>
+
+<br/>
+
+<img src="https://img.shields.io/badge/license-MIT-18181B?style=flat-square" alt="MIT" />
+<img src="https://img.shields.io/badge/python-3.11%2B-326CE5?style=flat-square&logo=python&logoColor=white" alt="Python" />
+<img src="https://img.shields.io/badge/node-%E2%89%A520-42b883?style=flat-square&logo=node.js&logoColor=white" alt="Node" />
+<img src="https://img.shields.io/badge/K8s-1.30%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="K8s" />
 
 <br/>
 
@@ -34,11 +97,20 @@
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; The pitch
 
-<p align="center">
-  <em><code>kubectl</code> tells you <b>what</b> is happening.</em><br/>
-  <em><code>Kubernetes&nbsp;Dashboard</code> tells you <b>where</b> it is.</em><br/>
-  <em><code>Spotlight</code> tells you <b><i>why</i></b>.</em>
-</p>
+<table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse; max-width: 720px;">
+<tr>
+<td style="padding: 28px 36px; background: linear-gradient(180deg, #FAFAFA 0%, #F5F5F8 100%); border-left: 4px solid #EFADF7; border-radius: 8px;">
+  <p style="margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, 'Inter', sans-serif; font-size: 19px; line-height: 1.65; color: #0B0B12;">
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">kubectl</code>
+    tells you <strong>what</strong> is happening.<br/>
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #0B0B12; font-weight: 700;">Kubernetes&nbsp;Dashboard</code>
+    tells you <strong>where</strong> it is.<br/>
+    <code style="background: rgba(0,0,0,.06); padding: 2px 7px; border-radius: 4px; color: #18181B; font-weight: 700;">Spotlight</code>
+    tells you <strong style="background: linear-gradient(90deg, #8EC5FF, #EFADF7, #FFD69B); -webkit-background-clip: text; background-clip: text; color: transparent;"><em>why</em></strong>.
+  </p>
+</td>
+</tr>
+</table>
 
 <br/>
 
@@ -54,42 +126,44 @@ Spotlight is an opinionated Kubernetes dashboard for the dev who *already* knows
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 60-second tour
 
-<table>
+<table align="center">
 <tr>
-<td width="25%" valign="top" align="center">
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **01 · Log in**
 
-<img src="assets/screenshots/login.jpeg" width="100%" alt="Login" />
+<img src="assets/screenshots/login.jpeg" width="100%" alt="Login" style="border-radius: 6px;" />
 
 <sub>Bearer, Teleport tsh, or session — 30 seconds, no signup.</sub>
 
 </td>
-<td width="25%" valign="top" align="center">
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **02 · Watch the cluster**
 
-<img src="assets/screenshots/dashboard.jpeg" width="100%" alt="Dashboard" />
+<img src="assets/screenshots/dashboard.jpeg" width="100%" alt="Dashboard" style="border-radius: 6px;" />
 
 <sub>Health, pressure, signals on one screen.</sub>
 
 </td>
-<td width="25%" valign="top" align="center">
+</tr>
+<tr>
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **03 · Pick the noisy Pod**
 
-<img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" />
+<img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" style="border-radius: 6px;" />
 
 <sub>Live status, restart counts, namespace filter.</sub>
 
 </td>
-<td width="25%" valign="top" align="center">
+<td width="50%" valign="top" align="center" style="padding: 8px;">
 
 **04 · Let the LLM explain**
 
-<img src="assets/screenshots/ai.jpeg" width="100%" alt="AI Analyzer" />
+<img src="assets/screenshots/ai.jpeg" width="100%" alt="AI Analyzer" style="border-radius: 6px;" />
 
-<sub>Pull the last 200 lines, click *Analyze*.</sub>
+<sub>Pull the last 200 lines, click <em>Analyze</em>.</sub>
 
 </td>
 </tr>
@@ -448,9 +522,22 @@ Spotlight/
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Sponsor / funding
 
-Spotlight is MIT-licensed, free for everyone. If it saves your team time at 2 a.m. and you'd like to support its development, sponsorship helps.
-
-> **[Sponsor on GitHub](https://github.com/sponsors/anomalyco)** &nbsp;·&nbsp; one-off or monthly, your call.
+<table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse; max-width: 640px;">
+<tr>
+<td style="padding: 22px 28px; background: linear-gradient(135deg, #FFF7E6 0%, #FFE6F6 100%); border: 1px solid #FFD69B; border-radius: 12px; text-align: left;">
+  <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 18px; font-weight: 700; color: #18181B; margin-bottom: 8px;">
+    ❤ &nbsp;Built nights &amp; weekends.
+  </div>
+  <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; color: #1A1A24; line-height: 1.6;">
+    Spotlight is MIT-licensed, free for everyone. If it saved your team at 2 a.m.,
+    a sponsorship keeps the build moving.
+  </div>
+  <div style="margin-top: 12px;">
+    <a href="https://github.com/sponsors/anomalyco" style="display:inline-block; padding: 8px 16px; background:#18181B; color:#FFD69B; border-radius:6px; font-weight:600; text-decoration:none; font-size: 14px;">❤ &nbsp;Sponsor on GitHub</a>
+  </div>
+</td>
+</tr>
+</table>
 
 <br/>
 
@@ -486,9 +573,9 @@ Spotlight rides on **FastAPI**, **Pydantic**, **SQLAlchemy**, **LiteLLM**, **kub
 
 <br/>
 
-<div align="center">
+<div align="center" style="padding: 40px 0 16px;">
 
-<img src="assets/logo-mark.svg" alt="" width="44" />
+<img src="assets/logo-mark.svg" alt="" width="48" />
 
 <br/><br/>
 
@@ -496,6 +583,18 @@ Spotlight rides on **FastAPI**, **Pydantic**, **SQLAlchemy**, **LiteLLM**, **kub
 
 <br/><br/>
 
-<sub>📚 &nbsp; Docs · 🐛 &nbsp; Issues · 💬 &nbsp; Discussions · 📦 &nbsp; Releases · ❤️ &nbsp; Sponsor</sub>
+<table align="center" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 auto;">
+<tr>
+<td align="center" style="padding: 4px 14px;"><a href="./README.md"><b>📖 Docs</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/issues"><b>🐛 Issues</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/discussions"><b>💬 Discussions</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/anomalyco/Spotlight/releases"><b>📦 Releases</b></a></td>
+<td align="center" style="padding: 4px 14px; color:#D1D9E0;">·</td>
+<td align="center" style="padding: 4px 14px;"><a href="https://github.com/sponsors/anomalyco"><b>❤ Sponsor</b></a></td>
+</tr>
+</table>
 
 </div>
