@@ -1,99 +1,111 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Spotlight — A Kubernetes dashboard that thinks with you." />
+<img src="assets/banner.svg" alt="Spotlight — A Kubernetes dashboard that thinks with you." />
 
 <br/>
 
-**Real-time Kubernetes visibility &nbsp;·&nbsp; AI-powered log analysis &nbsp;·&nbsp; Multi-cluster, multi-cloud, one pane of glass.**
-
-<br/>
-
-<a href="https://github.com/anomalyco/Spotlight/blob/master/LICENSE"><img src="https://img.shields.io/github/license/anomalyco/Spotlight?style=for-the-badge&color=18181b&labelColor=18181b" alt="License" /></a>
-&nbsp;
-<img src="https://img.shields.io/badge/version-2.0.0-18181b?style=for-the-badge&label=version" alt="Version" />
-&nbsp;
-<img src="https://img.shields.io/badge/python-3.11%2B-326CE5?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
-&nbsp;
-<img src="https://img.shields.io/badge/node-%E2%89%A520-42b883?style=for-the-badge&logo=node.js&logoColor=white" alt="Node" />
-&nbsp;
-<img src="https://img.shields.io/badge/license-MIT-18181b?style=for-the-badge" alt="MIT" />
-
-<br/>
-
-<a href="./README.md">English</a> &nbsp;·&nbsp;
-<a href="./README.zh-CN.md">简体中文</a>
+<a href="https://github.com/anomalyco/Spotlight/blob/main/LICENSE"><img src="https://img.shields.io/github/license/anomalyco/Spotlight?style=for-the-badge&color=18181b&labelColor=18181b" alt="License" /></a>&nbsp;<img src="https://img.shields.io/badge/version-2.0.0-18181b?style=for-the-badge&label=version" alt="Version" />&nbsp;<img src="https://img.shields.io/badge/python-3.11%2B-326CE5?style=for-the-badge&logo=python&logoColor=white" alt="Python" />&nbsp;<img src="https://img.shields.io/badge/node-%E2%89%A520-42b883?style=for-the-badge&logo=node.js&logoColor=white" alt="Node" />
 
 <br/><br/>
 
-</div>
+<a href="./README.md"><b>English</b></a> &nbsp;·&nbsp;
+<a href="./README.zh-CN.md">简体中文</a>
 
----
-
-## ✨ Why Spotlight?
-
-You ship to Kubernetes. You watch it run. You dig through logs until 2 a.m. to figure out **why**.
-
-Spotlight gives that loop a copilot.
-
-It is an **opinionated Kubernetes dashboard** that pulls together every cluster in your kubeconfig, renders pod logs in real time, and hands the messy ones to an LLM of *your* choice for an instant, contextual explanation. It is small, fast, type-safe end-to-end, and refuses to be a cloud-locked SaaS — your cluster, your data, your model.
-
-> kubectl tells you *what* is happening.
-> The Kubernetes Dashboard tells you *what is where*.
-> **Spotlight tells you *why*.**
-
-<br/>
-
-## 📸 At a glance
-
-<div align="center">
-  <img src="docs/screenshots/dashboard.jpeg" alt="Spotlight dashboard" width="100%" />
-  <br/>
-  <sub>The default <strong>Overview</strong> — cluster health, resource pressure, recent events, all on one screen.</sub>
 </div>
 
 <br/>
 
-## ⚡ Quick start
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; The pitch
 
-**Spotlight is two processes. Run them, point them at your kubeconfig, open `http://localhost:5173`.**
+> **`kubectl`** tells you *what* is happening.<br/>
+> **`Kubernetes Dashboard`** tells you *where* it is.<br/>
+> **`Spotlight`** tells you ***why***.
+
+Spotlight is an opinionated Kubernetes dashboard for the dev who *already* knows `kubectl`. It pulls every cluster in your kubeconfig into one view, streams Pod logs in real time, and hands the messy ones to an LLM **you pick** for an instant, contextual explanation — no SaaS, no vendor lock, your cluster, your data, your model.
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Three minutes to first signal
 
 ```bash
-# 1. Backend (FastAPI · port 8002)
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+# Backend — FastAPI on :8002
+cd backend && python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && cp .env.example .env
 uvicorn app.main:app --reload --port 8002
 
-# 2. Frontend (Vue 3 · port 5173) — in a second terminal
-cd frontend
-pnpm install
-pnpm dev
+# Frontend — Vue 3 on :5173, in a second terminal
+cd frontend && pnpm install && pnpm dev
+
+# Open http://localhost:5173 — log in with any Bearer token
+# (set API_TOKEN in backend/.env, or leave empty for local open mode)
 ```
 
-Then open **<http://localhost:5173>** and log in with any `Authorization: Bearer <token>` set in `backend/.env` as `API_TOKEN=<your-token>` — or leave it empty for local open mode (a startup warning confirms the choice).
-
-> **Have Teleport?** Set `TELEPORT_PROXY`, `TELEPORT_AUTH`, and `TELEPORT_CLUSTER` in `.env` and Spotlight will issue per-session `tsh login` credentials. No kubeconfig needed.
+> **Have Teleport?** Set `TELEPORT_PROXY` / `TELEPORT_AUTH` / `TELEPORT_CLUSTER` in `.env`. Spotlight issues per-session `tsh login` credentials — no kubeconfig needed.
 
 <br/>
 
-## 🔦 Features
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; See it move
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="50%"><img src="assets/screenshots/login.jpeg" width="100%" alt="Spotlight login" /><br/><sub><b>Login</b> · Bearer / Teleport / Session</sub></td>
+      <td align="center" width="50%"><img src="assets/screenshots/dashboard.jpeg" width="100%" alt="Spotlight dashboard" /><br/><sub><b>Overview</b> · cluster health, pressure, signals</sub></td>
+    </tr>
+    <tr>
+      <td align="center"><img src="assets/screenshots/pods.jpeg" width="100%" alt="Spotlight pods" /><br/><sub><b>Pods</b> · live status, restart counts, namespace filter</sub></td>
+      <td align="center"><img src="assets/screenshots/ai.jpeg" width="100%" alt="Spotlight AI analyzer" /><br/><sub><b>AI Analyzer</b> · explain the last 200 lines, pick the model</sub></td>
+    </tr>
+  </table>
+</div>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI in action
+
+> Real output shape — pull up to 200 lines from any pod, click *Analyze*, pick a model:
+
+```text
+▸ AI · claude-3-5-sonnet · 1.42s · tokens 412 in / 286 out
+
+  Root cause
+    The pod is being OOMKilled. Container RSS hit the 512 MiB limit at
+    17:42:08; the kernel sent SIGKILL (exit 137); Kubernetes restarted
+    the container 21,320 times in the last 5 minutes.
+
+  Evidence
+    L17  "oom score adj = 950"
+    L23  "memory.peak = 512MiB / limit 512MiB"
+    L88  "loki-write: signal SIGKILL, exit code 137"
+
+  Suggested fix
+    • Raise memory.limit to 768 MiB in the Helm values, or
+    • Drop WAL retention from 24h → 6h in the ingester config, or
+    • Shard the tenant — split by labels across 3 replicas.
+```
+
+> [!TIP]
+> The model is **swap-in**: change `AI_PROVIDER` in `.env`, save, pick a different model in the UI, no restart. The same call works against OpenAI, Anthropic, Bedrock, Gemini, Ollama, **or any OpenAI-compatible endpoint**.
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; What it does, in one screen
 
 | | |
 |---|---|
-| 🧭 **Multi-cluster kubeconfig in one UI** | Switch contexts live without restarting. The exact same `KUBECONFIG` your shell already respects. |
-| 📜 **Real-time log streaming (SSE)** | Multi-pod selection, ANSI color preserved, deduplicated groups, download to file. |
-| 🤖 **AI log analysis, any provider** | Bring your own key — OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via **LiteLLM**. |
-| ⌨️ **Keyboard-first navigation** | `⌘K` command palette, `g d / p / n / e / f / a` page jumps, built for terminal reflexes. |
-| 🧱 **Pluggable auth** | Bearer token · session cookie · Teleport tsh · your own plugin (interface is one file). |
-| 🔍 **Type-safe end-to-end** | Pydantic v2 → OpenAPI → `openapi-typescript`. The frontend cannot drift from the backend. |
-| 🌑 **Appica design language** | Pure black `#18181B` on pure white `#FAFAFA`, 1 px borders, one accent gradient. No skeuomorphic noise. |
-| ♿ **Accessible by default** | axe-core in Playwright, keyboard-only flows verified, screen-reader structure. |
+| 🧭 **Multi-cluster kubeconfig, one UI** | Switch contexts live. The exact `KUBECONFIG` your shell already respects. |
+| 📜 **Real-time log streaming (SSE)** | Multi-pod select, ANSI color preserved, dedup, download. |
+| 🤖 **AI log analysis, any provider** | Bring your own key — OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via LiteLLM. |
+| ⌨️ **Keyboard-first** | `⌘K` palette, `g d / p / n / e / f / a` to leap between pages, no mouse needed. |
+| 🧱 **Pluggable auth** | Bearer token · session cookie · Teleport tsh · your own plugin (one file). |
+| 🔍 **Type-safe, end-to-end** | Pydantic v2 → OpenAPI → `openapi-typescript`. Frontend can't drift from backend. |
+| 🌑 **Appica design language** | Pure black `#18181B` on pure white `#FAFAFA`, 1 px borders, one accent gradient. |
+| ♿ **Accessible by default** | axe-core in Playwright, keyboard-only flows verified, screen-reader semantics. |
 | 🧪 **100 % testable** | Hexagonal architecture: every port is mocked, every adapter is tested, e2e covers the critical paths. |
 
 <br/>
 
-## ⚖️ Spotlight vs the field
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; vs. the field
 
 | | `kubectl` | Kubernetes Dashboard | Lens / OpenLens | **Spotlight** |
 |---|---|---|---|---|
@@ -103,106 +115,62 @@ Then open **<http://localhost:5173>** and log in with any `Authorization: Bearer
 | Pluggable auth | ✗ | ✗ | partial | **✔ (one-file plugin)** |
 | Type-safe API → UI | ✗ | ✗ | ✗ | **✔ (Pydantic → TS)** |
 | Self-hostable, no signup | ✔ | ✔ | partial | **✔** |
-| Cloud / SaaS lock-in | none | none | none | **none** |
+| SaaS / cloud lock-in | none | none | none | **none** |
 | Opinionated, fast UI | ✗ | ✗ | partial | **✔ (Appica)** |
 
-> *Spotlight does not replace `kubectl`. It is the layer on top that shows you the dashboard, the trail, and the diagnosis — fast.*
+> Spotlight does not replace `kubectl`. It sits *on top* — gives you the dashboard, the trail, and the diagnosis, fast.
 
 <br/>
 
-## 🖼 Screenshots
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; How it's built
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center" width="50%">
-        <img src="docs/screenshots/login.jpeg" width="100%" alt="Login" />
-        <br/><sub><b>Login</b> · bearer / Teleport / session</sub>
-      </td>
-      <td align="center" width="50%">
-        <img src="docs/screenshots/dashboard.jpeg" width="100%" alt="Dashboard" />
-        <br/><sub><b>Overview</b> · cluster health at a glance</sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center">
-        <img src="docs/screenshots/pods.jpeg" width="100%" alt="Pods" />
-        <br/><sub><b>Pods</b> · live status, restart counts, namespace filter</sub>
-      </td>
-      <td align="center">
-        <img src="docs/screenshots/ai.jpeg" width="100%" alt="AI analyzer" />
-        <br/><sub><b>AI Analyzer</b> · explain the last 200 lines, pick the model</sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center">
-        <img src="docs/screenshots/nodes.jpeg" width="100%" alt="Nodes" />
-        <br/><sub><b>Nodes</b> · capacity, pressure, allocatable</sub>
-      </td>
-      <td align="center">
-        <img src="docs/screenshots/events.jpeg" width="100%" alt="Events" />
-        <br/><sub><b>Events</b> · warning / normal timeline</sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" colspan="2">
-        <img src="docs/screenshots/settings.jpeg" width="100%" alt="Settings" />
-        <br/><sub><b>Settings</b> · AI provider, log preferences, kubeconfig source</sub>
-      </td>
-    </tr>
-  </table>
-</div>
+Spotlight is **Hexagonal / Clean Architecture** — the domain knows nothing about Kubernetes, AI, or HTTP; adapters do.
 
-<br/>
+```mermaid
+flowchart TB
+  subgraph Browser["Browser · Vue 3"]
+    UI[shadcn-vue · Pinia · Router · Sonner]
+  end
 
-## 🧬 Architecture
+  subgraph Edge["Interface (HTTP)"]
+    API[FastAPI routers · deps · CORS]
+  end
 
-Spotlight is a **Hexagonal / Clean Architecture** service. The domain knows nothing about Kubernetes, AI, or HTTP — adapters do.
+  subgraph App["Application (use cases)"]
+    UC[commands · queries · handlers]
+  end
 
-```
-                ┌─────────────────────────────────────────────────┐
-                │                   Browser (Vue 3)               │
-                │  shadcn-vue · Pinia · Vue Router · vue-sonner   │
-                └─────────────┬──────────────────────┬────────────┘
-                              │  axios + OpenAPI      │  SSE
-                              │  (type-safe)          │  (real-time)
-                              ▼                      ▼
-        ┌──────────────────────────────────────────────────────────┐
-        │                    Interface (HTTP)                       │
-        │     FastAPI routers · middleware · CORS · deps           │
-        └──────────────────────────┬───────────────────────────────┘
-                                   ▼
-        ┌──────────────────────────────────────────────────────────┐
-        │                  Application (use cases)                  │
-        │   commands · queries · handlers · CQRS-style dispatch     │
-        └──────────────────────────┬───────────────────────────────┘
-                                   ▼
-        ┌──────────────────────────────────────────────────────────┐
-        │                     Domain (pure)                          │
-        │      entities · value objects · domain services           │
-        └────────────┬──────────────────────────┬──────────────────┘
-                     ▼                          ▼
-        ┌────────────────────────┐  ┌─────────────────────────────┐
-        │   k8s adapter port     │  │   LLM adapter port          │
-        │   (kubernetes-python)  │  │   (LiteLLM — any provider)  │
-        └────────────────────────┘  └─────────────────────────────┘
-                     │                          │
-                     ▼                          ▼
-        ┌────────────────────────┐  ┌─────────────────────────────┐
-        │  Multi-context pool    │  │  OpenAI · Anthropic · Bedrock│
-        │  live kubeconfig watch │  │  Gemini · Ollama · +100 …    │
-        └────────────────────────┘  └─────────────────────────────┘
+  subgraph Dom["Domain (pure)"]
+    ENT[entities · value objects]
+    PORT_K[port: K8s]
+    PORT_L[port: LLM]
+  end
+
+  subgraph Infra["Infrastructure (adapters)"]
+    K8S[multi-context k8s pool]
+    LLM[LiteLLM — any provider]
+    DB[(SQLite)]
+    LOG[structlog]
+  end
+
+  UI <-->|axios + OpenAPI| API
+  API --> UC
+  UC --> ENT
+  UC --> PORT_K & PORT_L
+  PORT_K -.implemented by.-> K8S
+  PORT_L -.implemented by.-> LLM
+  Infra --> Dom
 ```
 
-> **Want to add a new auth provider, log source, or LLM?** Add an `infrastructure/<thing>/` adapter that implements the port, register it in the registry. Nothing else moves.
+> **Adding a new auth provider, log source, or LLM?** Add an `infrastructure/<thing>/` adapter that implements the matching port, register it. Nothing else moves.
 
 <br/>
 
-## 🤖 AI providers, plug & play
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI providers, plug & play
 
-Powered by **LiteLLM** — every provider is one env-var change away.
+LiteLLM under the hood — one env-var, swap any model.
 
-| Provider | Set `AI_PROVIDER=` | Extra config |
+| Provider | `AI_PROVIDER=` | What you set |
 |---|---|---|
 | **OpenAI** | `openai` | `OPENAI_API_KEY` |
 | **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` |
@@ -211,133 +179,119 @@ Powered by **LiteLLM** — every provider is one env-var change away.
 | **Google Gemini / Vertex** | `gemini` / `vertex` | `GEMINI_API_KEY` / `VERTEX_PROJECT` |
 | **Ollama (local)** | `ollama` | `OLLAMA_API_BASE=http://host:11434` |
 | **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` |
-| **Anything else** | `custom` | `AI_API_BASE` · `AI_API_KEY` |
+| **Any OpenAI-compatible API** | `custom` | `AI_API_BASE` · `AI_API_KEY` |
 
-Set the **model** from the UI — no restart needed.
-
-<br/>
-
-## 🛠 Tech stack
-
-<table>
-  <tr>
-    <td><b>Backend</b></td>
-    <td>
-      <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
-      <img src="https://img.shields.io/badge/Pydantic%20v2-E92063?style=for-the-badge&logo=pydantic&logoColor=white" alt="Pydantic" />
-      <img src="https://img.shields.io/badge/k8s%20client-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="k8s" />
-      <img src="https://img.shields.io/badge/LiteLLM-1A1A1A?style=for-the-badge" alt="LiteLLM" />
-      <img src="https://img.shields.io/badge/SQLAlchemy-D71A00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy" />
-      <img src="https://img.shields.io/badge/structlog-2E2E2E?style=for-the-badge" alt="structlog" />
-    </td>
-  </tr>
-  <tr>
-    <td><b>Frontend</b></td>
-    <td>
-      <img src="https://img.shields.io/badge/Vue%203-42b883?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue 3" />
-      <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-      <img src="https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind" />
-      <img src="https://img.shields.io/badge/shadcn--vue-18181B?style=for-the-badge" alt="shadcn-vue" />
-      <img src="https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=18181B" alt="Pinia" />
-      <img src="https://img.shields.io/badge/Axios-5A29E4?style=for-the-badge&logo=axios&logoColor=white" alt="Axios" />
-    </td>
-  </tr>
-  <tr>
-    <td><b>Tests</b></td>
-    <td>
-      <img src="https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest" />
-      <img src="https://img.shields.io/badge/Vitest-729B1B?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest" />
-      <img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright" />
-      <img src="https://img.shields.io/badge/axe--core-30009F?style=for-the-badge" alt="axe" />
-    </td>
-  </tr>
-  <tr>
-    <td><b>Infra</b></td>
-    <td>
-      <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
-      <img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
-      <img src="https://img.shields.io/badge/SSE-2E2E2E?style=for-the-badge" alt="SSE" />
-    </td>
-  </tr>
-</table>
+The **model** is picked from the UI — no restart needed.
 
 <br/>
 
-## 🗺 Roadmap
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Stack
 
-- [x] **v2.0** — Multi-cluster kubeconfig, SSE log streaming, LiteLLM AI provider, Appica UI v6, hexagonal backend.
-- [ ] **v2.1** — Helm chart deploy, one-binary mode, embedded SQLite migration to Postgres.
-- [ ] **v2.2** — RBAC-aware views, multi-user session isolation, audit log UI.
-- [ ] **v3.0** — Plugin SDK (third-party LLM analyzers, custom log parsers), and an authenticated **public read-only share** link.
+**Backend**
+<a href="#"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Pydantic%20v2-E92063?style=for-the-badge&logo=pydantic&logoColor=white" alt="Pydantic" /></a>
+<a href="#"><img src="https://img.shields.io/badge/k8s--python-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="kubernetes-python" /></a>
+<a href="#"><img src="https://img.shields.io/badge/LiteLLM-1A1A1A?style=for-the-badge" alt="LiteLLM" /></a>
+<a href="#"><img src="https://img.shields.io/badge/SQLAlchemy-D71A00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy" /></a>
+<a href="#"><img src="https://img.shields.io/badge/structlog-2E2E2E?style=for-the-badge" alt="structlog" /></a>
 
-> Open a discussion thread if a feature matters to you — the roadmap is shaped by what people actually use.
+**Frontend**
+<a href="#"><img src="https://img.shields.io/badge/Vue%203-42b883?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue 3" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind" /></a>
+<a href="#"><img src="https://img.shields.io/badge/shadcn--vue-18181B?style=for-the-badge" alt="shadcn-vue" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=18181B" alt="Pinia" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Axios-5A29E4?style=for-the-badge&logo=axios&logoColor=white" alt="Axios" /></a>
+
+**Tests**
+<a href="#"><img src="https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Vitest-729B1B?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest" /></a>
+<a href="#"><img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright" /></a>
+<a href="#"><img src="https://img.shields.io/badge/axe--core-30009F?style=for-the-badge" alt="axe" /></a>
+
+**Infra**
+<a href="#"><img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" /></a>
+<a href="#"><img src="https://img.shields.io/badge/SSE-2E2E2E?style=for-the-badge" alt="SSE" /></a>
+<a href="#"><img src="https://img.shields.io/badge/port%208002-2E2E2E?style=for-the-badge" alt="port 8002" /></a>
 
 <br/>
 
-## 🧑‍💻 Contributing
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Project layout
 
-Contributions of any size are welcome — bug reports, docs, code, AI provider adapters.
-
-```bash
-# Fork, then:
-git clone https://github.com/<you>/Spotlight.git && cd Spotlight
-
-# Backend tests
-cd backend && source .venv/bin/activate
-pytest -q
-
-# Frontend tests (Vitest + Playwright)
-cd ../frontend && pnpm install
-pnpm test           # unit
-pnpm test:e2e       # browser
+```
+Spotlight/
+├── backend/                    # FastAPI — hexagonal / clean architecture
+│   ├── app/
+│   │   ├── application/        # commands · queries · handlers (use cases)
+│   │   ├── domain/             # pure entities, value objects, ports
+│   │   ├── infrastructure/     # adapters: k8s, db, logging, LLM, auth
+│   │   ├── interface/api/      # FastAPI routers / DTOs
+│   │   └── main.py             # app factory + lifespan
+│   ├── tests/                  # pytest — unit + integration
+│   └── requirements.txt
+├── frontend/                   # Vue 3 + Vite + Tailwind + shadcn-vue
+│   ├── src/
+│   │   ├── components/         # ui/, layout/, common/, pod/, dashboard/, log/, ai/
+│   │   ├── views/              # 8 pages (Login, Dashboard, Pods, PodDetail, …)
+│   │   ├── stores/             # Pinia
+│   │   ├── api/                # axios + openapi-typescript generated
+│   │   └── styles/             # design tokens
+│   └── package.json
+├── assets/                     # brand banner, mark, README screenshots
+├── docs/                       # local-only scratch — not git-tracked
+├── LICENSE                     # MIT
+├── README.md  ·  README.zh-CN.md
+└── ...                         # config + tooling
 ```
 
-> See [`backend/README.md`](./backend/README.md) and [`frontend/README.md`](./frontend/README.md) for the per-package dev guide. Architecture rules — short version: **ports and adapters only**, no leaking of `kubernetes` or `litellm` types into `app/`.
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Roadmap
+
+- [x] **v2.0** — multi-cluster kubeconfig, SSE log streaming, LiteLLM, Appica UI v6, hexagonal backend.
+- [ ] **v2.1** — Helm chart deploy, single-binary mode, SQLite → Postgres migration path.
+- [ ] **v2.2** — RBAC-aware views, multi-user session isolation, audit log UI.
+- [ ] **v3.0** — Plugin SDK (third-party LLM analyzers, custom log parsers) + authenticated **public read-only share** links.
+
+> Open a Discussion thread if a feature matters to you — the roadmap is shaped by what people actually use.
 
 <br/>
 
-## 🩻 Health
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Contributing
 
-Spotlight exposes a tiny `/healthz` so probes and dashboards can see it:
+Any-size contributions are welcome — bug reports, docs, code, AI provider adapters.
+
+```bash
+git clone https://github.com/<you>/Spotlight.git && cd Spotlight
+
+# Backend
+cd backend && source .venv/bin/activate
+pip install -r requirements.txt
+pytest -q
+
+# Frontend
+cd ../frontend && pnpm install
+pnpm test           # Vitest — unit
+pnpm test:e2e       # Playwright — browser
+```
+
+> Per-package dev guide: [`backend/README.md`](./backend/README.md) · [`frontend/README.md`](./frontend/README.md)
+> Architecture rule: **ports and adapters only** — `app/` never imports `kubernetes` or `litellm` directly.
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Health check
 
 ```
 GET /healthz
 { "status": "ok" }
 ```
 
-The OpenAPI spec lives at `GET /openapi.json` and the Swagger UI at `/docs`.
+OpenAPI spec at `GET /openapi.json` · Swagger UI at `/docs`.
 
 <br/>
 
-## 📐 Project layout
-
-```
-Spotlight/
-├── backend/                  # FastAPI app — hexagonal / clean architecture
-│   ├── app/
-│   │   ├── application/      # commands, queries, handlers (use cases)
-│   │   ├── domain/           # pure entities, value objects, ports
-│   │   ├── infrastructure/   # adapters: k8s, db, logging, LLM, auth
-│   │   ├── interface/api/    # FastAPI routers / DTOs
-│   │   └── main.py
-│   ├── tests/                # pytest — unit + integration
-│   └── requirements.txt
-├── frontend/                 # Vue 3 + Vite + Tailwind + shadcn-vue
-│   ├── src/
-│   │   ├── components/       # ui/, layout/, common/, pod/, dashboard/, log/, ai/
-│   │   ├── views/            # Login, Dashboard, Pods, PodDetail, Nodes, Events, AI, Settings, Favorites
-│   │   ├── stores/           # Pinia
-│   │   ├── api/              # axios + openapi-typescript generated client
-│   │   └── styles/           # design tokens
-│   └── package.json
-├── docs/                     # architecture, screenshot assets, this README
-├── banner.svg / logo.svg     # brand assets
-└── README.md / README.zh-CN.md
-```
-
-<br/>
-
-## ⭐ Star history
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Star history
 
 <a href="https://star-history.com/#anomalyco/Spotlight&Timeline">
   <picture>
@@ -349,24 +303,24 @@ Spotlight/
 
 <br/>
 
-## 📝 License
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; License
 
 [MIT](./LICENSE) — do anything, just keep the copyright.
 
 <br/>
 
-## 🙏 Acknowledgements
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Acknowledgements
 
-Spotlight is built on the shoulders of an enormous open-source ecosystem. The names that show up in the dep graph most: **FastAPI**, **Pydantic**, **SQLAlchemy**, **LiteLLM**, **kubernetes-python**, **Vue 3**, **Vite**, **Tailwind CSS**, **shadcn-vue**, **Radix Vue**, **Pinia**, **Lucide**, **Axios**, **Playwright**, **Vitest**, **pytest**, **structlog**.
+Spotlight rides on an enormous open-source ecosystem. The names that show up in the dependency graph most: **FastAPI**, **Pydantic**, **SQLAlchemy**, **LiteLLM**, **kubernetes-python**, **Vue 3**, **Vite**, **Tailwind CSS**, **shadcn-vue**, **Radix Vue**, **Pinia**, **Lucide**, **Axios**, **Playwright**, **Vitest**, **pytest**, **structlog**.
 
 <br/>
 
 <div align="center">
 
-<sub>Spotlight · built for the dev who already knows kubectl.</sub>
+<img src="assets/logo-mark.svg" alt="" width="36" />
 
 <br/>
 
-<a href="#-why-spotlight">⇡ back to top</a>
+<sub>Spotlight · built for the dev who already knows kubectl.</sub>
 
 </div>
