@@ -1,8 +1,12 @@
 {
-  "name": "spotlight-frontend",
+  "name": "spotlight",
   "version": "2.0.0",
+  "description": "Spotlight — A Kubernetes dashboard that thinks with you.",
   "private": true,
   "type": "module",
+  "author": "Spotlight contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/anomalyco/Spotlight",
   "scripts": {
     "dev": "vite",
     "build": "pnpm run types:check && vue-tsc --noEmit && vite build",
