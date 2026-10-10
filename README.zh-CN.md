@@ -4,9 +4,20 @@
 
 <br/>
 
-<a href="https://github.com/anomalyco/Spotlight/blob/main/LICENSE"><img src="https://img.shields.io/github/license/anomalyco/Spotlight?style=for-the-badge&color=18181b&labelColor=18181b" alt="License" /></a>&nbsp;<img src="https://img.shields.io/badge/version-2.0.0-18181b?style=for-the-badge&label=version" alt="Version" />&nbsp;<img src="https://img.shields.io/badge/python-3.11%2B-326CE5?style=for-the-badge&logo=python&logoColor=white" alt="Python" />&nbsp;<img src="https://img.shields.io/badge/node-%E2%89%A520-42b883?style=for-the-badge&logo=node.js&logoColor=white" alt="Node" />
+# Spotlight
 
-<br/><br/>
+**让 Kubernetes 与你对话的驾驶舱。**
+
+<sub>实时多集群可视化 &nbsp;·&nbsp; AI 日志解读 &nbsp;·&nbsp; 自带 LLM &nbsp;·&nbsp; 自托管，无 SaaS 锁定</sub>
+
+<br/>
+
+<a href="#-quick-start"><img src="https://img.shields.io/badge/▶_三分钟上手-18181B?style=for-the-badge&logoColor=white" alt="Quick start" /></a>&nbsp;
+<a href="#-star-history"><img src="https://img.shields.io/badge/★_点_Star-EFADF7?style=for-the-badge&logoColor=18181B" alt="Star" /></a>&nbsp;
+<a href="https://github.com/anomalyco/Spotlight/discussions"><img src="https://img.shields.io/badge/💬_讨论区-8EC5FF?style=for-the-badge&logoColor=18181B" alt="Discussions" /></a>&nbsp;
+<a href="#-sponsor--funding"><img src="https://img.shields.io/badge/❤_赞助-FFD69B?style=for-the-badge&logoColor=18181B" alt="Sponsor" /></a>
+
+<br/>
 
 <a href="./README.zh-CN.md"><b>简体中文</b></a> &nbsp;·&nbsp;
 <a href="./README.md">English</a>
@@ -15,55 +26,176 @@
 
 <br/>
 
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 一句话
 
-> **`kubectl`** 告诉你 **发生了什么**。<br/>
-> **`Kubernetes Dashboard`** 告诉你 **东西在哪**。<br/>
-> **`Spotlight`** 告诉你 **为什么**。
-
-Spotlight 是给「已经会用 `kubectl` 的人」准备的、有主张的 Kubernetes 驾驶舱：把你 `kubeconfig` 里所有集群收进同一个界面，实时流式拉取 Pod 日志，再把乱七八糟的内容交给**你自己选的**大模型，要一份带上下文的解释。它不开云端 SaaS，不锁定供应商——你的集群、你的数据、你的模型。
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 三分钟跑起来
-
-```bash
-# 后端 — FastAPI，:8002
-cd backend && python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt && cp .env.example .env
-uvicorn app.main:app --reload --port 8002
-
-# 前端 — Vue 3，:5173（另开一个终端）
-cd frontend && pnpm install && pnpm dev
-
-# 打开 http://localhost:5173 — 用任意 Bearer 令牌登录
-# 在 backend/.env 里设 API_TOKEN=xxx；留空则是本地开放模式（启动会有告警）
-```
-
-> **用 Teleport？** 在 `.env` 里设 `TELEPORT_PROXY` / `TELEPORT_AUTH` / `TELEPORT_CLUSTER`，Spotlight 会按会话去签发 `tsh login` 凭证——不需要本地 kubeconfig。
+<p align="center">
+  <em><code>kubectl</code> 告诉你 <b>发生了什么</b>。</em><br/>
+  <em><code>Kubernetes&nbsp;Dashboard</code> 告诉你 <b>东西在哪</b>。</em><br/>
+  <em><code>Spotlight</code> 告诉你 <b><i>为什么</i></b>。</em>
+</p>
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 看它动起来
+Spotlight 是给「已经会用 `kubectl` 的人」准备的、有主张的 Kubernetes 驾驶舱：把你 `kubeconfig` 里所有集群收进同一个界面，实时流式拉取 Pod 日志，再把乱七八糟的内容交给**你自己选的**大模型，要一份带上下文的解释——**没有云端 SaaS，没有供应商锁定**，你的集群、你的数据、你的模型。
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center" width="50%"><img src="assets/screenshots/login.jpeg" width="100%" alt="Spotlight 登录" /><br/><sub><b>登录</b> · Bearer / Teleport / Session</sub></td>
-      <td align="center" width="50%"><img src="assets/screenshots/dashboard.jpeg" width="100%" alt="Spotlight 仪表盘" /><br/><sub><b>Overview</b> · 集群健康、压力、信号一眼看完</sub></td>
-    </tr>
-    <tr>
-      <td align="center"><img src="assets/screenshots/pods.jpeg" width="100%" alt="Spotlight Pods" /><br/><sub><b>Pods</b> · 实时状态、重启计数、命名空间筛选</sub></td>
-      <td align="center"><img src="assets/screenshots/ai.jpeg" width="100%" alt="Spotlight AI 分析器" /><br/><sub><b>AI 分析器</b> · 最后 200 行，挑模型，让他解释</sub></td>
-    </tr>
-  </table>
-</div>
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 60 秒走完一圈
+
+<table>
+<tr>
+<td width="25%" valign="top" align="center">
+
+**01 · 登录**
+
+<img src="assets/screenshots/login.jpeg" width="100%" alt="登录" />
+
+<sub>Bearer / Teleport tsh / Session——30 秒搞定。</sub>
+
+</td>
+<td width="25%" valign="top" align="center">
+
+**02 · 看一眼集群**
+
+<img src="assets/screenshots/dashboard.jpeg" width="100%" alt="仪表盘" />
+
+<sub>健康度、压力、信号，一屏看完。</sub>
+
+</td>
+<td width="25%" valign="top" align="center">
+
+**03 · 选那个吵闹的 Pod**
+
+<img src="assets/screenshots/pods.jpeg" width="100%" alt="Pods" />
+
+<sub>实时状态、重启计数、命名空间筛选。</sub>
+
+</td>
+<td width="25%" valign="top" align="center">
+
+**04 · 让大模型解释**
+
+<img src="assets/screenshots/ai.jpeg" width="100%" alt="AI 分析器" />
+
+<sub>抓最后 200 行，点 *Analyze*。</sub>
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 这一屏，全特性
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🧭 多集群，一块屏幕
+沿用 shell 已有的 `KUBECONFIG`，热切换 context，无需重启。
+
+</td>
+<td width="50%" valign="top">
+
+### 📜 实时日志（SSE 流）
+多 Pod 选、ANSI 颜色保留、分组去重、一键下载。
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🤖 AI 日志解读，模型自选
+自带 Key——OpenAI · Anthropic · Bedrock · Gemini · Ollama · LiteLLM 支持 100+。
+
+</td>
+<td width="50%" valign="top">
+
+### ⌨️ 键盘先行
+`⌘K` 命令面板 · `g d / p / n / e / f / a` 跳转页面 · 鼠标可以不用。
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🧱 可插拔鉴权
+Bearer · Session · Teleport tsh · 你自己的插件（一个文件）。
+
+</td>
+<td width="50%" valign="top">
+
+### 🔍 端到端强类型
+Pydantic v2 → OpenAPI → `openapi-typescript`，前后端不会偷偷漂移。
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🌑 Appica 设计语言
+纯黑 `#18181B` · 纯白 `#FAFAFA` · 1 px 描边 · 一道装饰渐变。
+
+</td>
+<td width="50%" valign="top">
+
+### 🧪 可测到 100 %
+六边形架构——每个端口可 mock，每个适配器可测，e2e 覆盖关键路径。
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 和熟悉工具的对比
+
+| &nbsp; | `kubectl` | Dashboard | Lens | **Spotlight** |
+|---|---|---|---|---|
+| 多集群切换 | `kubectx` | 手动 | ✔ | **✔ 实时** |
+| 实时日志流 | `kubectl logs -f` | ✔ | ✔ | **✔ 多 Pod + 去重** |
+| AI 日志解读 | ✗ | ✗ | ✗ | **✔ 任选模型** |
+| 可插拔鉴权 | ✗ | ✗ | 有限 | **✔ 一个文件** |
+| API → UI 强类型 | ✗ | ✗ | ✗ | **✔ Pydantic → TS** |
+| 自托管、无注册 | ✔ | ✔ | 有限 | **✔** |
+
+> Spotlight 不替代 `kubectl`。它位于其上——给你看一眼仪表盘、看一眼时间线、看一眼诊断。
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI 是怎么工作的
 
-> 真实输出长这样——任选一个 Pod，抓 200 行日志，点 *Analyze*，挑模型：
+> 抓任一 Pod 的最后 200 行，点 *Analyze*，挑模型——真实输出长这样：
 
 ```text
 ▸ AI · claude-3-5-sonnet · 1.42s · tokens 412 in / 286 out
@@ -85,103 +217,100 @@ cd frontend && pnpm install && pnpm dev
 ```
 
 > [!TIP]
-> **模型可以热换**：改 `.env` 里的 `AI_PROVIDER`，保存，UI 里换模型，**不用重启**。同样的调用对 OpenAI、Anthropic、Bedrock、Gemini、Ollama，以及**任何兼容 OpenAI 的端点**都生效。
+> **模型可以热换。** 改 `.env` 里的 `AI_PROVIDER`，保存，在 UI 里挑不同的模型——不需要重启。同一调用对 OpenAI、Anthropic、Bedrock、Gemini、Ollama，或**任何 OpenAI 兼容端点**都生效。
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 这一屏，全特性
-
-| | |
-|---|---|
-| 🧭 **多集群 kubeconfig，一块屏幕** | 沿用 shell 已有的 `KUBECONFIG`，热切换 context，无需重启。 |
-| 📜 **实时日志（SSE 流）** | 多 Pod 选、ANSI 颜色保留、分组去重、一键下载。 |
-| 🤖 **AI 日志分析，模型自选** | 自带 Key——OpenAI · Anthropic · Bedrock · Gemini · Ollama · 通过 LiteLLM 支持 100+。 |
-| ⌨️ **键盘先行** | `⌘K` 命令面板 · `g d / p / n / e / f / a` 跳转页面，鼠标可以不用。 |
-| 🧱 **可插拔鉴权** | Bearer · Session · Teleport tsh · 你自己的插件（一个文件）。 |
-| 🔍 **端到端强类型** | Pydantic v2 → OpenAPI → `openapi-typescript`，前后端不会偷偷漂移。 |
-| 🌑 **Appica 设计语言** | 纯黑 `#18181B` · 纯白 `#FAFAFA` · 1 px 描边 · 一道装饰渐变。 |
-| ♿ **默认无障碍** | Playwright 内置 axe-core，全键盘可达、屏幕阅读器结构化。 |
-| 🧪 **可测到 100 %** | 六边形架构：每个端口可 mock，每个适配器可测，e2e 覆盖关键路径。 |
-
-<br/>
-
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 和熟悉工具的对比
-
-| | `kubectl` | Kubernetes Dashboard | Lens / OpenLens | **Spotlight** |
-|---|---|---|---|---|
-| 多集群切换 | `kubectx` | 手动 | ✔ | **✔（实时）** |
-| 实时日志流 | `kubectl logs -f` | ✔ | ✔ | **✔（多 Pod + 去重）** |
-| AI 日志解读 | ✗ | ✗ | ✗ | **✔（任选模型）** |
-| 可插拔鉴权 | ✗ | ✗ | 有限 | **✔（一个文件）** |
-| API → UI 强类型 | ✗ | ✗ | ✗ | **✔（Pydantic → TS）** |
-| 自托管、无注册 | ✔ | ✔ | 有限 | **✔** |
-| 云 / SaaS 锁定 | 无 | 无 | 无 | **无** |
-| 有主张、跑得快 | ✗ | ✗ | 有限 | **✔（Appica）** |
-
-> Spotlight 不替代 `kubectl`。它位于其上——给你看一眼仪表盘、看一眼时间线、看一眼诊断。
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 它怎么造的
 
-Spotlight 是**六边形 / Clean Architecture** 服务。Domain 不知道 Kubernetes、AI 或 HTTP——那是适配器的事。
+**六边形 / Clean Architecture**——Domain 不知道 Kubernetes、AI、HTTP；适配器知道。
 
 ```mermaid
 flowchart TB
+  classDef ui    fill:#1A1A24,stroke:#8EC5FF,stroke-width:1.5px,color:#FAFAFA
+  classDef api   fill:#1A1A24,stroke:#EFADF7,stroke-width:1.5px,color:#FAFAFA
+  classDef app   fill:#1A1A24,stroke:#FFD69B,stroke-width:1.5px,color:#FAFAFA
+  classDef dom   fill:#0F0E16,stroke:#8EC5FF,stroke-width:1px,color:#FAFAFA
+  classDef port  fill:#0F0E16,stroke:#EFADF7,stroke-width:1px,color:#FAFAFA
+  classDef infra fill:#11111A,stroke:#5A5A75,stroke-width:1px,color:#CFCFD8
+  classDef store fill:#0F0E16,stroke:#FFD69B,stroke-width:1px,color:#FFD69B
+
   subgraph Browser["Browser · Vue 3"]
-    UI[shadcn-vue · Pinia · Router · Sonner]
+    UI["shadcn-vue · Pinia · Router · Sonner"]:::ui
   end
 
-  subgraph Edge["Interface（HTTP 入口）"]
-    API[FastAPI 路由 · 依赖 · CORS]
+  subgraph Edge["Interface · HTTP"]
+    API["FastAPI 路由 · 依赖 · CORS"]:::api
   end
 
-  subgraph App["Application（用例）"]
-    UC[commands · queries · handlers]
+  subgraph App["Application · 用例"]
+    UC["commands · queries · handlers (CQRS)"]:::app
   end
 
-  subgraph Dom["Domain（纯域）"]
-    ENT[实体 · 值对象]
-    PORT_K[端口：K8s]
-    PORT_L[端口：LLM]
+  subgraph Dom["Domain · 纯域"]
+    ENT["实体 · 值对象"]:::dom
+    PK["端口：K8s"]:::port
+    PL["端口：LLM"]:::port
   end
 
-  subgraph Infra["Infrastructure（适配器）"]
-    K8S[多上下文 k8s 连接池]
-    LLM[LiteLLM — 任选 provider]
-    DB[(SQLite)]
-    LOG[structlog]
+  subgraph Infra["Infrastructure · 适配器"]
+    K8S["多上下文 k8s 连接池"]:::infra
+    LLM["LiteLLM——任选 provider"]:::infra
+    DB[("SQLite")]:::store
   end
 
-  UI <-->|axios + OpenAPI| API
+  UI <-->|"axios + OpenAPI · 强类型"| API
   API --> UC
   UC --> ENT
-  UC --> PORT_K & PORT_L
-  PORT_K -.实现.-> K8S
-  PORT_L -.实现.-> LLM
-  Infra --> Dom
+  UC --> PK & PL
+  PK -. 实现 .-> K8S
+  PL -. 实现 .-> LLM
+  K8S --> DB
 ```
 
-> **想加一种新的鉴权方式、日志源或 LLM？** 在 `infrastructure/<thing>/` 加一个实现端口的适配器，注册到注册表，其它啥都不用动。
+> **想加一种新鉴权、日志源或 LLM？** 在 `infrastructure/<thing>/` 加一个实现端口的适配器并注册到注册表，其它啥都不用动。
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI 提供商，即插即用
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
-底层是 **LiteLLM** —— 一个环境变量就能切。
+<br/>
 
-| 提供商 | `AI_PROVIDER=` | 额外配置 |
-|---|---|---|
-| **OpenAI** | `openai` | `OPENAI_API_KEY` |
-| **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` |
-| **Azure OpenAI** | `azure` | `AZURE_API_KEY` · `AZURE_API_BASE` · `AZURE_API_VERSION` |
-| **AWS Bedrock** | `bedrock` | `AWS_ACCESS_KEY_ID` · `AWS_REGION` |
-| **Google Gemini / Vertex** | `gemini` / `vertex` | `GEMINI_API_KEY` / `VERTEX_PROJECT` |
-| **Ollama（本地）** | `ollama` | `OLLAMA_API_BASE=http://host:11434` |
-| **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` |
-| **任何兼容 OpenAI 的服务** | `custom` | `AI_API_BASE` · `AI_API_KEY` |
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 三分钟上手
 
-**模型** 在 UI 里切——不需要重启。
+**Spotlight 是两个进程。跑起来，指向你的 kubeconfig，打开 `http://localhost:5173`。**
+
+```bash
+# 1. 后端 — FastAPI，:8002
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --port 8002
+
+# 2. 前端 — Vue 3，:5173（另起一个终端）
+cd frontend
+pnpm install
+pnpm dev
+```
+
+打开 <http://localhost:5173>。用任意 `Authorization: Bearer <token>` 登录；只要在 `backend/.env` 里设 `API_TOKEN=<your-token>`——**留空**则是本地开放模式（启动会有告警）。
+
+> **用 Teleport？** 在 `.env` 里设 `TELEPORT_PROXY` / `TELEPORT_AUTH` / `TELEPORT_CLUSTER`，Spotlight 会按会话签发 `tsh login` 凭证——不需要本地 kubeconfig。
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
@@ -193,7 +322,6 @@ flowchart TB
 <a href="#"><img src="https://img.shields.io/badge/k8s--python-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" alt="kubernetes-python" /></a>
 <a href="#"><img src="https://img.shields.io/badge/LiteLLM-1A1A1A?style=for-the-badge" alt="LiteLLM" /></a>
 <a href="#"><img src="https://img.shields.io/badge/SQLAlchemy-D71A00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy" /></a>
-<a href="#"><img src="https://img.shields.io/badge/structlog-2E2E2E?style=for-the-badge" alt="structlog" /></a>
 
 **前端**
 <a href="#"><img src="https://img.shields.io/badge/Vue%203-42b883?style=for-the-badge&logo=vue.js&logoColor=white" alt="Vue 3" /></a>
@@ -201,7 +329,6 @@ flowchart TB
 <a href="#"><img src="https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind" /></a>
 <a href="#"><img src="https://img.shields.io/badge/shadcn--vue-18181B?style=for-the-badge" alt="shadcn-vue" /></a>
 <a href="#"><img src="https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=18181B" alt="Pinia" /></a>
-<a href="#"><img src="https://img.shields.io/badge/Axios-5A29E4?style=for-the-badge&logo=axios&logoColor=white" alt="Axios" /></a>
 
 **测试**
 <a href="#"><img src="https://img.shields.io/badge/pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="pytest" /></a>
@@ -209,51 +336,51 @@ flowchart TB
 <a href="#"><img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright" /></a>
 <a href="#"><img src="https://img.shields.io/badge/axe--core-30009F?style=for-the-badge" alt="axe" /></a>
 
-**基础设施**
-<a href="#"><img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" /></a>
-<a href="#"><img src="https://img.shields.io/badge/SSE-2E2E2E?style=for-the-badge" alt="SSE" /></a>
-<a href="#"><img src="https://img.shields.io/badge/port%208002-2E2E2E?style=for-the-badge" alt="port 8002" /></a>
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 仓库布局
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; AI 提供商
 
-```
-Spotlight/
-├── backend/                    # FastAPI — 六边形 / 整洁架构
-│   ├── app/
-│   │   ├── application/        # commands · queries · handlers（用例）
-│   │   ├── domain/             # 纯实体、值对象、端口
-│   │   ├── infrastructure/     # 适配器：k8s, db, 日志, LLM, auth
-│   │   ├── interface/api/      # FastAPI 路由 / DTO
-│   │   └── main.py             # app factory + lifespan
-│   ├── tests/                  # pytest —— 单元 + 集成
-│   └── requirements.txt
-├── frontend/                   # Vue 3 + Vite + Tailwind + shadcn-vue
-│   ├── src/
-│   │   ├── components/         # ui/, layout/, common/, pod/, dashboard/, log/, ai/
-│   │   ├── views/              # 8 个页面（Login, Dashboard, Pods, PodDetail, …）
-│   │   ├── stores/             # Pinia
-│   │   ├── api/                # axios + openapi-typescript 生成的客户端
-│   │   └── styles/             # 设计 token
-│   └── package.json
-├── assets/                     # 品牌 banner / mark / README 截图
-├── docs/                       # 本地草稿与迭代——不纳入 git
-├── LICENSE                     # MIT
-├── README.md  ·  README.zh-CN.md
-└── ...                         # 配置与工具链
-```
+底层是 **LiteLLM**——一个环境变量就能切，模型在 UI 里换。
+
+| 提供商 | `AI_PROVIDER=` | 在环境变量里 |
+|---|---|---|
+| **OpenAI** | `openai` | `OPENAI_API_KEY` |
+| **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` |
+| **Azure OpenAI** | `azure` | `AZURE_API_KEY` · `AZURE_API_BASE` · `AZURE_API_VERSION` |
+| **AWS Bedrock** | `bedrock` | `AWS_ACCESS_KEY_ID` · `AWS_REGION` |
+| **Google Gemini / Vertex** | `gemini` / `vertex` | `GEMINI_API_KEY` / `VERTEX_PROJECT` |
+| **Ollama（本地）** | `ollama` | `OLLAMA_API_BASE=http://host:11434` |
+| **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` |
+| **任何兼容 OpenAI 的 API** | `custom` | `AI_API_BASE` · `AI_API_KEY` |
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
 ## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 路线图
 
-- [x] **v2.0** — 多集群 kubeconfig · SSE 实时日志 · LiteLLM · Appica UI v6 · 六边形后端。
-- [ ] **v2.1** — Helm chart 部署 · 单二进制模式 · SQLite → Postgres 平滑迁移。
-- [ ] **v2.2** — RBAC 视图 · 多用户会话隔离 · 审计日志 UI。
-- [ ] **v3.0** — 插件 SDK（第三方 LLM 分析器、自定义日志解析器）· **只读公开分享**链接。
+- [x] <sub>`v2.0`</sub> &nbsp; **当前** — 多集群 kubeconfig · SSE 实时日志 · LiteLLM · Appica UI v6 · 六边形后端。
+- [ ] <sub>`v2.1`</sub> &nbsp; Helm chart 部署 · 单二进制模式 · SQLite → Postgres 平滑迁移。
+- [ ] <sub>`v2.2`</sub> &nbsp; RBAC 视图 · 多用户会话隔离 · 审计日志 UI。
+- [ ] <sub>`v3.0`</sub> &nbsp; 插件 SDK（第三方 LLM 分析器、自定义日志解析器）· **只读公开分享**链接。
 
 > 如果某条对你重要，开个 Discussion——路线图是按真实使用塑形的。
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
@@ -264,12 +391,10 @@ Spotlight/
 ```bash
 git clone https://github.com/<you>/Spotlight.git && cd Spotlight
 
-# 后端
 cd backend && source .venv/bin/activate
 pip install -r requirements.txt
 pytest -q
 
-# 前端
 cd ../frontend && pnpm install
 pnpm test           # Vitest —— 单元
 pnpm test:e2e       # Playwright —— 浏览器
@@ -280,47 +405,97 @@ pnpm test:e2e       # Playwright —— 浏览器
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 健康检查
-
-```
-GET /healthz
-{ "status": "ok" }
-```
-
-OpenAPI 规范在 `GET /openapi.json` · Swagger UI 在 `/docs`。
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; Star 历史
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 仓库布局
 
-<a href="https://star-history.com/#anomalyco/Spotlight&Timeline">
+```
+Spotlight/
+├── backend/                   FastAPI · 六边形 / 整洁架构
+│   ├── app/
+│   │   ├── application/       commands · queries · handlers（用例）
+│   │   ├── domain/            实体 · 值对象 · 端口
+│   │   ├── infrastructure/    适配器：k8s, db, 日志, LLM, auth
+│   │   ├── interface/api/     FastAPI 路由 / DTO
+│   │   └── main.py
+│   ├── tests/                 pytest —— 单元 + 集成
+│   └── requirements.txt
+├── frontend/                  Vue 3 + Vite + Tailwind + shadcn-vue
+│   ├── src/
+│   │   ├── components/        ui/, layout/, common/, pod/, dashboard/, log/, ai/
+│   │   ├── views/             8 个页面（Login, Dashboard, Pods, PodDetail, Nodes, …）
+│   │   ├── stores/            Pinia
+│   │   ├── api/               axios + openapi-typescript 生成的客户端
+│   │   └── styles/            设计 token
+│   └── package.json
+├── assets/                    品牌 banner / mark / divider / README 截图
+├── LICENSE                    MIT
+├── README.md  ·  README.zh-CN.md
+└── …                          配置与工具链
+```
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 赞助
+
+Spotlight 是 MIT 协议，人人免费。如果它在凌晨两点救过你的命，而你想支持一把开发节奏，欢迎任何额度的赞助。
+
+> **[在 GitHub 上赞助](https://github.com/sponsors/anomalyco)** &nbsp;·&nbsp; 一次性或月度，随你。
+
+<br/>
+
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
+
+<br/>
+
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; ⭐ Star 历史
+
+<a href="https://star-history.com/#anomalyco/Spotlight&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Timeline&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Timeline" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Timeline" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=anomalyco/Spotlight&type=Date" />
   </picture>
 </a>
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 许可证
-
-[MIT](./LICENSE)——随便用，保留版权就行。
+<p align="center">
+  <img src="assets/divider.svg" alt="" width="200" />
+</p>
 
 <br/>
 
-## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 致谢
+## <img src="assets/logo-mark.svg" alt="" width="22" align="absmiddle" /> &nbsp; 许可证 · 致谢
 
-Spotlight 站在一个巨大的开源生态肩上。依赖图里出现最多的名字：**FastAPI**、**Pydantic**、**SQLAlchemy**、**LiteLLM**、**kubernetes-python**、**Vue 3**、**Vite**、**Tailwind CSS**、**shadcn-vue**、**Radix Vue**、**Pinia**、**Lucide**、**Axios**、**Playwright**、**Vitest**、**pytest**、**structlog**。
+[MIT](./LICENSE)——随便用，保留版权就行。
+
+Spotlight 站在这些肩膀上：**FastAPI**、**Pydantic**、**SQLAlchemy**、**LiteLLM**、**kubernetes-python**、**Vue 3**、**Vite**、**Tailwind CSS**、**shadcn-vue**、**Radix Vue**、**Pinia**、**Lucide**、**Axios**、**Playwright**、**Vitest**、**pytest**、**structlog**。
 
 <br/>
 
 <div align="center">
 
-<img src="assets/logo-mark.svg" alt="" width="36" />
+<img src="assets/logo-mark.svg" alt="" width="44" />
 
-<br/>
+<br/><br/>
 
-<sub>Spotlight · 给已经会 kubectl 的人。</sub>
+<sub>Spotlight · 给已经会 <code>kubectl</code> 的人。</sub>
+
+<br/><br/>
+
+<sub>📚 &nbsp; 文档 · 🐛 &nbsp; 问题 · 💬 &nbsp; 讨论 · 📦 &nbsp; 发布 · ❤️ &nbsp; 赞助</sub>
 
 </div>
