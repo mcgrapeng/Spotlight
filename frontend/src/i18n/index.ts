@@ -2,12 +2,11 @@
  * Locale resolution + vue-i18n instance.
  *
  * Kept free of component imports so it can be unit-tested without mounting.
- * The dayjs handoff arrives in Task 2 — `setDayjsLocale` is imported there,
- * not here, so this file compiles standalone.
  */
 import { createI18n } from 'vue-i18n'
 import type { I18n } from 'vue-i18n'
 import { STORAGE_KEYS } from '@/storage-keys'
+import { setDayjsLocale } from '@/utils/dayjs'
 import { isLocale, type Locale } from './types'
 import zhCN from './locales/zh-CN'
 import en from './locales/en'
@@ -66,9 +65,10 @@ export function getI18n(): SpotlightI18n {
   return instance
 }
 
-/** Switch locale and persist the choice. Dayjs follows in Task 2. */
-export function setLocale(l: Locale): void {
+/** Switch locale, persist it, and hand off to dayjs. */
+export async function setLocale(l: Locale): Promise<void> {
   const i18n = getI18n()
   i18n.global.locale.value = l
   localStorage.setItem(STORAGE_KEYS.appLocale, l)
+  await setDayjsLocale(l)
 }
