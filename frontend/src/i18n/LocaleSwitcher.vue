@@ -15,7 +15,13 @@ const LABELS: Record<Locale, string> = {
 async function pick(l: Locale) {
   // Must await: `setLocale` hands off to dayjs after a microtask, so an
   // un-awaited call would paint one frame of stale-language timestamps.
-  await setLocale(l)
+  //
+  // Best-effort, guarded exactly like the boot-time call in `main.ts`: the
+  // `en-US` loader is a code-split `import()`, and a chunk failure leaves
+  // `dayjs.locale()` unrun — `fromNow()` would keep rendering Chinese under
+  // English UI text. An unguarded rejection would instead reach Vue's async
+  // error handling and surface as an unhandled rejection.
+  await setLocale(l).catch(() => {})
 }
 </script>
 
