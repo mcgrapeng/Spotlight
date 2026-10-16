@@ -14,15 +14,20 @@ import type { DashboardOut } from '@/api/types'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import dayjs from '@/utils/dayjs'
+import { useI18n } from 'vue-i18n'
 
 // ponytail: formatRel memoized per 60s bucket — events page renders 500 rows
 // each parsing dayjs. Bucket keeps the string identical between rows on the
 // same minute so 500 calls in 1s = 1 dayjs() + 500 Map hits.
+// Locale is part of the key: a language switch must invalidate cached strings,
+// and reading `locale.value` here is also what makes the computeds that call
+// formatRel depend on it, so they re-render on switch.
+const { locale } = useI18n()
 const _relCache = new Map<string, string>()
 function formatRel(iso: string | null) {
   if (!iso) return '—'
   const bucket = Math.floor(Date.now() / 60_000)
-  const key = `${bucket}:${iso}`
+  const key = `${locale.value}:${bucket}:${iso}`
   let v = _relCache.get(key)
   if (v === undefined) {
     v = dayjs(iso).fromNow()
