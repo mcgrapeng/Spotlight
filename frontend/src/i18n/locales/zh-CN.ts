@@ -48,7 +48,7 @@ export default {
   },
   select: {
     placeholder: '请选择',
-    search: '搜索{label}…',
+    search: '搜索 {label}…',
     empty: '没有匹配项',
   },
   palette: {
