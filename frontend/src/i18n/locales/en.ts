@@ -1,1 +1,26 @@
-export default {}
+export default {
+  nav: {
+    dashboard: 'Overview',
+    pods: 'Pods',
+    nodes: 'Nodes',
+    events: 'Events',
+    favorites: 'Favorites',
+    ai: 'AI Models',
+    settings: 'Settings',
+    main: 'Main navigation',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
+    tagline: 'Cluster Cockpit',
+  },
+  route: {
+    login: 'Sign in',
+    dashboard: 'Overview',
+    pods: 'Pods',
+    podDetail: 'Pod detail',
+    nodes: 'Nodes',
+    events: 'Events',
+    favorites: 'Favorites',
+    ai: 'AI Models',
+    settings: 'Settings',
+  },
+}

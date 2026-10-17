@@ -1,1 +1,26 @@
-export default {}
+export default {
+  nav: {
+    dashboard: '总览',
+    pods: 'Pods',
+    nodes: 'Nodes',
+    events: 'Events',
+    favorites: '收藏夹',
+    ai: 'AI 模型',
+    settings: '设置',
+    main: '主导航',
+    collapseSidebar: '收起侧边栏',
+    expandSidebar: '展开侧边栏',
+    tagline: '集群驾驶舱',
+  },
+  route: {
+    login: '登录',
+    dashboard: '总览',
+    pods: 'Pods',
+    podDetail: 'Pod 详情',
+    nodes: 'Nodes',
+    events: 'Events',
+    favorites: '收藏夹',
+    ai: 'AI 模型',
+    settings: '设置',
+  },
+}

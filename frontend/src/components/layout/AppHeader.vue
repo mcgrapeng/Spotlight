@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { Menu } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/utils'
+import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import LogoMark from '@/components/common/LogoMark.vue'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
 import NamespaceCombobox from '@/components/common/NamespaceCombobox.vue'
+
+const { t } = useI18n()
 
 defineEmits<{
   'open-mobile-menu': []
@@ -37,7 +41,7 @@ defineEmits<{
       </span>
       <span class="hidden sm:flex flex-col leading-none">
         <span class="text-sm font-semibold tracking-tight text-foreground">Spotlight</span>
-        <span class="text-2xs font-medium tracking-wide text-muted-foreground mt-0.5">集群驾驶舱</span>
+        <span class="text-2xs font-medium tracking-wide text-muted-foreground mt-0.5">{{ t('nav.tagline') }}</span>
       </span>
     </router-link>
 
@@ -45,6 +49,8 @@ defineEmits<{
       <ClusterCombobox />
       <NamespaceCombobox />
     </div>
+
+    <LocaleSwitcher />
 
     <div class="flex-1" />
   </div>

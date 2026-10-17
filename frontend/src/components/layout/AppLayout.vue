@@ -2,12 +2,14 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
+import { useI18n } from 'vue-i18n'
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
 import MobileDrawer from './MobileDrawer.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { STORAGE_KEYS } from '@/storage-keys'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 // ponytail: key on path (not fullPath) — query changes (e.g. ?search=foo → ?search=bar)
@@ -84,14 +86,14 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKey))
         v-if="!isMobile"
         class="shrink-0 border-r border-sidebar-border bg-sidebar transition-[width] duration-200 overflow-hidden"
         :class="collapsed ? 'w-16' : 'w-[200px]'"
-        aria-label="主导航"
+        :aria-label="t('nav.main')"
       >
         <nav
           v-if="!isMobile"
           id="sidebar-nav"
           tabindex="-1"
           class="h-full focus:outline-none"
-          aria-label="主导航"
+          :aria-label="t('nav.main')"
         >
           <AppSidebar :collapsed="collapsed" @toggle-sidebar="toggleCollapsed" />
         </nav>

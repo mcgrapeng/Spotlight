@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
   PanelLeftClose, PanelLeftOpen,
@@ -20,6 +21,7 @@ defineEmits<{
   'toggle-sidebar': []
 }>()
 
+const { t } = useI18n()
 const route = useRoute()
 const cluster = useClusterStore()
 const eventBadge = ref<number>(0)
@@ -76,12 +78,12 @@ watch(() => cluster.activeCluster, refreshEventBadge)
 watch(() => cluster.activeNamespace, refreshEventBadge)
 
 const navItems = computed(() => [
-  { path: '/dashboard', label: '总览',    icon: LayoutDashboard, badge: 0 },
-  { path: '/pods',      label: 'Pods',    icon: Box, badge: 0 },
-  { path: '/nodes',     label: 'Nodes',   icon: Server, badge: 0 },
-  { path: '/events',    label: 'Events',  icon: Activity, badge: eventBadge.value },
-  { path: '/favorites', label: '收藏夹',  icon: Star, badge: 0 },
-  { path: '/ai',        label: 'AI 模型', icon: Sparkles, badge: 0 },
+  { path: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, badge: 0 },
+  { path: '/pods',      label: t('nav.pods'),      icon: Box,        badge: 0 },
+  { path: '/nodes',     label: t('nav.nodes'),     icon: Server,     badge: 0 },
+  { path: '/events',    label: t('nav.events'),    icon: Activity,   badge: eventBadge.value },
+  { path: '/favorites', label: t('nav.favorites'), icon: Star,       badge: 0 },
+  { path: '/ai',        label: t('nav.ai'),        icon: Sparkles,   badge: 0 },
 ])
 
 const isActive = (path: string) =>
@@ -89,7 +91,7 @@ const isActive = (path: string) =>
 </script>
 
 <template>
-  <nav class="flex flex-col h-full py-3" aria-label="主导航">
+  <nav class="flex flex-col h-full py-3" :aria-label="t('nav.main')">
     <div class="flex-1 px-2 flex flex-col gap-0.5">
       <router-link
         v-for="item in navItems"
@@ -142,7 +144,7 @@ const isActive = (path: string) =>
         :aria-current="isActive('/settings') ? 'page' : undefined"
       >
         <Settings :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
-        <span v-if="!props.collapsed">设置</span>
+        <span v-if="!props.collapsed">{{ t('nav.settings') }}</span>
       </router-link>
       <!-- ponytail: 折叠按钮贴在 sidebar 自己身上 —— 视觉归属清晰，logo 不被抢位 -->
       <button
@@ -152,13 +154,13 @@ const isActive = (path: string) =>
           'hover:bg-sidebar-accent text-sidebar-foreground',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
-        :aria-label="props.collapsed ? '展开侧边栏' : '收起侧边栏'"
-        :title="props.collapsed ? '展开侧边栏' : '收起侧边栏'"
+        :aria-label="props.collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
+        :title="props.collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
         @click="$emit('toggle-sidebar')"
       >
         <PanelLeftOpen v-if="props.collapsed" :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <PanelLeftClose v-else :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
-        <span v-if="!props.collapsed">收起侧边栏</span>
+        <span v-if="!props.collapsed">{{ t('nav.collapseSidebar') }}</span>
       </button>
     </div>
   </nav>
