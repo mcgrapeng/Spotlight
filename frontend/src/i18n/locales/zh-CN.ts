@@ -11,6 +11,11 @@ export default {
     collapseSidebar: '收起侧边栏',
     expandSidebar: '展开侧边栏',
     tagline: '集群驾驶舱',
+    skipToContent: '跳到主内容',
+    skipToNav: '跳到导航',
+    openMenu: '打开菜单',
+    home: 'Spotlight 首页',
+    drawerTitle: '导航菜单',
   },
   route: {
     login: '登录',

@@ -11,6 +11,11 @@ export default {
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
     tagline: 'Cluster Cockpit',
+    skipToContent: 'Skip to main content',
+    skipToNav: 'Skip to navigation',
+    openMenu: 'Open menu',
+    home: 'Spotlight home',
+    drawerTitle: 'Navigation menu',
   },
   route: {
     login: 'Sign in',

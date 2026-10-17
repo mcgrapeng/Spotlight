@@ -31,7 +31,7 @@ function onOpenChange(open: boolean) {
       class="w-[280px] p-0 sm:max-w-[280px]"
     >
       <SheetHeader class="sr-only">
-        <SheetTitle>导航菜单</SheetTitle>
+        <SheetTitle>{{ t('nav.drawerTitle') }}</SheetTitle>
         <SheetDescription>{{ t('nav.main') }}</SheetDescription>
       </SheetHeader>
       <AppSidebar :collapsed="false" @navigate="emit('close')" />
