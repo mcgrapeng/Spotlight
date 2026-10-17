@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Check, ChevronsUpDown } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -10,6 +11,8 @@ export interface AppSelectOption {
   label: string
   hint?: string | null
 }
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -24,7 +27,7 @@ const props = withDefaults(
     leadingIcon?: Component
     class?: string
   }>(),
-  { placeholder: '请选择', size: 'md' },
+  { size: 'md' },
 )
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -69,7 +72,7 @@ function pick(o: AppSelectOption) {
           aria-hidden="true"
         />
         <span class="truncate" :class="selected ? '' : 'text-muted-foreground'">
-          {{ selected?.label ?? placeholder }}
+          {{ selected?.label ?? placeholder ?? t('select.placeholder') }}
         </span>
         <ChevronsUpDown
           :size="size === 'sm' ? 11 : 14"
@@ -84,9 +87,9 @@ function pick(o: AppSelectOption) {
       class="w-[var(--reka-popper-anchor-width)] min-w-[160px] p-0"
     >
       <Command :model-value="String(modelValue ?? '')">
-        <CommandInput :placeholder="`搜索${ariaLabel ? ' ' + ariaLabel : ''}…`" />
+        <CommandInput :placeholder="t('select.search', { label: ariaLabel ?? '' })" />
         <CommandList>
-          <CommandEmpty>没有匹配项</CommandEmpty>
+          <CommandEmpty>{{ t('select.empty') }}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="o in options"

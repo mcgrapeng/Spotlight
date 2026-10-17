@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useMagicKeys, whenever } from '@vueuse/core'
 import {
   CommandDialog, CommandInput, CommandList,
@@ -13,6 +14,7 @@ import {
 } from '@lucide/vue'
 import { isTypingTarget } from '@/composables/useKeyboardShortcuts'
 
+const { t } = useI18n()
 const router = useRouter()
 const open = ref(false)
 const shortcutsOpen = ref(false)
@@ -29,50 +31,52 @@ whenever(shiftSlash, () => {
 })
 
 // ponytail: 补全中英文双向 keywords，让中文用户能搜出、英文也能搜出 (Audit §2.4)
-const navItems = [
-  { path: '/dashboard',  label: '总览',    icon: LayoutDashboard, keywords: ['dashboard', 'overview', '总览', '首页', 'home'] },
-  { path: '/pods',       label: 'Pods',    icon: Box,             keywords: ['pod', 'pods', '容器', 'workload', 'deployment'] },
-  { path: '/nodes',      label: 'Nodes',   icon: Server,          keywords: ['node', 'nodes', '节点', '机器', 'host'] },
-  { path: '/events',     label: 'Events',  icon: Activity,        keywords: ['event', 'events', '事件', '告警', 'warning'] },
-  { path: '/favorites',  label: '收藏夹',  icon: Star,            keywords: ['favorite', 'favorites', '收藏', '书签', 'bookmark'] },
-  { path: '/ai',         label: 'AI 模型', icon: Sparkles,        keywords: ['ai', 'model', 'llm', 'openai', 'anthropic', '设置', 'provider'] },
-  { path: '/settings',   label: '设置',    icon: Settings,        keywords: ['setting', 'settings', '配置', 'preferences', 'preference'] },
-]
+// label 是 chrome，跟随语言；keywords 是搜索索引，刻意保持双语不翻译 —— 否则英文界面
+// 下中文用户（或反过来）就搜不到任何入口。
+const navItems = computed(() => [
+  { path: '/dashboard',  label: t('nav.dashboard'), icon: LayoutDashboard, keywords: ['dashboard', 'overview', '总览', '首页', 'home'] },
+  { path: '/pods',       label: t('nav.pods'),      icon: Box,             keywords: ['pod', 'pods', '容器', 'workload', 'deployment'] },
+  { path: '/nodes',      label: t('nav.nodes'),     icon: Server,          keywords: ['node', 'nodes', '节点', '机器', 'host'] },
+  { path: '/events',     label: t('nav.events'),    icon: Activity,        keywords: ['event', 'events', '事件', '告警', 'warning'] },
+  { path: '/favorites',  label: t('nav.favorites'), icon: Star,            keywords: ['favorite', 'favorites', '收藏', '书签', 'bookmark'] },
+  { path: '/ai',         label: t('nav.ai'),        icon: Sparkles,        keywords: ['ai', 'model', 'llm', 'openai', 'anthropic', '设置', 'provider'] },
+  { path: '/settings',   label: t('nav.settings'),  icon: Settings,        keywords: ['setting', 'settings', '配置', 'preferences', 'preference'] },
+])
 
-const actions = [
+const actions = computed(() => [
   {
     id: 'refresh',
-    label: '刷新当前页面',
+    label: t('palette.actions.refresh'),
     icon: RefreshCw,
     action: () => window.location.reload(),
     keywords: ['refresh', 'reload', '刷新', '重载'],
   },
   {
     id: 'ai',
-    label: '打开 AI 助手',
+    label: t('palette.actions.ai'),
     icon: Bot,
     action: () => router.push('/ai'),
     keywords: ['ai', 'assistant', '助手', '分析'],
   },
   {
     id: 'shortcuts',
-    label: '显示快捷键面板',
+    label: t('palette.actions.shortcuts'),
     icon: Keyboard,
     action: () => { shortcutsOpen.value = true },
     keywords: ['shortcuts', 'hotkeys', '快捷键', '?'],
   },
-]
+])
 
-const shortcuts = [
-  { combo: '⌘ K / Ctrl K', desc: '打开命令面板' },
-  { combo: 'g d / p / n / e / f / a', desc: '快速跳转（总览/Pods/Nodes/Events/Favorites/AI）' },
-  { combo: '? (Shift+/)', desc: '显示快捷键面板' },
-  { combo: '/', desc: 'LogViewer 聚焦搜索' },
-  { combo: 'k / K', desc: 'LogViewer 暂停/继续流' },
-  { combo: 'l / L', desc: 'LogViewer 切换自动跟随' },
-  { combo: 'c', desc: 'LogViewer 复制全部' },
-  { combo: '⌘ F', desc: 'LogViewer 搜索（保留原生行为）' },
-]
+const shortcuts = computed(() => [
+  { combo: '⌘ K / Ctrl K', desc: t('palette.shortcuts.openPalette') },
+  { combo: 'g d / p / n / e / f / a', desc: t('palette.shortcuts.quickNav') },
+  { combo: '? (Shift+/)', desc: t('palette.shortcuts.showPanel') },
+  { combo: '/', desc: t('palette.shortcuts.focusSearch') },
+  { combo: 'k / K', desc: t('palette.shortcuts.pauseStream') },
+  { combo: 'l / L', desc: t('palette.shortcuts.toggleFollow') },
+  { combo: 'c', desc: t('palette.shortcuts.copyAll') },
+  { combo: '⌘ F', desc: t('palette.shortcuts.searchNative') },
+])
 
 function go(path: string) {
   router.push(path)
@@ -92,11 +96,11 @@ defineExpose({
 
 <template>
   <CommandDialog v-model:open="open">
-    <CommandInput placeholder="输入命令、页面或操作…" />
+    <CommandInput :placeholder="t('palette.placeholder')" />
     <CommandList>
-      <CommandEmpty>未找到结果。</CommandEmpty>
+      <CommandEmpty>{{ t('palette.noResults') }}</CommandEmpty>
 
-      <CommandGroup heading="导航">
+      <CommandGroup :heading="t('palette.navGroup')">
         <CommandItem
           v-for="item in navItems"
           :key="item.path"
@@ -111,7 +115,7 @@ defineExpose({
 
       <CommandSeparator />
 
-      <CommandGroup heading="操作">
+      <CommandGroup :heading="t('palette.actionsGroup')">
         <CommandItem
           v-for="action in actions"
           :key="action.id"
@@ -125,10 +129,10 @@ defineExpose({
     </CommandList>
     <!-- ponytail: footer 显示快捷键提示，让命令面板在第一次打开就有"专业工具"的感觉 -->
     <div class="border-t border-border px-3 py-2 flex items-center gap-3 text-2xs text-muted-foreground">
-      <span><kbd class="font-mono">↑↓</kbd> 选择</span>
-      <span><kbd class="font-mono">⏎</kbd> 打开</span>
-      <span><kbd class="font-mono">esc</kbd> 关闭</span>
-      <span class="ml-auto"><kbd class="font-mono">?</kbd> 全部快捷键</span>
+      <span><kbd class="font-mono">↑↓</kbd> {{ t('palette.footer.select') }}</span>
+      <span><kbd class="font-mono">⏎</kbd> {{ t('palette.footer.open') }}</span>
+      <span><kbd class="font-mono">esc</kbd> {{ t('palette.footer.close') }}</span>
+      <span class="ml-auto"><kbd class="font-mono">?</kbd> {{ t('palette.footer.allShortcuts') }}</span>
     </div>
   </CommandDialog>
 
@@ -137,7 +141,7 @@ defineExpose({
     <DialogContent class="sm:max-w-md">
       <DialogTitle class="flex items-center gap-2">
         <Keyboard :size="14" :stroke-width="1.75" />
-        快捷键
+        {{ t('palette.shortcutsTitle') }}
       </DialogTitle>
       <dl class="space-y-2">
         <div v-for="s in shortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Check, ChevronsUpDown, Server } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from '@/components/ui/command'
 import { useClusterStore } from '@/stores/cluster'
 
+const { t } = useI18n()
 const cluster = useClusterStore()
 const open = ref(false)
 
@@ -13,14 +15,14 @@ const value = computed(() => cluster.activeCluster ?? '')
 const label = computed(() => {
   const cur = cluster.currentCluster
   if (cur) return cur.name
-  return value.value || '选择集群'
+  return value.value || t('cluster.select')
 })
 
 const options = computed(() =>
   cluster.clusters.map((c) => ({
     value: c.name,
     label: c.name,
-    hint: c.is_current ? 'current' : null,
+    hint: c.is_current ? t('cluster.hintCurrent') : null,
   })),
 )
 
@@ -41,7 +43,7 @@ async function selectCluster(name: string) {
         type="button"
         role="combobox"
         :aria-expanded="open"
-        aria-label="选择集群"
+        :aria-label="t('cluster.select')"
         :class="cn(
           'inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm',
           'hover:bg-accent hover:text-accent-foreground transition-colors',
@@ -56,9 +58,9 @@ async function selectCluster(name: string) {
     </PopoverTrigger>
     <PopoverContent class="w-[260px] p-0" align="start">
       <Command :model-value="value">
-        <CommandInput placeholder="搜索集群…" />
+        <CommandInput :placeholder="t('cluster.search')" />
         <CommandList>
-          <CommandEmpty>没有匹配的集群</CommandEmpty>
+          <CommandEmpty>{{ t('cluster.empty') }}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="opt in options"
