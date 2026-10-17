@@ -16,11 +16,10 @@ async function pick(l: Locale) {
   // Must await: `setLocale` hands off to dayjs after a microtask, so an
   // un-awaited call would paint one frame of stale-language timestamps.
   //
-  // Best-effort, guarded exactly like the boot-time call in `main.ts`: the
-  // `en-US` loader is a code-split `import()`, and a chunk failure leaves
-  // `dayjs.locale()` unrun — `fromNow()` would keep rendering Chinese under
-  // English UI text. An unguarded rejection would instead reach Vue's async
-  // error handling and surface as an unhandled rejection.
+  // The `.catch()` mirrors the boot-time call in `main.ts` and is
+  // belt-and-braces — both locales are statically registered, so nothing here can
+  // reject today. It stays so that a future async loader surfaces as a no-op
+  // instead of an unhandled rejection through Vue's async error handling.
   await setLocale(l).catch(() => {})
 }
 </script>

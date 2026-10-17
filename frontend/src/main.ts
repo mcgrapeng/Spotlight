@@ -14,10 +14,11 @@ app.use(router)
 
 // The active dayjs locale must be settled before the first paint — views render
 // `fromNow()` synchronously, and switching language after mount would show one
-// frame of stale-language timestamps. Best-effort though: this awaits a
-// dynamically-imported chunk, and an unguarded rejection would abort module
-// evaluation and leave a permanently blank page. dayjs statically registers
-// zh-cn at import, so a failed chunk degrades to Chinese timestamps, not a dead app.
+// frame of stale-language timestamps. Both locales are registered statically, so
+// this await never waits on a chunk. The `.catch()` is belt-and-braces for a
+// future locale that needs one — but read `utils/dayjs.ts` before adding it:
+// `.catch()` guards a rejection, not a promise that never settles, and a locale
+// loader that hangs here gates `app.mount()` and blanks the page for everyone.
 await setDayjsLocale(i18n.global.locale.value as Locale).catch(() => {})
 
 app.mount('#app')
