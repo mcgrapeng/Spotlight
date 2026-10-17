@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Plus, Star, Trash2, Pencil, AlertTriangle } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
 import { useResource } from '@/composables/useResource'
@@ -12,6 +13,8 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import AIProviderForm from '@/components/ai/AIProviderForm.vue'
 import type { AIProviderOut, AIProviderIn } from '@/api/types'
+
+const { t } = useI18n()
 
 // Ponytail: 把 load() + onMounted 替换成 useResource,模板只读 `providers.length`
 // → 用 computed 派生,避免每次 reactive 触发时全数组铺平。
@@ -73,23 +76,27 @@ async function setDefault(p: AIProviderOut) {
 </script>
 
 <template>
-  <PageHeader title="AI 模型" subtitle="通过 LiteLLM 统一适配 OpenAI / Anthropic / Azure / Gemini / Ollama / DeepSeek 等">
+  <PageHeader :title="t('route.ai')" :subtitle="t('ai.subtitle')">
     <template #actions>
       <Button @click="openCreate">
         <Plus :size="14" :stroke-width="1.75" class="mr-1" />
-        添加 Provider
+        {{ t('ai.addTitle') }}
       </Button>
     </template>
     <template #extra>
       <p class="text-2xs text-muted-foreground">
-        系统限制同时只能启用一个模型：启用新的 Provider 前需先禁用当前启用的。
+        {{ t('ai.oneEnabledHint') }}
       </p>
     </template>
   </PageHeader>
 
   <LoadingState v-if="loading && providers.length === 0" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
-  <EmptyState v-else-if="providers.length === 0" title="没有 Provider" description="点击右上角添加" />
+  <EmptyState
+    v-else-if="providers.length === 0"
+    :title="t('ai.emptyTitle')"
+    :description="t('ai.emptyDescription')"
+  />
 
   <div v-else class="space-y-3">
     <Card v-for="p in providers" :key="p.id" class="p-0">
@@ -99,14 +106,14 @@ async function setDefault(p: AIProviderOut) {
             v-if="p.enabled"
             class="inline-flex items-center rounded px-2 py-0.5 text-2xs font-semibold bg-success-bg text-success border border-success-border"
           >
-            已启用
+            {{ t('ai.enabled') }}
           </span>
           <span
             v-if="p.is_default"
             class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold bg-foreground text-background"
           >
             <Star :size="10" :stroke-width="1.75" fill="currentColor" />
-            默认
+            {{ t('ai.isDefault') }}
           </span>
           <span class="font-mono text-sm font-semibold">{{ p.name }}</span>
           <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{{ p.provider }}</span>
@@ -115,12 +122,12 @@ async function setDefault(p: AIProviderOut) {
         </div>
         <div class="flex gap-1 mt-3 justify-end">
           <Button v-if="!p.is_default" variant="ghost" size="sm" @click="setDefault(p)">
-            设为默认
+            {{ t('ai.setDefault') }}
           </Button>
-          <Button variant="ghost" size="sm" @click="openEdit(p)" aria-label="编辑">
+          <Button variant="ghost" size="sm" @click="openEdit(p)" :aria-label="t('ai.edit')">
             <Pencil :size="12" :stroke-width="1.75" />
           </Button>
-          <Button variant="ghost" size="sm" @click="requestRemove(p)" aria-label="删除">
+          <Button variant="ghost" size="sm" @click="requestRemove(p)" :aria-label="t('ai.delete')">
             <Trash2 :size="12" :stroke-width="1.75" />
           </Button>
         </div>
@@ -140,18 +147,20 @@ async function setDefault(p: AIProviderOut) {
         <span class="inline-flex items-center justify-center size-9 rounded-md shrink-0 bg-error/10 text-error">
           <AlertTriangle :size="16" :stroke-width="1.75" aria-hidden="true" />
         </span>
-        删除 Provider？
+        {{ t('ai.deleteTitle') }}
       </DialogTitle>
-      <p class="text-sm text-muted-foreground">
-        将删除 <span class="font-mono text-foreground">{{ deleteConfirm?.name }}</span>。已使用此 Provider 的 AI 分析记录不会被清理，但新增分析将无法选择它。此操作不可撤销。
-      </p>
+      <i18n-t keypath="ai.deleteDescription" tag="p" class="text-sm text-muted-foreground">
+        <template #name>
+          <span class="font-mono text-foreground">{{ deleteConfirm?.name }}</span>
+        </template>
+      </i18n-t>
       <div class="mt-3 flex justify-end gap-2">
         <Button variant="outline" size="sm" :disabled="deleting" @click="deleteConfirm = null">
-          取消
+          {{ t('ai.cancel') }}
         </Button>
         <Button variant="destructive" size="sm" :disabled="deleting" @click="confirmRemove">
           <Trash2 :size="14" :stroke-width="1.75" class="mr-1" />
-          {{ deleting ? '删除中…' : '删除' }}
+          {{ deleting ? t('ai.deleting') : t('ai.delete') }}
         </Button>
       </div>
     </DialogContent>

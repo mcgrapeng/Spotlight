@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { KeyRound, LogIn, Loader2, Server } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +14,7 @@ import type { ProviderField } from '@/api/endpoints'
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const username = ref('')
 // One reactive bag per field, named by f.name — empty string default so the
@@ -97,7 +99,7 @@ async function submitPick() {
             <LogoMark :size="36" />
           </div>
           <h1 class="text-2xl font-bold tracking-tight">Spotlight</h1>
-          <p class="text-sm text-muted-foreground mt-1">集群驾驶舱</p>
+          <p class="text-sm text-muted-foreground mt-1">{{ t('nav.tagline') }}</p>
           <p
             v-if="auth.status?.session?.username"
             class="mt-2 text-2xs text-muted-foreground font-mono break-all"
@@ -114,14 +116,14 @@ async function submitPick() {
         >
           <div>
             <label class="text-sm font-medium mb-1.5 block" for="login-user">
-              用户名
+              {{ t('login.username') }}
             </label>
             <Input
               id="login-user"
               v-model="username"
               type="text"
               autocomplete="username"
-              placeholder="Teleport / API 用户名"
+              :placeholder="t('login.usernamePlaceholder')"
               :disabled="auth.busy"
               required
             />
@@ -135,7 +137,7 @@ async function submitPick() {
               <span
                 v-if="!f.required"
                 class="text-xs font-normal text-muted-foreground ml-1"
-              >(可选)</span>
+              >{{ t('login.optional') }}</span>
             </label>
             <div :class="f.type === 'otp' ? 'relative' : ''">
               <KeyRound
@@ -156,7 +158,7 @@ async function submitPick() {
                 :class="f.type === 'otp' ? 'pl-8' : ''"
                 :disabled="auth.busy"
                 :required="f.required"
-                :placeholder="f.type === 'otp' ? '例如 123456' : ''"
+                :placeholder="f.type === 'otp' ? t('login.otpPlaceholder') : ''"
               />
             </div>
           </div>
@@ -167,7 +169,7 @@ async function submitPick() {
           <Button type="submit" class="w-full" :disabled="auth.busy">
             <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
             <LogIn v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
-            {{ auth.busy ? '登录中…' : '登录' }}
+            {{ auth.busy ? t('login.submitting') : t('login.submit') }}
           </Button>
         </form>
 
@@ -177,16 +179,20 @@ async function submitPick() {
           class="space-y-3"
           @submit.prevent="submitPick"
         >
-          <div class="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            已通过
-            <span class="font-mono">{{ auth.status?.session?.username ?? auth.status?.provider?.id ?? 'plugin' }}</span>
-            验证身份
-          </div>
+          <i18n-t
+            keypath="login.verifiedAs"
+            tag="div"
+            class="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <template #user>
+              <span class="font-mono">{{ auth.status?.session?.username ?? auth.status?.provider?.id ?? 'plugin' }}</span>
+            </template>
+          </i18n-t>
           <div>
             <label class="text-sm font-medium mb-1.5 block" for="login-cluster">
-              K8s 集群
+              {{ t('login.clusterLabel') }}
               <span class="text-xs font-normal text-muted-foreground ml-1">
-                (共 {{ availableClusters.length }} 个)
+                {{ t('login.clusterCount', { count: availableClusters.length }) }}
               </span>
             </label>
             <AppSelect
@@ -194,7 +200,7 @@ async function submitPick() {
               v-model="cluster"
               :options="availableClusters.map((c) => ({ value: c, label: c }))"
               :disabled="auth.busy"
-              placeholder="选择要管理的集群"
+              :placeholder="t('login.clusterPlaceholder')"
               :leading-icon="Server"
               class="w-full"
             />
@@ -205,7 +211,7 @@ async function submitPick() {
           <Button type="submit" class="w-full" :disabled="auth.busy || !cluster">
             <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
             <LogIn v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
-            {{ auth.busy ? '连接中…' : '连接' }}
+            {{ auth.busy ? t('login.connecting') : t('login.connect') }}
           </Button>
           <button
             type="button"
@@ -213,7 +219,7 @@ async function submitPick() {
             :disabled="auth.busy"
             @click="auth.logout(); clearForm()"
           >
-            重新登录
+            {{ t('login.relogin') }}
           </button>
         </form>
       </CardContent>

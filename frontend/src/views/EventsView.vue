@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight, Layers } from '@lucide/vue'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
@@ -22,6 +23,7 @@ function formatRel(iso: string | null) {
 const route = useRoute()
 const router = useRouter()
 const cluster = useClusterStore()
+const { t } = useI18n()
 const expanded = ref<Set<string>>(new Set())
 
 // ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
@@ -91,52 +93,56 @@ const warningEntries = computed(() =>
 
 <template>
   <PageHeader
-    :title="`Events · ${cluster.activeCluster || ''}`"
-    :subtitle="`${cluster.activeNamespace} · ${filtered.length} / ${totalEvents} 个事件`"
+    :title="`${t('route.events')} · ${cluster.activeCluster || ''}`"
+    :subtitle="t('events.subtitle', {
+      namespace: cluster.activeNamespace,
+      filtered: filtered.length,
+      total: totalEvents,
+    })"
   >
     <template #actions>
-      <Button variant="outline" size="sm" @click="load" :disabled="loading" aria-label="刷新">
+      <Button variant="outline" size="sm" @click="load" :disabled="loading" :aria-label="t('events.refresh')">
         <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
       </Button>
     </template>
     <template #extra>
-      <div class="flex flex-wrap items-center gap-1.5 mt-3" role="tablist" aria-label="按类型过滤">
+      <div class="flex flex-wrap items-center gap-1.5 mt-3" role="tablist" :aria-label="t('events.filterByType')">
         <button
-          v-for="t in ['all', 'Warning', 'Normal'] as const"
-          :key="t"
+          v-for="tab in ['all', 'Warning', 'Normal'] as const"
+          :key="tab"
           type="button"
           role="tab"
-          :aria-selected="typeFilter === t"
-          @click="typeFilter = t"
+          :aria-selected="typeFilter === tab"
+          @click="typeFilter = tab"
           :class="cn(
             'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors',
-            typeFilter === t
-              ? t === 'Warning'
+            typeFilter === tab
+              ? tab === 'Warning'
                 ? 'bg-warning text-warning-foreground border-warning'
                 : 'bg-foreground text-background border-foreground'
               : 'bg-background text-muted-foreground border-border hover:bg-muted/40',
           )"
         >
           <AlertTriangle
-            v-if="t === 'Warning'"
+            v-if="tab === 'Warning'"
             :size="12" :stroke-width="2" aria-hidden="true"
           />
           <AlertCircle
-            v-else-if="t === 'Normal'"
+            v-else-if="tab === 'Normal'"
             :size="12" :stroke-width="2" aria-hidden="true"
           />
-          <span>{{ t === 'all' ? '全部' : t }}</span>
+          <span>{{ tab === 'all' ? t('events.filterAll') : tab }}</span>
           <span :class="cn(
             'tabular-nums text-2xs px-1.5 py-0.5 rounded',
-            typeFilter === t ? 'bg-black/15' : 'bg-muted text-muted-foreground',
-          )">{{ t === 'all' ? totalEvents : countByType[t] }}</span>
+            typeFilter === tab ? 'bg-black/15' : 'bg-muted text-muted-foreground',
+          )">{{ tab === 'all' ? totalEvents : countByType[tab] }}</span>
         </button>
         <span v-if="warningEntries > 0" class="text-xs text-warning ml-1 inline-flex items-center gap-1">
           <AlertTriangle :size="12" :stroke-width="2" />
-          {{ warningEntries }} 个告警源
+          {{ t('events.warningSources', { count: warningEntries }) }}
         </span>
         <span v-if="events && events.length > 0" class="text-xs text-muted-foreground ml-auto">
-          仅显示最近 {{ events.length }} 条事件
+          {{ t('events.showingLatest', { count: events.length }) }}
         </span>
       </div>
     </template>
@@ -149,34 +155,33 @@ const warningEntries = computed(() =>
     class="mt-3 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-xs text-muted-foreground"
   >
     <Layers :size="13" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
-    <span>
-      当前筛选 namespace: <span class="font-mono text-foreground">{{ cluster.activeNamespace }}</span> ·
-      切换到
-    </span>
+    <i18n-t keypath="events.nsCurrent" tag="span">
+      <template #namespace>
+        <span class="font-mono text-foreground">{{ cluster.activeNamespace }}</span>
+      </template>
+    </i18n-t>
     <button
       type="button"
       class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity font-medium"
       @click="cluster.setNamespace('_all')"
     >
-      所有 namespace
+      {{ t('namespace.all') }}
     </button>
-    <span>查看全集群事件</span>
+    <span>{{ t('events.nsAllHint') }}</span>
   </div>
 
   <LoadingState v-if="loading && totalEvents === 0" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="filtered.length === 0"
-    :title="typeFilter === 'all'
-      ? '该命名空间下没有事件'
-      : `没有 ${typeFilter} 事件`"
+    :title="typeFilter === 'all' ? t('events.emptyTitle') : t('events.emptyFilteredTitle', { type: typeFilter })"
     :description="typeFilter !== 'all'
-      ? `当前过滤：${typeFilter}。点上方「全部」切回完整列表，或切换到更宽松的 namespace。`
-      : '集群在该命名空间内未报告事件。事件保留时间有限，过期后会自动清理。'"
+      ? t('events.emptyFilteredDescription', { type: typeFilter })
+      : t('events.emptyDescription')"
   >
     <template v-if="typeFilter !== 'all'" #action>
       <Button variant="outline" size="sm" @click="typeFilter = 'all'">
-        查看全部
+        {{ t('events.viewAll') }}
       </Button>
     </template>
   </EmptyState>
@@ -234,7 +239,7 @@ const warningEntries = computed(() =>
             <span v-if="ev.count > 1" class="inline-flex items-center gap-1">
               <span class="opacity-60">×</span>
               <span class="tabular-nums font-medium">{{ ev.count }}</span>
-              <span class="opacity-60">次</span>
+              <span class="opacity-60">{{ t('events.times') }}</span>
             </span>
             <div class="ml-auto flex items-center gap-3">
               <button
@@ -247,14 +252,14 @@ const warningEntries = computed(() =>
                   :is="expanded.has(ev.name) ? ChevronDown : ChevronRight"
                   :size="12" :stroke-width="2" aria-hidden="true"
                 />
-                {{ expanded.has(ev.name) ? '收起' : '展开' }}
+                {{ expanded.has(ev.name) ? t('events.collapse') : t('events.expand') }}
               </button>
               <router-link
                 v-if="ev.involved_kind === 'Pod'"
                 :to="{ name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } }"
                 class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
-                查看详情
+                {{ t('events.viewDetail') }}
                 <ChevronRight :size="12" :stroke-width="2" aria-hidden="true" />
               </router-link>
             </div>

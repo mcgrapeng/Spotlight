@@ -27,6 +27,9 @@ export const STORAGE_KEYS = {
   /** cluster store active cluster + namespace — survives reload */
   appClusterSelection: 'spotlight.selection.v2',
 
+  /** UI locale ('zh-CN' | 'en-US') — survives reload, user-controlled */
+  appLocale: 'spotlight.locale',
+
   // ─── useCachedFetch-managed ────────────────────────────────────────
   // Format: `cache:{useCachedFetch key}` — TTL is in the useCachedFetch call,
   // not here. We just namespace them so a manual `localStorage.clear()` is

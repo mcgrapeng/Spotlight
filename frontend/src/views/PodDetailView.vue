@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ArrowLeft, RefreshCw, Bot, PanelLeftClose, PanelLeftOpen, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
 import { podsApi, eventsApi, aiApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
@@ -29,6 +30,7 @@ function formatRel(iso: string | null) {
 const route = useRoute()
 const router = useRouter()
 const cluster = useClusterStore()
+const { t } = useI18n()
 const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
 const analyzerOpen = ref(false)
@@ -84,17 +86,17 @@ async function runAI(content: string) {
     const providers = await aiApi.listProviders()
     const provider = providers.find(p => p.enabled) ?? providers.find(p => p.is_default)
     if (!provider?.id) {
-      aiError.value = '请先在「AI 设置」中配置并启用一个模型'
+      aiError.value = t('pod.aiNoProvider')
       return
     }
     const out = await aiApi.analyze(
       cluster.activeCluster, namespace.value, name.value,
       provider.id, content.split('\n'),
-      '请分析这些日志的根因、异常点和建议',
+      t('pod.aiPrompt'),
     )
     aiResult.value = out.answer
   } catch (e: any) {
-    aiError.value = e?.response?.data?.detail ?? e?.message ?? '分析失败'
+    aiError.value = e?.response?.data?.detail ?? e?.message ?? t('pod.aiFailed')
   } finally {
     aiLoading.value = false
   }
@@ -157,26 +159,26 @@ function back() { router.push({ name: 'pods' }) }
     <div class="flex items-center justify-between mb-2 -ml-2">
       <Button variant="ghost" size="sm" @click="back">
         <ArrowLeft :size="14" :stroke-width="1.75" class="mr-1" />
-        返回 Pods
+        {{ t('pod.backToPods') }}
       </Button>
       <!-- ponytail: 触摸目标 32px+，Lucide PanelLeftClose/Open 比 PanelLeft/Right 语义更准 -->
       <Button
         variant="ghost" size="sm"
         class="min-h-[32px]"
-        :title="metaCollapsed ? '展开 Pod 元数据' : '收起 Pod 元数据'"
-        :aria-label="metaCollapsed ? '展开元数据' : '收起元数据'"
+        :title="metaCollapsed ? t('pod.expandMetaTitle') : t('pod.collapseMetaTitle')"
+        :aria-label="metaCollapsed ? t('pod.expandMeta') : t('pod.collapseMeta')"
         @click="toggleMeta"
       >
         <PanelLeftClose v-if="metaCollapsed" :size="14" :stroke-width="1.75" class="mr-1" />
         <PanelLeftOpen v-else :size="14" :stroke-width="1.75" class="mr-1" />
-        {{ metaCollapsed ? '元数据' : '收起元数据' }}
+        {{ metaCollapsed ? t('pod.meta') : t('pod.collapseMeta') }}
       </Button>
     </div>
 
-    <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || '未调度'}`">
+    <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`">
       <template #actions>
         <PodStatusPill :phase="pod.phase" class="mr-2" />
-        <Button variant="outline" size="sm" @click="load" :disabled="loading" aria-label="刷新">
+        <Button variant="outline" size="sm" @click="load" :disabled="loading" :aria-label="t('pod.refresh')">
           <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
         </Button>
       </template>
@@ -196,15 +198,15 @@ function back() { router.push({ name: 'pods' }) }
               <div class="font-mono text-sm">{{ pod.node || '—' }}</div>
             </div>
             <div>
-              <div class="text-xs text-muted-foreground mb-1">Restart</div>
+              <div class="text-xs text-muted-foreground mb-1">{{ t('pod.metaRestarts') }}</div>
               <div class="text-sm tabular-nums">{{ pod.restart_count }}</div>
             </div>
             <div>
-              <div class="text-xs text-muted-foreground mb-1">Age</div>
+              <div class="text-xs text-muted-foreground mb-1">{{ t('pod.metaAge') }}</div>
               <div class="text-sm">{{ pod.age || '—' }}</div>
             </div>
             <div v-if="pod.owner_kind">
-              <div class="text-xs text-muted-foreground mb-1">Owner</div>
+              <div class="text-xs text-muted-foreground mb-1">{{ t('pod.metaOwner') }}</div>
               <div class="text-sm">{{ pod.owner_kind }} / {{ pod.owner_name }}</div>
             </div>
           </CardContent>
@@ -212,7 +214,7 @@ function back() { router.push({ name: 'pods' }) }
 
         <Card class="p-0">
           <CardContent class="p-4">
-            <h3 class="text-sm font-semibold mb-3">Containers ({{ pod.containers.length }})</h3>
+            <h3 class="text-sm font-semibold mb-3">{{ t('pod.containers', { count: pod.containers.length }) }}</h3>
             <div class="space-y-2">
               <div
                 v-for="c in pod.containers"
@@ -242,10 +244,10 @@ function back() { router.push({ name: 'pods' }) }
 
           <TabsContent value="logs" class="mt-4">
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-semibold">容器日志</h3>
+              <h3 class="text-sm font-semibold">{{ t('pod.containerLogs') }}</h3>
               <Button variant="outline" size="sm" @click="analyzerOpen = true">
                 <Bot :size="14" :stroke-width="1.75" class="mr-1" />
-                AI 分析
+                {{ t('pod.aiAnalyze') }}
               </Button>
             </div>
             <!-- ponytail: 600px 在 1080p 屏会被 tabs/padding 挤压；改成 60vh 自适应。
@@ -269,11 +271,11 @@ function back() { router.push({ name: 'pods' }) }
           </TabsContent>
 
           <TabsContent value="events" class="mt-4">
-            <LoadingState v-if="podEventsLoading && podEvents.length === 0" message="加载事件…" />
+            <LoadingState v-if="podEventsLoading && podEvents.length === 0" :message="t('pod.loadingEvents')" />
             <EmptyState
               v-else-if="!podEventsLoading && podEvents.length === 0"
-              title="该 Pod 无相关事件"
-              description="Kubernetes 集群里没有报告与该 Pod 相关的事件。事件保留时间有限，短暂的事件（如调度成功）可能已过期。"
+              :title="t('pod.noEventsTitle')"
+              :description="t('pod.noEventsDescription')"
             />
             <div v-else class="space-y-2">
               <div

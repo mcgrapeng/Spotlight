@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle, ShieldOff } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -16,6 +17,7 @@ import { useCachedFetch } from '@/composables/useCachedFetch'
 import type { NodeOut } from '@/api/types'
 
 const cluster = useClusterStore()
+const { t } = useI18n()
 const nodes = ref<NodeOut[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -42,7 +44,7 @@ async function load() {
   try {
     nodes.value = await nodesApi.list(cluster.activeCluster)
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+    error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
   } finally {
     loading.value = false
   }
@@ -60,9 +62,9 @@ const notReady = computed(() => nodes.value.length - ready.value)
 const totalPods = computed(() => nodes.value.reduce((sum, n) => sum + n.pod_count, 0))
 const subtitle = computed(() => {
   const total = nodes.value.length
-  if (!total) return '尚无节点'
+  if (!total) return t('nodes.subtitleEmpty')
   const pct = Math.round((ready.value / total) * 100)
-  return `${total} 个节点 · ${ready.value} Ready · ${pct}% 在线`
+  return t('nodes.subtitle', { total, ready: ready.value, pct })
 })
 
 // ponytail: 归一化为同单位，避免 "64322Mi / 128Gi" 视觉对齐问题
@@ -109,9 +111,13 @@ type Issue =
   | null
 
 function nodeIssue(d: typeof nodeDisplays.value[number]): Issue {
-  if (d.node.status !== 'Ready') return { kind: 'critical', label: 'NotReady · 节点离线' }
-  if (d.cpu.allocRatio < 20) return { kind: 'warning', label: `CPU 预留过高 · 可分配仅 ${d.cpu.allocRatio}%` }
-  if (d.mem.allocRatio < 20) return { kind: 'warning', label: `内存预留过高 · 可分配仅 ${d.mem.allocRatio}%` }
+  if (d.node.status !== 'Ready') return { kind: 'critical', label: t('nodes.issueNotReady') }
+  if (d.cpu.allocRatio < 20) {
+    return { kind: 'warning', label: t('nodes.issueCpuHeadroom', { pct: d.cpu.allocRatio }) }
+  }
+  if (d.mem.allocRatio < 20) {
+    return { kind: 'warning', label: t('nodes.issueMemoryHeadroom', { pct: d.mem.allocRatio }) }
+  }
   return null
 }
 
@@ -129,20 +135,20 @@ function podOverloaded(n: NodeOut): boolean {
 
 <template>
   <div class="space-y-5">
-    <PageHeader title="Nodes" :subtitle="subtitle">
+    <PageHeader :title="t('route.nodes')" :subtitle="subtitle">
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="loading" @click="load" aria-label="刷新">
+        <Button variant="outline" size="sm" :disabled="loading" @click="load" :aria-label="t('nodes.refresh')">
           <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
-          刷新
+          {{ t('nodes.refresh') }}
         </Button>
       </template>
     </PageHeader>
 
     <div v-if="!loading && nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <StatCard label="节点总数" :value="nodes.length" />
-      <StatCard label="Ready" :value="ready" :hint="`${notReady} 未就绪`" />
+      <StatCard :label="t('nodes.statTotal')" :value="nodes.length" />
+      <StatCard label="Ready" :value="ready" :hint="t('nodes.statReadyHint', { count: notReady })" />
       <StatCard label="NotReady" :value="notReady" />
-      <StatCard label="Pod 总数" :value="totalPods" />
+      <StatCard :label="t('nodes.statPods')" :value="totalPods" />
     </div>
 
     <ErrorState v-if="error" :message="error" @retry="load" />
@@ -215,7 +221,7 @@ function podOverloaded(n: NodeOut): boolean {
             <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Box :size="12" :stroke-width="1.75" />
               Pods
-              <span class="text-2xs opacity-70">当前运行</span>
+              <span class="text-2xs opacity-70">{{ t('nodes.podsRunning') }}</span>
             </div>
             <div class="mt-1 flex items-baseline gap-2">
               <span :class="cn(
@@ -226,11 +232,11 @@ function podOverloaded(n: NodeOut): boolean {
               </span>
               <span
                 class="text-sm text-muted-foreground tabular-nums"
-                :title="`kubelet 默认单节点最大 Pod 数 = ${MAX_PODS_PER_NODE}（可通过 --max-pods 配置）`"
-              >/ {{ MAX_PODS_PER_NODE }} 上限</span>
+                :title="t('nodes.podCapTitle', { max: MAX_PODS_PER_NODE })"
+              >/ {{ MAX_PODS_PER_NODE }} {{ t('nodes.podCap') }}</span>
             </div>
             <div v-if="podOverloaded(d.node)" class="mt-1 text-2xs text-warning">
-              超出节点上限 {{ d.node.pod_count - MAX_PODS_PER_NODE }} 个，调度器会拒接新 Pod
+              {{ t('nodes.podOverCap', { count: d.node.pod_count - MAX_PODS_PER_NODE }) }}
             </div>
             <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
               <div
@@ -252,9 +258,9 @@ function podOverloaded(n: NodeOut): boolean {
                 <span :class="d.cpu.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
                   {{ d.cpu.alloc }}
                 </span>
-                <span class="text-muted-foreground"> 可分配</span>
+                <span class="text-muted-foreground"> {{ t('nodes.allocatable') }}</span>
                 <span class="text-muted-foreground"> / </span>
-                <span class="text-muted-foreground">{{ d.cpu.cap }} 总</span>
+                <span class="text-muted-foreground">{{ d.cpu.cap }} {{ t('nodes.total') }}</span>
               </span>
               <span :class="cn(
                 'ml-auto tabular-nums text-2xs',
@@ -263,14 +269,14 @@ function podOverloaded(n: NodeOut): boolean {
             </div>
             <div class="flex items-center gap-2 text-xs">
               <MemoryStick :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
-              <span class="text-muted-foreground w-14 shrink-0">内存</span>
+              <span class="text-muted-foreground w-14 shrink-0">{{ t('nodes.memory') }}</span>
               <span class="font-mono tabular-nums">
                 <span :class="d.mem.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
                   {{ d.mem.alloc }}
                 </span>
-                <span class="text-muted-foreground"> 可分配</span>
+                <span class="text-muted-foreground"> {{ t('nodes.allocatable') }}</span>
                 <span class="text-muted-foreground"> / </span>
-                <span class="text-muted-foreground">{{ d.mem.cap }} 总</span>
+                <span class="text-muted-foreground">{{ d.mem.cap }} {{ t('nodes.total') }}</span>
               </span>
               <span :class="cn(
                 'ml-auto tabular-nums text-2xs',
@@ -282,11 +288,11 @@ function podOverloaded(n: NodeOut): boolean {
       </Card>
     </div>
 
-    <LoadingState v-else-if="!nodes.length && loading" message="加载节点…" />
+    <LoadingState v-else-if="!nodes.length && loading" :message="t('nodes.loading')" />
     <EmptyState
       v-else-if="blockedByRbac === true"
-      title="节点访问被 Teleport RBAC 拒绝"
-      description="你的 Teleport 角色没有在 kubernetes_resources 中声明 nodes 资源。请求集群管理员在角色 YAML 中加入以下配置,然后重新登录。"
+      :title="t('nodes.rbacTitle')"
+      :description="t('nodes.rbacDescription')"
     >
       <template #icon>
         <ShieldOff :size="40" :stroke-width="1.5" class="text-warning" />
@@ -297,7 +303,7 @@ function podOverloaded(n: NodeOut): boolean {
   verbs: ['*']
   api_group: '*'</pre>
     </EmptyState>
-    <EmptyState v-else title="没有节点" description="当前集群尚未注册任何 Node">
+    <EmptyState v-else :title="t('nodes.emptyTitle')" :description="t('nodes.emptyDescription')">
       <template #icon>
         <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />
       </template>

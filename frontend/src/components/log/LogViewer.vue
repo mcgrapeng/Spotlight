@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
   Copy, X, Terminal, Filter, Clock, WrapText, Download, AlertCircle, HelpCircle,
@@ -45,6 +46,11 @@ const emit = defineEmits<{
   'update:filtered': [value: readonly LogLineOut[]]
   retry: []
 }>()
+
+// `locale` is destructured so it can be listed in the row v-memo arrays below:
+// v-memo skips the whole row subtree when its deps are equal, and the rows now
+// carry translated chrome — without the locale they would keep the old language.
+const { t, locale } = useI18n()
 
 // === State ===
 const search = ref('')
@@ -787,15 +793,16 @@ function clearAllFilters() {
 
 // ponytail: keep help content out of the template to avoid re-listing the same
 // key map as the keyboard composable. Single source of truth for the help popover.
-const helpRows = [
-  { key: 'f / /', label: '聚焦搜索' },
-  { key: 'e', label: '仅显示 error（再按取消）' },
-  { key: 'p', label: '暂停 / 继续' },
-  { key: 'c', label: '清空日志' },
-  { key: 'g / G', label: '下一条 / 上一条 error·warn' },
-  { key: 'j / k', label: '向下 / 向上滚动 5 行' },
-  { key: '?', label: '显示 / 隐藏此面板' },
-] as const
+// computed (not a plain array) so a locale switch re-renders the labels.
+const helpRows = computed(() => [
+  { key: 'f / /', label: t('log.help.focusSearch') },
+  { key: 'e', label: t('log.help.errorsOnly') },
+  { key: 'p', label: t('log.help.pause') },
+  { key: 'c', label: t('log.help.clear') },
+  { key: 'g / G', label: t('log.help.jumpError') },
+  { key: 'j / k', label: t('log.help.scroll') },
+  { key: '?', label: t('log.help.toggle') },
+])
 </script>
 
 <template>
@@ -814,7 +821,7 @@ const helpRows = [
         @click="setSeverity(0)"
       >
         <Filter :size="11" :stroke-width="1.75" />
-        全部
+        {{ t('log.filterAll') }}
         <span class="tabular-nums">{{ lines.length.toLocaleString() }}</span>
       </button>
       <span class="text-muted-foreground/30 mx-0.5">·</span>
@@ -835,7 +842,7 @@ const helpRows = [
               ),
         )"
         @click="setSeverity(rank)"
-        :title="`${bucket} · ${counts[bucket].toLocaleString()} 行`"
+        :title="t('log.severityLines', { bucket, count: counts[bucket].toLocaleString() })"
       >
         <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[bucket] }}</span>
         <span class="uppercase tracking-wider">{{ bucket }}</span>
@@ -848,9 +855,9 @@ const helpRows = [
       v-if="availableContainers.length > 1"
       class="flex items-center gap-px px-3 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
       role="tablist"
-      aria-label="容器选择"
+      :aria-label="t('log.containerTabsLabel')"
     >
-      <span class="text-2xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">容器</span>
+      <span class="text-2xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">{{ t('log.container') }}</span>
       <button
         type="button"
         role="tab"
@@ -863,7 +870,7 @@ const helpRows = [
         )"
         @click="selectedContainer = null"
       >
-        全部
+        {{ t('log.filterAll') }}
         <span class="ml-1 tabular-nums text-muted-foreground">{{ lines.length.toLocaleString() }}</span>
       </button>
       <button
@@ -893,16 +900,16 @@ const helpRows = [
         <Input
           ref="searchInput"
           v-model="search"
-          placeholder="过滤（内容 / 容器） · / 聚焦搜索"
+          :placeholder="t('log.searchPlaceholder')"
           class="pl-8 pr-8 h-7 text-xs"
-          aria-label="过滤日志"
+          :aria-label="t('log.searchLabel')"
         />
         <button
           v-if="search"
           type="button"
           @click="clearSearch"
           class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          aria-label="清除过滤"
+          :aria-label="t('log.clearFilterLabel')"
         >
           <X :size="13" :stroke-width="1.75" />
         </button>
@@ -913,14 +920,14 @@ const helpRows = [
             variant="ghost"
             size="sm"
             class="h-7 px-2"
-            aria-label="搜索历史"
+            :aria-label="t('log.searchHistoryLabel')"
           >
             <Clock :size="13" :stroke-width="1.75" />
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-0" align="start">
           <div v-if="recentSearches.length === 0" class="p-4 text-center text-2xs text-muted-foreground">
-            暂无历史搜索
+            {{ t('log.searchHistoryEmpty') }}
           </div>
           <div v-else class="py-1">
             <button
@@ -934,7 +941,7 @@ const helpRows = [
             </button>
             <div class="border-t border-border p-1">
               <Button variant="ghost" size="sm" class="w-full" @click="clearRecent">
-                清除全部
+                {{ t('log.searchHistoryClearAll') }}
               </Button>
             </div>
           </div>
@@ -943,9 +950,9 @@ const helpRows = [
       <Button
         variant="outline" size="sm"
         class="h-7 px-2"
-        :title="wrapMode === 'wrap' ? '当前：自动换行（点击切换为不换行）' : '当前：不换行（点击切换为换行）'"
+        :title="wrapMode === 'wrap' ? t('log.wrapOn') : t('log.wrapOff')"
         @click="toggleWrap"
-        aria-label="切换换行"
+        :aria-label="t('log.toggleWrapLabel')"
       >
         <WrapText v-if="wrapMode === 'wrap'" :size="13" :stroke-width="1.75" />
         <ChevronsRight v-else :size="13" :stroke-width="1.75" />
@@ -954,7 +961,7 @@ const helpRows = [
         variant="outline" size="sm"
         class="h-7 px-2"
         @click="togglePause"
-        :aria-label="streaming ? '暂停 (K)' : '继续 (K)'"
+        :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
         :class="cn(!streaming && 'text-warning border-warning/50')"
       >
         <Pause v-if="streaming" :size="13" :stroke-width="1.75" />
@@ -964,7 +971,7 @@ const helpRows = [
         variant="outline" size="sm"
         class="h-7 px-2"
         @click="toggleAutoFollow"
-        :aria-label="autoFollow ? '关闭自动跟随 (L)' : '开启自动跟随 (L)'"
+        :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
         :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
       >
         <ChevronUp v-if="autoFollow" :size="13" :stroke-width="1.75" />
@@ -975,7 +982,7 @@ const helpRows = [
         class="h-7 px-2"
         :disabled="!lines.length"
         @click="emit('clear')"
-        aria-label="清空"
+        :aria-label="t('log.clearLabel')"
       >
         <X :size="13" :stroke-width="1.75" />
       </Button>
@@ -984,7 +991,7 @@ const helpRows = [
         class="h-7 px-2"
         :disabled="!displayedLines.length"
         @click="copyAll"
-        aria-label="复制全部 (C)"
+        :aria-label="t('log.copyAllLabel')"
       >
         <Copy :size="13" :stroke-width="1.75" />
       </Button>
@@ -993,8 +1000,8 @@ const helpRows = [
         class="h-7 px-2"
         :disabled="!filtered.length"
         @click="downloadLogs"
-        aria-label="下载日志"
-        title="下载日志"
+        :aria-label="t('log.downloadLabel')"
+        :title="t('log.downloadLabel')"
       >
         <Download :size="13" :stroke-width="1.75" />
       </Button>
@@ -1004,14 +1011,14 @@ const helpRows = [
             variant="ghost"
             size="sm"
             class="h-7 px-2"
-            aria-label="快捷键帮助 (?)"
-            title="快捷键 (?)"
+            :aria-label="t('log.shortcutsHelpLabel')"
+            :title="t('log.shortcutsTitle')"
           >
             <HelpCircle :size="13" :stroke-width="1.75" />
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-3" align="end">
-          <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">快捷键</div>
+          <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{{ t('log.shortcutsHeading') }}</div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono">
             <template v-for="row in helpRows" :key="row.key">
               <kbd class="px-1.5 py-0.5 rounded border border-border bg-muted text-2xs">{{ row.key }}</kbd>
@@ -1027,13 +1034,13 @@ const helpRows = [
       v-if="jsonFieldChips.length > 0"
       class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap"
     >
-      <span class="text-2xs text-muted-foreground shrink-0 mr-1">字段</span>
+      <span class="text-2xs text-muted-foreground shrink-0 mr-1">{{ t('log.field') }}</span>
       <button
         v-for="key in jsonFieldChips"
         :key="key"
         type="button"
         class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors"
-        :title="`过滤 ${key}=`"
+        :title="t('log.filterField', { field: key })"
         @click="applyFieldFilter(key)"
       >
         {{ key }}
@@ -1041,12 +1048,12 @@ const helpRows = [
       <button
         type="button"
         class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-red-700 hover:border-error/30 transition-colors ml-auto"
-        title="清除字段过滤"
-        aria-label="清除字段过滤"
+        :title="t('log.clearFieldFilter')"
+        :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
       >
         <X :size="11" :stroke-width="1.75" />
-        清除字段过滤
+        {{ t('log.clearFieldFilter') }}
       </button>
     </div>
 
@@ -1056,7 +1063,7 @@ const helpRows = [
       class="flex-1 overflow-auto bg-background relative scroll-smooth"
       role="log"
       aria-live="polite"
-      aria-label="日志输出（最新在上）"
+      :aria-label="t('log.outputLabel')"
       @mouseenter="onRegionEnter"
       @mouseleave="onRegionLeave"
       @scroll="(e) => { onScroll(); markInteraction() }"
@@ -1076,9 +1083,9 @@ const helpRows = [
           size="sm"
           class="h-6 px-2 text-2xs border-error/40 text-red-700 hover:bg-error/15"
           @click="emit('retry')"
-          aria-label="重试"
+          :aria-label="t('state.retry')"
         >
-          重试
+          {{ t('state.retry') }}
         </Button>
       </div>
 
@@ -1090,7 +1097,7 @@ const helpRows = [
         @click="toggleAutoFollow"
       >
         <ChevronUp :size="12" :stroke-width="2" />
-        {{ unreadCount }} 条新 · 跳转
+        {{ t('log.newLines', { count: unreadCount }) }}
       </button>
 
       <div
@@ -1104,23 +1111,23 @@ const helpRows = [
         <template v-if="lines.length === 0">
           <Terminal :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
-            暂无日志
+            {{ t('log.emptyTitle') }}
           </p>
           <p class="text-2xs text-muted-foreground">
-            {{ streaming ? '等待容器输出…' : '日志已暂停' }}
+            {{ streaming ? t('log.emptyWaiting') : t('log.emptyPaused') }}
           </p>
         </template>
         <template v-else>
           <Search :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
-            当前过滤无匹配
+            {{ t('log.emptyFilteredTitle') }}
           </p>
           <p class="text-2xs text-muted-foreground mb-3">
-            {{ lines.length.toLocaleString() }} 行被过滤掉，{{ search || minSeverity > 0 ? '当前条件：' : '' }}{{ search ? `「${search}」` : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
+            {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
           </p>
           <Button variant="outline" size="sm" class="h-7 text-xs" @click="clearAllFilters">
             <X :size="11" :stroke-width="2" class="mr-1" />
-            清空过滤
+            {{ t('log.clearFilters') }}
           </Button>
         </template>
       </div>
@@ -1134,7 +1141,7 @@ const helpRows = [
                 'hover:bg-muted/40 transition-colors',
                 severityBorderFor(group.line.raw.severity),
               )"
-              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content), wrapMode]"
+              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content), wrapMode, locale]"
             >
               <button
                 v-if="group.line.traceId"
@@ -1142,8 +1149,8 @@ const helpRows = [
                 @click.stop="toggleTraceFilter(group.line.traceId)"
                 class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.line.traceId) }"
-                :title="`按 trace_id 过滤: ${group.line.traceId}`"
-                :aria-label="`按 trace_id ${group.line.traceId} 过滤`"
+                :title="t('log.filterTraceTitle', { traceId: group.line.traceId })"
+                :aria-label="t('log.filterTraceLabel', { traceId: group.line.traceId })"
               />
               <span
                 v-if="isNewestLine(group)"
@@ -1171,9 +1178,9 @@ const helpRows = [
                   type="button"
                   @click="toggleJson(`${group.key}`)"
                   class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                  :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
+                  :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
-                  aria-label="切换 JSON 展开"
+                  :aria-label="t('log.toggleJsonLabel')"
                 >
                   JSON
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
@@ -1184,10 +1191,10 @@ const helpRows = [
                   v-if="plainLength(group.line.raw) > TRUNCATE_LIMIT"
                   type="button"
                   class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                  :title="truncatedExpanded.has(group.line.raw.content) ? '收起' : `展开剩余 ${(plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                  :title="truncatedExpanded.has(group.line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                   @click.stop="toggleTruncate(group.line.raw.content)"
                 >
-                  {{ truncatedExpanded.has(group.line.raw.content) ? '收起' : `+${(plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                  {{ truncatedExpanded.has(group.line.raw.content) ? t('log.collapse') : t('log.moreChars', { count: (plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString() }) }}
                 </button>
               </div>
             </div>
@@ -1216,7 +1223,7 @@ const helpRows = [
                 'hover:bg-muted/40 transition-colors',
                 severityBorderFor(group.lines[0].raw.severity),
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, wrapMode]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, wrapMode, locale]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"
@@ -1230,8 +1237,8 @@ const helpRows = [
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
                 class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
-                :title="`按 trace_id 过滤: ${group.lines[0].traceId}`"
-                :aria-label="`按 trace_id ${group.lines[0].traceId} 过滤`"
+                :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
+                :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
               />
               <span
                 v-if="isNewestLine(group)"
@@ -1256,9 +1263,9 @@ const helpRows = [
                   type="button"
                   @click.stop="toggleJson(`${group.key}`)"
                   class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                  :title="jsonExpanded.has(`${group.key}`) ? '折叠 JSON' : '展开 JSON'"
+                  :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
-                  aria-label="切换 JSON 展开"
+                  :aria-label="t('log.toggleJsonLabel')"
                 >
                   JSON
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
@@ -1277,7 +1284,7 @@ const helpRows = [
                     role="tooltip"
                   >
                     <span class="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">
-                      本组 ×{{ group.lines.length }}（点击展开全部）
+                      {{ t('log.foldTooltip', { count: group.lines.length }) }}
                     </span>
                     <span
                       v-for="(l, i) in group.lines.slice(0, 3)"
@@ -1291,7 +1298,7 @@ const helpRows = [
                       v-if="group.lines.length > 3"
                       class="text-2xs text-muted-foreground italic"
                     >
-                      … 共 {{ group.lines.length }} 条
+                      {{ t('log.foldMore', { count: group.lines.length }) }}
                     </span>
                   </span>
                 </span>
@@ -1304,7 +1311,7 @@ const helpRows = [
                     'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors',
                         severityBorderFor(group.lines[0].raw.severity),
                   )"
-                  :title="`本组 ${group.lines.length} 条相同的日志 · 点击展开`"
+                  :title="t('log.foldTitle', { count: group.lines.length })"
                 >
                   <ChevronDown v-if="group.expanded" :size="11" :stroke-width="2.5" />
                   <ChevronRight v-else :size="11" :stroke-width="2.5" />
@@ -1317,7 +1324,7 @@ const helpRows = [
                 <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
                   <div
                     class="grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-foreground relative"
-                    v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content), wrapMode]"
+                    v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content), wrapMode, locale]"
                   >
                   <button
                     v-if="line.traceId"
@@ -1325,8 +1332,8 @@ const helpRows = [
                     @click.stop="toggleTraceFilter(line.traceId)"
                     class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
-                    :title="`按 trace_id 过滤: ${line.traceId}`"
-                    :aria-label="`按 trace_id ${line.traceId} 过滤`"
+                    :title="t('log.filterTraceTitle', { traceId: line.traceId })"
+                    :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
                   />
                   <span
                     class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
@@ -1341,9 +1348,9 @@ const helpRows = [
                       type="button"
                       @click="toggleJson(`${group.key + idx + 1}`)"
                       class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                      :title="jsonExpanded.has(`${group.key + idx + 1}`) ? '折叠 JSON' : '展开 JSON'"
+                      :title="jsonExpanded.has(`${group.key + idx + 1}`) ? t('log.collapseJson') : t('log.expandJson')"
                       :aria-expanded="jsonExpanded.has(`${group.key + idx + 1}`)"
-                      aria-label="切换 JSON 展开"
+                      :aria-label="t('log.toggleJsonLabel')"
                     >
                       JSON
                       <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
@@ -1354,10 +1361,10 @@ const helpRows = [
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
                       class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                      :title="truncatedExpanded.has(line.raw.content) ? '收起' : `展开剩余 ${(plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字`"
+                      :title="truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >
-                      {{ truncatedExpanded.has(line.raw.content) ? '收起' : `+${(plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString()} 字` }}
+                      {{ truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.moreChars', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() }) }}
                     </button>
                   </div>
                 </div>
@@ -1392,17 +1399,17 @@ const helpRows = [
       <span class="tabular-nums">
         <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
         <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
-        行
+        {{ t('log.linesUnit') }}
       </span>
       <div class="flex items-center gap-3">
         <span v-if="streaming" class="flex items-center gap-1 text-green-800">
           <span class="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-          实时
+          {{ t('log.live') }}
         </span>
-        <span v-else class="text-warning">已暂停</span>
+        <span v-else class="text-warning">{{ t('log.paused') }}</span>
         <span class="hidden sm:inline text-muted-foreground">·</span>
-        <span v-if="!autoFollow">滚动到顶部查看最新</span>
-        <span v-else>自动跟随 <ChevronDown :size="11" :stroke-width="2" class="inline -mb-px" /></span>
+        <span v-if="!autoFollow">{{ t('log.scrollHint') }}</span>
+        <span v-else>{{ t('log.autoFollow') }} <ChevronDown :size="11" :stroke-width="2" class="inline -mb-px" /></span>
       </div>
     </div>
   </div>

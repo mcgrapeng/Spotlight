@@ -1,13 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Loader2 } from '@lucide/vue'
 
-withDefaults(defineProps<{
+const { t } = useI18n()
+const props = withDefaults(defineProps<{
   message?: string
   fullscreen?: boolean
 }>(), {
-  message: '加载中…',
   fullscreen: false,
 })
+
+// ponytail: 同 EmptyState —— computed 而非 withDefaults default，切语言时不会留旧文案。
+const text = computed(() => props.message ?? t('state.loading'))
 </script>
 
 <template>
@@ -23,6 +28,6 @@ withDefaults(defineProps<{
     <div class="rounded-full bg-muted p-4">
       <Loader2 :size="32" class="animate-spin text-muted-foreground" :stroke-width="1.5" aria-hidden="true" />
     </div>
-    <p class="text-sm text-muted-foreground">{{ message }}</p>
+    <p class="text-sm text-muted-foreground">{{ text }}</p>
   </div>
 </template>

@@ -15,7 +15,16 @@ vi.mock('vue-router', () => ({
 
 import { mount } from '@vue/test-utils'
 import { eventsApi } from '@/api/endpoints'
+import { getI18n } from '@/i18n'
 import AppSidebar from '../AppSidebar.vue'
+
+// Labels are translated now, so every mount needs the i18n plugin. The singleton
+// outlives each test — rewind so `mountSidebar` is order-independent.
+const i18n = getI18n()
+function mountSidebar() {
+  i18n.global.locale.value = 'zh-CN'
+  return mount(AppSidebar, { global: { plugins: [i18n] } })
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -36,7 +45,7 @@ describe('AppSidebar event badge', () => {
         first_seen: null, last_seen: null },
     ] as any)
 
-    const wrapper = mount(AppSidebar)
+    const wrapper = mountSidebar()
     await vi.waitFor(() => {
       expect(eventsApi.list).toHaveBeenCalled()
     })
@@ -57,7 +66,7 @@ describe('AppSidebar event badge', () => {
         first_seen: null, last_seen: null },
     ] as any)
 
-    const wrapper = mount(AppSidebar)
+    const wrapper = mountSidebar()
     await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
     await new Promise(r => setTimeout(r, 10))
 
@@ -67,7 +76,7 @@ describe('AppSidebar event badge', () => {
 
   it('queries events for the active cluster with the all-namespaces scope', async () => {
     vi.mocked(eventsApi.list).mockResolvedValue([])
-    mount(AppSidebar)
+    mountSidebar()
     await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
     const call = vi.mocked(eventsApi.list).mock.calls[0][0]
     expect(call.cluster).toBe('c1')
@@ -76,9 +85,13 @@ describe('AppSidebar event badge', () => {
 
   it('emits toggle-sidebar when the collapse button is clicked', async () => {
     vi.mocked(eventsApi.list).mockResolvedValue([])
-    const wrapper = mount(AppSidebar)
+    const wrapper = mountSidebar()
     await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
-    const btn = wrapper.find('button[aria-label="收起侧边栏"]')
+    // Read the label out of the messages rather than hard-coding it, so this
+    // keeps asserting the wiring instead of pinning one locale's wording.
+    const btn = wrapper.find(
+      `button[aria-label="${i18n.global.t('nav.collapseSidebar')}"]`,
+    )
     expect(btn.exists()).toBe(true)
     await btn.trigger('click')
     expect(wrapper.emitted('toggle-sidebar')).toHaveLength(1)

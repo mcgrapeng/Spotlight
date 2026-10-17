@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -20,6 +21,7 @@ import type { PodOut } from '@/api/types'
 const route = useRoute()
 const router = useRouter()
 const cluster = useClusterStore()
+const { t } = useI18n()
 
 const search = ref<string>((route.query.search as string) || '')
 
@@ -53,17 +55,19 @@ const { data, loading, error, reload } = usePodList({
 
 const pageSizeOptions = [10, 20, 50, 100].map((n) => ({ value: n, label: String(n) }))
 
-const statusOptions = [
-  { value: 'all',       label: '全部' },
+const statusOptions = computed(() => [
+  { value: 'all', label: t('pods.filterAll') },
   { value: 'Running',   label: 'Running' },
   { value: 'Pending',   label: 'Pending' },
   { value: 'Failed',    label: 'Failed' },
   { value: 'Succeeded', label: 'Succeeded' },
-]
+])
 
 const subtitle = computed(() => {
-  const ns = cluster.activeNamespace === '_all' ? '所有 namespace' : cluster.activeNamespace
-  return `${data.value.total.toLocaleString()} 个 · ${ns}`
+  const ns = cluster.activeNamespace === '_all'
+    ? t('namespace.all')
+    : cluster.activeNamespace
+  return t('pods.subtitle', { count: data.value.total.toLocaleString(), namespace: ns })
 })
 
 // ponytail: per-row helpers memoized in two Map<string, ...> lookups keyed by
@@ -118,26 +122,44 @@ const pagedPods = computed(() => {
   const start = (page.value - 1) * pageSize.value
   return data.value.items.slice(start, start + pageSize.value)
 })
+
+const filtered = computed(() => search.value !== '' || statusFilter.value !== 'all')
+
+const emptyTitle = computed(() => {
+  if (search.value) return t('pods.emptySearch', { query: search.value })
+  if (statusFilter.value !== 'all') return t('pods.emptyStatus', { status: statusFilter.value })
+  return t('pods.empty')
+})
+
+const emptyDescription = computed(() => {
+  if (!filtered.value) return t('pods.emptyHint')
+  const parts: string[] = []
+  if (search.value) parts.push(t('pods.filterSearch', { query: search.value }))
+  if (statusFilter.value !== 'all') {
+    parts.push(t('pods.filterStatus', { status: statusFilter.value }))
+  }
+  return t('pods.emptyActiveFilters', { filters: parts.join(' + ') })
+})
 </script>
 
 <template>
   <div class="space-y-5">
-    <PageHeader title="Pods" :subtitle="subtitle">
+    <PageHeader :title="t('route.pods')" :subtitle="subtitle">
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="loading" @click="reload" aria-label="刷新">
+        <Button variant="outline" size="sm" :disabled="loading" @click="reload" :aria-label="t('pods.refresh')">
           <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
-          刷新
+          {{ t('pods.refresh') }}
         </Button>
       </template>
     </PageHeader>
 
     <!-- FilterBar -->
-    <div class="flex items-center gap-3 flex-wrap" role="search" aria-label="Pod 列表筛选">
+    <div class="flex items-center gap-3 flex-wrap" role="search" :aria-label="t('pods.filtersLabel')">
       <div class="w-44">
         <AppSelect
           v-model="statusFilter"
           :options="statusOptions"
-          aria-label="按状态筛选"
+          :aria-label="t('pods.filterByStatus')"
           class="w-full"
         />
       </div>
@@ -145,15 +167,15 @@ const pagedPods = computed(() => {
         <Search :size="14" class="absolute left-2.5 top-3 text-muted-foreground" :stroke-width="1.75" />
         <Input
           v-model="search"
-          placeholder="搜索 pod / container / node"
+          :placeholder="t('pods.searchPlaceholder')"
           class="pl-8"
-          aria-label="搜索"
+          :aria-label="t('pods.searchLabel')"
         />
       </div>
     </div>
 
     <div v-if="search" class="flex items-center gap-2 -mt-2 mb-2">
-      <span class="text-xs text-muted-foreground">过滤:</span>
+      <span class="text-xs text-muted-foreground">{{ t('pods.filteringLabel') }}</span>
       <button
         type="button"
         class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-accent text-accent-foreground text-xs font-mono hover:bg-accent/80"
@@ -162,7 +184,7 @@ const pagedPods = computed(() => {
         <span>"{{ search }}"</span>
         <X :size="11" :stroke-width="2.5" />
       </button>
-      <span class="text-xs text-muted-foreground">{{ data.items.length }} 个结果</span>
+      <span class="text-xs text-muted-foreground">{{ t('pods.resultCount', { count: data.items.length }) }}</span>
     </div>
 
     <ErrorState v-if="error" :message="error" @retry="reload" />
@@ -170,12 +192,12 @@ const pagedPods = computed(() => {
     <Card v-else class="p-0 overflow-hidden">
       <EmptyState
         v-if="!loading && data.items.length === 0"
-        :title="search ? `没有匹配「${search}」的 Pod` : (statusFilter !== 'all' ? `没有 ${statusFilter} 状态的 Pod` : '没有匹配的 Pod')"
-        :description="search || statusFilter !== 'all' ? `当前过滤：${search ? '搜索「' + search + '」' : ''}${search && statusFilter !== 'all' ? ' + ' : ''}${statusFilter !== 'all' ? '状态 ' + statusFilter : ''}` : '调整搜索词或切换 namespace / 状态过滤'"
+        :title="emptyTitle"
+        :description="emptyDescription"
       >
-        <template v-if="search || statusFilter !== 'all'" #action>
+        <template v-if="filtered" #action>
           <Button variant="outline" size="sm" @click="search = ''; statusFilter = 'all'">
-            清除过滤
+            {{ t('pods.clearFilters') }}
           </Button>
         </template>
       </EmptyState>
@@ -185,12 +207,12 @@ const pagedPods = computed(() => {
           <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
             <tr>
               <th scope="col" class="text-left font-medium px-4 py-2.5 min-w-[240px]">Pod</th>
-              <th scope="col" class="text-left font-medium px-4 py-2.5 hidden lg:table-cell">Namespace</th>
-              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[160px]">Status</th>
-              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[110px]">Containers</th>
-              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[100px]">Restarts</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 hidden lg:table-cell">{{ t('pods.colNamespace') }}</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[160px]">{{ t('pods.colStatus') }}</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[110px]">{{ t('pods.colContainers') }}</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[100px]">{{ t('pods.colRestarts') }}</th>
               <th scope="col" class="text-left font-medium px-4 py-2.5 w-[140px] hidden lg:table-cell">Node</th>
-              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[80px]">Age</th>
+              <th scope="col" class="text-left font-medium px-4 py-2.5 w-[80px]">{{ t('pods.colAge') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -213,7 +235,7 @@ const pagedPods = computed(() => {
                   <router-link
                     :to="{ name: 'pod-detail', params: { namespace: row.namespace, name: row.name } }"
                     class="font-mono text-[13px] text-foreground truncate rounded hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    :aria-label="`查看 ${row.name} 详情`"
+                    :aria-label="t('pods.viewDetail', { name: row.name })"
                     @click.stop
                   >{{ row.name }}</router-link>
                   <span
@@ -238,11 +260,11 @@ const pagedPods = computed(() => {
               </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center gap-2">
-                  <div class="flex items-center gap-1" :aria-label="`${readyOf(row)} of ${row.containers.length} containers ready`">
+                  <div class="flex items-center gap-1" :aria-label="t('pods.containersReady', { ready: readyOf(row), total: row.containers.length })">
                     <span
                       v-for="(c, i) in row.containers"
                       :key="i"
-                      :title="`${c.name}: ${c.ready ? 'ready' : c.state}${c.reason ? ' (' + c.reason + ')' : ''}`"
+                      :title="`${c.name}: ${c.ready ? t('pods.containerReady') : c.state}${c.reason ? ' (' + c.reason + ')' : ''}`"
                       :class="cn(
                         'inline-block w-2 h-2 rounded-full',
                         c.ready
@@ -263,7 +285,7 @@ const pagedPods = computed(() => {
                 <div
                   v-if="row.restart_count > 0"
                   class="flex items-center gap-1 tabular-nums text-sm"
-                  :aria-label="`${row.restart_count} 次重启`"
+                  :aria-label="t('pods.restartsCount', { count: row.restart_count })"
                 >
                   <AlertCircle
                     v-if="sevOf(row) === 'critical'"
@@ -297,7 +319,7 @@ const pagedPods = computed(() => {
             </tr>
             <tr v-if="loading && data.items.length === 0">
               <td colspan="7" class="px-4 py-2">
-                <LoadingState message="加载 Pod 列表…" />
+                <LoadingState :message="t('pods.loading')" />
               </td>
             </tr>
           </tbody>
@@ -312,7 +334,7 @@ const pagedPods = computed(() => {
           type="button"
           class="w-full text-left p-3 active:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
           :class="clsOf(row)"
-          :aria-label="`查看 ${row.name} 详情`"
+          :aria-label="t('pods.viewDetail', { name: row.name })"
           @click="open(row)"
         >
           <div class="flex items-start justify-between gap-2 mb-1">
@@ -344,26 +366,29 @@ const pagedPods = computed(() => {
         class="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-muted/20 text-xs text-muted-foreground"
       >
         <div class="tabular-nums">
-          第 {{ (page - 1) * pageSize + 1 }}–{{ Math.min(page * pageSize, data.items.length) }} 条 /
-          共 {{ data.items.length.toLocaleString() }} 条
+          {{ t('pods.pageRange', {
+            from: (page - 1) * pageSize + 1,
+            to: Math.min(page * pageSize, data.items.length),
+            total: data.items.length.toLocaleString(),
+          }) }}
         </div>
         <div class="flex items-center gap-2">
           <label class="flex items-center gap-1.5">
-            <span>每页</span>
+            <span>{{ t('pods.perPage') }}</span>
             <AppSelect
               :model-value="String(pageSize)"
               :options="pageSizeOptions"
-              aria-label="每页条数"
+              :aria-label="t('pods.perPageCount')"
               size="sm"
               @update:model-value="(v) => (pageSize = Number(v))"
             />
           </label>
-          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+          <span class="tabular-nums">{{ t('pods.pageOf', { page, total: totalPages }) }}</span>
           <Button
             variant="outline"
             size="icon-sm"
             :disabled="page <= 1"
-            aria-label="上一页"
+            :aria-label="t('pods.prevPage')"
             @click="page = page - 1"
           >
             <ChevronLeft :size="14" :stroke-width="1.75" />
@@ -372,7 +397,7 @@ const pagedPods = computed(() => {
             variant="outline"
             size="icon-sm"
             :disabled="page >= totalPages"
-            aria-label="下一页"
+            :aria-label="t('pods.nextPage')"
             @click="page = page + 1"
           >
             <ChevronRight :size="14" :stroke-width="1.75" />

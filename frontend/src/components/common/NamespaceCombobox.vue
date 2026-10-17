@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Check, ChevronsUpDown, Layers } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from '@/components/ui/command'
 import { useClusterStore } from '@/stores/cluster'
 
+const { t } = useI18n()
 const cluster = useClusterStore()
 const open = ref(false)
 
@@ -13,14 +15,14 @@ const value = computed(() => cluster.activeNamespace)
 const disabled = computed(() => cluster.namespaces.length === 0)
 
 const label = computed(() => {
-  if (value.value === '_all') return '所有 namespace'
-  return value.value || '所有 namespace'
+  if (value.value === '_all') return t('namespace.all')
+  return value.value || t('namespace.all')
 })
 
 // ponytail: 让 namespace 关闭后用户能直接看到 namespace 是否 Active / Terminating
 // (Audit §12.7)
 const options = computed(() => [
-  { value: '_all', label: '所有 namespace', hint: null as string | null },
+  { value: '_all', label: t('namespace.all'), hint: null as string | null },
   ...cluster.namespaces.map((n) => ({
     value: n.name,
     label: n.name,
@@ -41,7 +43,7 @@ function selectNamespace(name: string) {
         type="button"
         role="combobox"
         :aria-expanded="open"
-        aria-label="选择 namespace"
+        :aria-label="t('namespace.select')"
         :disabled="disabled"
         :class="cn(
           'inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm',
@@ -58,9 +60,9 @@ function selectNamespace(name: string) {
     </PopoverTrigger>
     <PopoverContent class="w-[260px] p-0" align="start">
       <Command :model-value="value">
-        <CommandInput placeholder="搜索 namespace…" />
+        <CommandInput :placeholder="t('namespace.search')" />
         <CommandList>
-          <CommandEmpty>没有匹配的 namespace</CommandEmpty>
+          <CommandEmpty>{{ t('namespace.empty') }}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="opt in options"

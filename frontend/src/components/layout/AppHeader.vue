@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { Menu } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/utils'
+import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import LogoMark from '@/components/common/LogoMark.vue'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
 import NamespaceCombobox from '@/components/common/NamespaceCombobox.vue'
+
+const { t } = useI18n()
 
 defineEmits<{
   'open-mobile-menu': []
@@ -18,7 +22,7 @@ defineEmits<{
     <button
       type="button"
       class="md:hidden inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label="打开菜单"
+      :aria-label="t('nav.openMenu')"
       @click="$emit('open-mobile-menu')"
     >
       <Menu :size="18" :stroke-width="1.75" aria-hidden="true" />
@@ -30,14 +34,14 @@ defineEmits<{
         'group flex items-center gap-2 mr-1 md:mr-2 rounded-md py-1 pr-1',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )"
-      aria-label="Spotlight 首页"
+      :aria-label="t('nav.home')"
     >
       <span class="inline-flex items-center justify-center size-7 md:size-8 text-foreground">
         <LogoMark :size="28" />
       </span>
       <span class="hidden sm:flex flex-col leading-none">
         <span class="text-sm font-semibold tracking-tight text-foreground">Spotlight</span>
-        <span class="text-2xs font-medium tracking-wide text-muted-foreground mt-0.5">集群驾驶舱</span>
+        <span class="text-2xs font-medium tracking-wide text-muted-foreground mt-0.5">{{ t('nav.tagline') }}</span>
       </span>
     </router-link>
 
@@ -45,6 +49,8 @@ defineEmits<{
       <ClusterCombobox />
       <NamespaceCombobox />
     </div>
+
+    <LocaleSwitcher />
 
     <div class="flex-1" />
   </div>

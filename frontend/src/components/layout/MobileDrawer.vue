@@ -6,11 +6,14 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
+import { useI18n } from 'vue-i18n'
 import AppSidebar from './AppSidebar.vue'
 
 defineProps<{
   open: boolean
 }>()
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -28,8 +31,8 @@ function onOpenChange(open: boolean) {
       class="w-[280px] p-0 sm:max-w-[280px]"
     >
       <SheetHeader class="sr-only">
-        <SheetTitle>导航菜单</SheetTitle>
-        <SheetDescription>主导航</SheetDescription>
+        <SheetTitle>{{ t('nav.drawerTitle') }}</SheetTitle>
+        <SheetDescription>{{ t('nav.main') }}</SheetDescription>
       </SheetHeader>
       <AppSidebar :collapsed="false" @navigate="emit('close')" />
     </SheetContent>

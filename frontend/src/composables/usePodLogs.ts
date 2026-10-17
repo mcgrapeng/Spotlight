@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { logsApi, podsApi } from '@/api/endpoints'
 import { splitLogLines } from '@/domain/services/logFormat'
 import type { LogLineOut } from '@/api/types'
@@ -49,6 +50,8 @@ export function normalizeStreamPayload(data: unknown): LogLineOut[] {
  * while the Logs tab is active) and torn down on view unmount.
  */
 export function usePodLogs(opts: UsePodLogsOptions) {
+  // Only ever called from `<script setup>`, so `useI18n()` is available here.
+  const { t } = useI18n()
   // ponytail: shallowRef — buffer replaced whole on each flush; never mutate inner line
   // objects, so deep reactivity would waste proxy overhead on every field of every line.
   const lines = shallowRef<LogLineOut[]>([])
@@ -134,7 +137,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       for (const l of flat) seen.add(sigOf(l.timestamp, l.content))
     } catch (e: any) {
       if (!alive) return
-      error.value = e?.response?.data?.detail ?? e?.message ?? '日志加载失败'
+      error.value = e?.response?.data?.detail ?? e?.message ?? t('pod.logsLoadFailed')
     }
 
     if (!alive) return
@@ -207,7 +210,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       // worth surfacing to the user.
       if (es && es.readyState === 2 /* CLOSED */) {
         streaming.value = false
-        error.value = '日志连接中断'
+        error.value = t('pod.logsDisconnected')
       }
     })
   }
