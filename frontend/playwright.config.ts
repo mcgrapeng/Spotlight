@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { loadEnv } from 'vite'
 
 /**
  * E2E configuration.
@@ -10,10 +11,19 @@ import { defineConfig, devices } from '@playwright/test'
  * No browser is auto-installed in CI; use `npx playwright install chromium`
  * once before running.
  */
+
+// The preview port is resolved once, here. Unlike the dev server it must NOT
+// auto-increment: Playwright navigates to `baseURL`, so a silently-shifted
+// port would look like every test failing at once. --strictPort makes a busy
+// port fail loudly at startup instead. Change it via VITE_PREVIEW_PORT in
+// frontend/.env, never by editing the numbers below.
+const PREVIEW_PORT = Number(loadEnv('', process.cwd(), '').VITE_PREVIEW_PORT) || 4173
+const PREVIEW_URL = `http://127.0.0.1:${PREVIEW_PORT}`
+
 export default defineConfig({
   testDir: './e2e',
-  // logs.spec.ts targets a live dev stack (:7003 + real backend :8002) —
-  // it runs under playwright.dev.config.ts, not this mocked suite.
+  // logs.spec.ts targets a live dev stack — it runs under
+  // playwright.dev.config.ts, not this mocked suite.
   testIgnore: '**/logs.spec.ts',
   timeout: 60_000,
   expect: { timeout: 5_000 },
@@ -23,7 +33,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: PREVIEW_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -32,8 +42,8 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'npm run preview -- --port 4173 --strictPort',
-    url: 'http://127.0.0.1:4173',
+    command: `npm run preview -- --port ${PREVIEW_PORT} --strictPort`,
+    url: PREVIEW_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

@@ -41,7 +41,13 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # 逗号分隔的允许来源。留空 = 开发模式：由 cors_origin_regex 放行
+    # 任意端口的 localhost/127.0.0.1，无需随前端端口变动而改。
+    # 生产请显式设置，且不要再用 localhost。
+    cors_origins: str = ""
+    # 仅在 cors_origins 为空时生效。开发期前端走 vite 代理（相对路径
+    # /api/v1），同源请求本不触发 CORS；这条兜底覆盖"浏览器直连后端"的场景。
+    cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     # Cache TTLs (seconds). 0 disables.
     cache_ttl_pods: int = 5

@@ -54,10 +54,10 @@ No SaaS, no vendor lock. Your cluster, your data, your model.
 
 ## 🚀 Quick start
 
-Two processes: FastAPI on `:8002`, Vue on `:5173`.
+Two processes: the FastAPI backend and the Vue dev server. Ports are never hardcoded — pick what is free on your machine and tell each side about it.
 
 ```bash
-# 1 · backend
+# 1 · backend — pick any free port
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -72,7 +72,17 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://localhost:5173>.
+**Tell the frontend where the backend is.** It proxies `/api` to `VITE_API_PROXY`, which defaults to
+`http://127.0.0.1:8000` — so if you started uvicorn on `8002` (or any other port), set it before
+running `pnpm dev`, or the frontend will silently proxy to a dead port:
+
+```bash
+# frontend/.env
+VITE_API_PROXY=http://127.0.0.1:8002
+```
+
+**Frontend port:** leave `VITE_PORT` unset and Vite picks a free one, walking up if the default is
+busy. It prints the URL it actually bound — open that, don't assume a fixed port.
 
 <details>
 <summary>Auth, Teleport, and locking the API down</summary>

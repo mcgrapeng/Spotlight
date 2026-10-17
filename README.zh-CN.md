@@ -54,10 +54,10 @@ Kubernetes Dashboard 告诉你它**在哪里**。
 
 ## 🚀 快速开始
 
-两个进程：FastAPI 在 `:8002`，Vue 在 `:5173`。
+两个进程：FastAPI 后端和 Vue 开发服务器。端口从不写死 —— 挑机器上空闲的，并让两边对上。
 
 ```bash
-# 1 · 后端
+# 1 · 后端 —— 挑一个空闲端口
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -72,7 +72,17 @@ pnpm install
 pnpm dev
 ```
 
-打开 <http://localhost:5173>。
+**要告诉前端后端在哪。** 它把 `/api` 代理到 `VITE_API_PROXY`，默认是 `http://127.0.0.1:8000` ——
+所以如果你把 uvicorn 起在了 `8002`（或任何其他端口），`pnpm dev` 之前必须设置，否则前端会静默
+代理到一个没人监听的端口：
+
+```bash
+# frontend/.env
+VITE_API_PROXY=http://127.0.0.1:8002
+```
+
+**前端端口：** `VITE_PORT` 留空即可，Vite 会自己找空闲端口，默认端口被占就往上顺延。它会打印
+实际绑定的 URL —— 打开那个，不要假定固定端口。
 
 <details>
 <summary>鉴权、Teleport，以及把 API 锁起来</summary>

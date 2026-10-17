@@ -48,9 +48,15 @@ def create_app() -> FastAPI:
         description="Clean Architecture K8s viewer + AI log analysis (via LiteLLM).",
         lifespan=lifespan,
     )
+    # 开发默认：cors_origins 为空时，按 localhost 正则放行任意端口，
+    # 前端换端口无需改这里。显式配置 CORS_ORIGINS 后不再走正则，
+    # 避免生产环境意外开放。
+    _dev_origin_regex = _settings.cors_origin_regex if not _settings.cors_list else None
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_settings.cors_list,
+        allow_origin_regex=_dev_origin_regex or None,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
