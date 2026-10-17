@@ -26,14 +26,22 @@ vi.mock('@/stores/auth', () => ({
 }))
 
 import SettingsView from '../SettingsView.vue'
+import { getI18n } from '@/i18n'
+
+// SettingsView reads its copy through `useI18n()`, so the mount needs the same
+// instance `main.ts` installs. A locally created i18n would not share the
+// `getI18n()` singleton the assertions below pin, so use the singleton itself.
+const i18n = getI18n()
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The singleton outlives each test; rewind so `mountSettings` is order-independent.
+  i18n.global.locale.value = 'zh-CN'
 })
 
 function mountSettings() {
   return mount(SettingsView, {
-    global: { stubs: { RouterLink: RouterLinkStub } },
+    global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] },
   })
 }
 
@@ -60,10 +68,19 @@ describe('SettingsView', () => {
     })
     return import('../SettingsView.vue').then(({ default: SV }) => {
       const wrapper = mount(SV, {
-        global: { stubs: { RouterLink: RouterLinkStub } },
+        global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] },
       })
       expect(wrapper.text()).toContain('未选择')
     })
+  })
+
+  it('switches its chrome copy when the locale changes', async () => {
+    const wrapper = mountSettings()
+    expect(wrapper.text()).toContain('当前集群上下文')
+    i18n.global.locale.value = 'en-US'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Current cluster context')
+    expect(wrapper.text()).not.toContain('当前集群上下文')
   })
 
   // 新增：登出入口可见 + 点击触发 logout + 弹确认 Dialog
@@ -72,6 +89,7 @@ describe('SettingsView', () => {
     const wrapper = mount(SettingsView, {
       attachTo: document.body,
       global: {
+        plugins: [i18n],
         stubs: { RouterLink: RouterLinkStub },
         mocks: {
           // 防止 router.replace 真跳

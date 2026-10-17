@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { authApi, type AuthStatus, type LoginResult } from '@/api/endpoints'
+import { getI18n } from '@/i18n'
 import { useClusterStore } from './cluster'
+
+// A Pinia setup store runs outside any component instance, so `useI18n()` is
+// unavailable here — the global composer is the only safe accessor, same as in
+// `router/index.ts`. Resolved lazily per call so it always reads the live locale.
+const t = (key: string) => getI18n().global.t(key)
 
 /**
  * Auth store — drives the login screen for environments that route K8s
@@ -59,13 +65,13 @@ export const useAuthStore = defineStore('auth', () => {
         // else: required stays true until chooseCluster() lands
         return r
       }
-      error.value = r.message || '登录失败'
+      error.value = r.message || t('login.failed')
       return null
     } catch (e: any) {
       // detail is either a plain string or {code, message} (mfa_required
       // / invalid_credentials / bad_otp / unavailable).
       const d = e?.response?.data?.detail
-      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? '登录失败')
+      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? t('login.failed'))
       return null
     } finally {
       busy.value = false
@@ -100,11 +106,11 @@ export const useAuthStore = defineStore('auth', () => {
         useClusterStore().setCluster(r.cluster)
         return true
       }
-      error.value = '选择集群失败'
+      error.value = t('login.clusterFailed')
       return false
     } catch (e: any) {
       const d = e?.response?.data?.detail
-      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? '选择集群失败')
+      error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? t('login.clusterFailed'))
       return false
     } finally {
       busy.value = false

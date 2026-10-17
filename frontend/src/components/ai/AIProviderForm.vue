@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Save, X } from '@lucide/vue'
 import {
   Dialog,
@@ -13,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import type { AIProviderIn } from '@/api/types'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -65,16 +68,16 @@ function close() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent class="sm:max-w-[480px]">
       <DialogHeader>
-        <DialogTitle>{{ initial ? '编辑 Provider' : '添加 Provider' }}</DialogTitle>
+        <DialogTitle>{{ initial ? t('ai.editTitle') : t('ai.addTitle') }}</DialogTitle>
         <DialogDescription>
-          通过 LiteLLM 统一适配 OpenAI / Anthropic / Azure / Gemini / Ollama / DeepSeek 等
+          {{ t('ai.subtitle') }}
         </DialogDescription>
       </DialogHeader>
 
       <form class="grid gap-4 py-4" @submit.prevent="onSubmit">
         <div class="grid gap-1.5">
-          <label class="text-sm font-medium" for="provider-name">名称</label>
-          <Input id="provider-name" v-model="form.name" placeholder="默认" required />
+          <label class="text-sm font-medium" for="provider-name">{{ t('ai.fieldName') }}</label>
+          <Input id="provider-name" v-model="form.name" :placeholder="t('ai.fieldNamePlaceholder')" required />
         </div>
 
         <div class="grid gap-1.5">
@@ -98,24 +101,24 @@ function close() {
         </div>
 
         <div class="grid gap-1.5">
-          <label class="text-sm font-medium" for="provider-base">Base URL（可选）</label>
+          <label class="text-sm font-medium" for="provider-base">{{ t('ai.fieldBaseUrl') }}</label>
           <Input id="provider-base" v-model="apiBaseInput" placeholder="https://api.openai.com/v1" />
         </div>
 
         <label class="flex items-center gap-2 text-sm">
           <input v-model="form.is_default" type="checkbox" class="h-4 w-4 rounded border-input" />
-          设为默认 provider
+          {{ t('ai.formSetDefault') }}
         </label>
       </form>
 
       <DialogFooter>
         <Button variant="outline" type="button" @click="close">
           <X :size="14" :stroke-width="1.75" class="mr-1" />
-          取消
+          {{ t('ai.cancel') }}
         </Button>
         <Button type="submit" @click="onSubmit">
           <Save :size="14" :stroke-width="1.75" class="mr-1" />
-          保存
+          {{ t('ai.save') }}
         </Button>
       </DialogFooter>
     </DialogContent>

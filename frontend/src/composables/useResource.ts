@@ -1,4 +1,5 @@
 import { onMounted, ref, watch, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface Options<T> {
   /** Reactive dependency to watch. When it changes, load() refires. */
@@ -24,6 +25,8 @@ interface Options<T> {
  *     const resource = useResource(fetch.refresh, { watch: () => ... })
  */
 export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {}) {
+  // Only ever called from `<script setup>`, so `useI18n()` is available here.
+  const { t } = useI18n()
   const data = ref<T | null>(null) as Ref<T | null>
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -35,7 +38,7 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
     try {
       data.value = await fetcher()
     } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+      error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
     } finally {
       loading.value = false
     }

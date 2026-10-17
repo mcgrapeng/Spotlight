@@ -22,7 +22,7 @@ import { useI18n } from 'vue-i18n'
 // the key so a language switch invalidates cached strings; reading `locale.value`
 // inside formatRel is also what makes the computeds that call it depend on it,
 // so they re-render on switch.
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 
 const _relCache = new Map<string, string>()
 function formatRel(iso: string | null) {
@@ -71,7 +71,7 @@ async function load(silent = false) {
       await statsFetch.refresh()
       lastRefreshed.value = new Date()
     } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+      error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
     } finally {
       refreshing.value = false
     }
@@ -82,7 +82,7 @@ async function load(silent = false) {
       if (v) stats.value = v
       lastRefreshed.value = new Date()
     } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? '加载失败'
+      error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
     } finally {
       loading.value = false
     }
@@ -143,8 +143,8 @@ const actionItems = computed<Array<{
   if (phaseCounts.value.failed > 0) {
     items.push({
       severity: 'critical',
-      label: `${phaseCounts.value.failed} 个 Failed Pod`,
-      detail: 'Pods 页已自动过滤 Failed',
+      label: t('dashboard.actionFailedPods', { count: phaseCounts.value.failed }),
+      detail: t('dashboard.actionFailedPodsDetail'),
       link: { name: 'pods', query: { status: 'Failed' } },
     })
   }
@@ -152,8 +152,8 @@ const actionItems = computed<Array<{
   if (stats.value?.warning_events && stats.value.warning_events > 0) {
     items.push({
       severity: 'warning',
-      label: `${stats.value.warning_events} 个 Warning 事件`,
-      detail: 'Events 页已自动过滤 Warning',
+      label: t('dashboard.actionWarningEvents', { count: stats.value.warning_events }),
+      detail: t('dashboard.actionWarningEventsDetail'),
       link: { name: 'events', query: { type: 'Warning' } },
     })
   }
@@ -163,7 +163,7 @@ const actionItems = computed<Array<{
     if (notReady > 0) {
       items.push({
         severity: 'critical',
-        label: `${notReady} 个 Node 未就绪`,
+        label: t('dashboard.actionNodesNotReady', { count: notReady }),
         detail: `Node Ready ${stats.value.nodes_ready}/${stats.value.nodes_total}`,
         link: { name: 'nodes' },
       })
@@ -174,7 +174,7 @@ const actionItems = computed<Array<{
   if (noisy.length > 0) {
     items.push({
       severity: 'warning',
-      label: `${noisy.length} 个 Pod 频繁重启`,
+      label: t('dashboard.actionFrequentRestarts', { count: noisy.length }),
       detail: noisy.map(p => `${p.pod.split('/').pop()} ×${p.restarts}`).join(', '),
       link: { name: 'pods' },
     })
@@ -224,14 +224,14 @@ const recentActivity = computed(() => {
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <div v-else-if="stats">
 
-    <PageHeader title="总览" :subtitle="compactStats">
+    <PageHeader :title="t('route.dashboard')" :subtitle="compactStats">
       <template #actions>
         <span class="text-xs text-muted-foreground tabular-nums hidden sm:inline">
-          {{ lastRefreshed ? `更新于 ${formatRel(lastRefreshed.toISOString())}` : '' }}
+          {{ lastRefreshed ? t('dashboard.updatedAt', { time: formatRel(lastRefreshed.toISOString()) }) : '' }}
         </span>
-        <Button variant="outline" size="sm" :disabled="refreshing" @click="load(true)" aria-label="刷新">
+        <Button variant="outline" size="sm" :disabled="refreshing" @click="load(true)" :aria-label="t('dashboard.refresh')">
           <RefreshCw :size="14" :stroke-width="1.75" :class="refreshing && 'animate-spin'" />
-          刷新
+          {{ t('dashboard.refresh') }}
         </Button>
       </template>
     </PageHeader>
@@ -242,9 +242,9 @@ const recentActivity = computed(() => {
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold flex items-center gap-2">
             <AlertCircle :size="16" class="text-warning" :stroke-width="2" />
-            需要处理 · {{ actionItems.length }} 项
+            {{ t('dashboard.actionRequired', { count: actionItems.length }) }}
           </h3>
-          <span class="text-xs text-muted-foreground">点链接去查</span>
+          <span class="text-xs text-muted-foreground">{{ t('dashboard.actionHint') }}</span>
         </div>
         <div class="space-y-2">
           <router-link
@@ -275,7 +275,7 @@ const recentActivity = computed(() => {
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
       <Card class="p-0">
         <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">健康</div>
+          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statHealth') }}</div>
           <div class="flex items-baseline gap-1.5">
             <span class="text-2xl font-bold tabular-nums" :class="healthIsCritical && 'text-error'">{{ healthScore }}</span>
             <span class="text-xs text-muted-foreground">%</span>
@@ -298,22 +298,22 @@ const recentActivity = computed(() => {
       </Card>
       <Card class="p-0">
         <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">告警</div>
+          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statAlerts') }}</div>
           <div class="text-2xl font-bold tabular-nums" :class="stats.warning_events > 0 ? 'text-warning' : 'text-muted-foreground/70'">
             {{ formatNumber(stats.warning_events) }}
           </div>
-          <div class="text-2xs text-muted-foreground mt-1">5min 内最近</div>
+          <div class="text-2xs text-muted-foreground mt-1">{{ t('dashboard.statAlertsHint') }}</div>
         </CardContent>
       </Card>
       <Card class="p-0">
         <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">节点</div>
+          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statNodes') }}</div>
           <div class="text-2xl font-bold tabular-nums" :class="stats.nodes_ready < stats.nodes_total ? 'text-error' : ''">
             {{ stats.nodes_ready }}<span class="text-xs text-muted-foreground">/{{ stats.nodes_total }}</span>
           </div>
           <div class="text-2xs text-muted-foreground mt-1">
-            <template v-if="nodesBlocked">Teleport RBAC 拒绝 · 见 Nodes 页</template>
-            <template v-else>就绪</template>
+            <template v-if="nodesBlocked">{{ t('dashboard.nodesBlocked') }}</template>
+            <template v-else>{{ t('dashboard.nodesReady') }}</template>
           </div>
         </CardContent>
       </Card>
@@ -326,11 +326,11 @@ const recentActivity = computed(() => {
         <CardContent class="p-4">
           <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
             <Activity :size="15" :stroke-width="1.75" />
-            最近活动
-            <span class="text-2xs text-muted-foreground ml-auto">最近 1h</span>
+            {{ t('dashboard.recentActivity') }}
+            <span class="text-2xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
           </h3>
           <div v-if="recentActivity.length === 0" class="text-sm text-muted-foreground py-4 text-center">
-            安静 — 1 小时内没有事件
+            {{ t('dashboard.recentActivityEmpty') }}
           </div>
           <ol v-else class="space-y-1.5">
             <li
@@ -359,10 +359,10 @@ const recentActivity = computed(() => {
         <CardContent class="p-4">
           <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
             <AlertTriangle :size="15" :stroke-width="1.75" />
-            频繁重启
+            {{ t('dashboard.frequentRestarts') }}
           </h3>
           <div v-if="noisyRestarts.length === 0" class="text-sm text-muted-foreground py-4 text-center">
-            无
+            {{ t('dashboard.frequentRestartsEmpty') }}
           </div>
           <ol v-else class="space-y-1.5">
             <li
