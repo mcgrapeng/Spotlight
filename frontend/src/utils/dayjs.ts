@@ -8,50 +8,38 @@ import type { Locale } from '@/i18n/types'
 
 /**
  * zh-CN is the product default and every view renders `fromNow()` synchronously
- * on first paint. `setDayjsLocale` registers asynchronously, so relying on it
- * alone would render that first paint in dayjs's built-in English. Registering
- * zh-cn statically keeps the guarantee; it was in the first chunk before this
- * change too, so it costs no extra bundle weight.
+ * on first paint, so it must be registered before any component renders.
+ *
+ * Both of our locales are registered statically and neither needs a loader:
+ * English is built into dayjs core — `Object.keys(require('dayjs').Ls)` is
+ * `['en']` with nothing imported — so only zh-cn is missing.
+ *
+ * Do not reintroduce a dynamic `import()` loader here. `main.ts` top-level-awaits
+ * `setDayjsLocale`, and its `.catch()` guards a rejection, not a promise that
+ * never settles. A locale chunk that hangs gates `app.mount()` forever and the
+ * production build shows a permanently blank page: no error, no failed request,
+ * and `vite dev` unaffected. Verify any change here with `vite build`, not
+ * vitest — tests resolve the loader through Vite's SSR transform and pass
+ * against code that breaks in the real bundle.
  */
 import 'dayjs/locale/zh-cn'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
 
-const LOADED = new Set<string>()
-
 /**
- * Our locale -> its dayjs tag plus an on-demand loader, so the language you
- * are not using stays out of the first chunk.
- *
- * Each loader must be its own static `import()` literal: Vite cannot code-split
- * a specifier built from a `${…}` placeholder, so that form ships un-resolved
- * and 404s in the browser. Tests still pass in that shape because they go
- * through Vite's SSR transform — verify with `vite build`, not vitest.
- *
- * zh-CN has no loader because the static import above already registered it;
- * re-importing it dynamically is the no-op Vite warns about. English is `en`,
- * not `en-us` — dayjs ships no `en-us` file. As a `Record<Locale, …>` this
- * fails to compile if a third locale is ever added.
+ * Our locale -> its dayjs tag. English is `en`, not `en-us` — dayjs ships no
+ * `en-us` file. As a `Record<Locale, …>` this fails to compile if a third
+ * locale is ever added, which is the point.
  */
-const DAYJS_LOCALES: Record<
-  Locale,
-  { tag: string; load: (() => Promise<unknown>) | null }
-> = {
-  'zh-CN': { tag: 'zh-cn', load: null },
-  'en-US': { tag: 'en', load: () => import('dayjs/locale/en') },
+const DAYJS_LOCALES: Record<Locale, string> = {
+  'zh-CN': 'zh-cn',
+  'en-US': 'en',
 }
 
-/** Load a dayjs locale on demand and make it the active global. */
+/** Make the active global locale match `l`. Every dayjs locale is already loaded. */
 export async function setDayjsLocale(l: Locale): Promise<void> {
-  const { tag, load } = DAYJS_LOCALES[l]
-  if (!LOADED.has(tag)) {
-    await load?.()
-    LOADED.add(tag)
-  }
-  // Registering a locale resets the global, so assert after every call —
-  // including the cached path, where the caller may have switched since.
-  dayjs.locale(tag)
+  dayjs.locale(DAYJS_LOCALES[l])
 }
 
 setDayjsLocale('zh-CN')
