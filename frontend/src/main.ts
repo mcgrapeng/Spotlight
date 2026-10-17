@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
-import { getI18n, type Locale } from './i18n'
+import { getI18n } from './i18n'
 import { setDayjsLocale } from './utils/dayjs'
 import './styles/main.css'
 
@@ -19,6 +19,6 @@ app.use(router)
 // future locale that needs one — but read `utils/dayjs.ts` before adding it:
 // `.catch()` guards a rejection, not a promise that never settles, and a locale
 // loader that hangs here gates `app.mount()` and blanks the page for everyone.
-await setDayjsLocale(i18n.global.locale.value as Locale).catch(() => {})
+await setDayjsLocale(i18n.global.locale.value).catch(() => {})
 
 app.mount('#app')

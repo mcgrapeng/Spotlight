@@ -164,7 +164,10 @@ const actionItems = computed<Array<{
       items.push({
         severity: 'critical',
         label: t('dashboard.actionNodesNotReady', { count: notReady }),
-        detail: `Node Ready ${stats.value.nodes_ready}/${stats.value.nodes_total}`,
+        detail: t('dashboard.actionNodesNotReadyDetail', {
+          ready: stats.value.nodes_ready,
+          total: stats.value.nodes_total,
+        }),
         link: { name: 'nodes' },
       })
     }
@@ -189,14 +192,14 @@ const actionItems = computed<Array<{
 const compactStats = computed(() => {
   const s = stats.value
   if (!s) return ''
-  const parts = [
-    `${formatNumber(s.total_pods)} pods`,
-    `${formatNumber(s.running)} running`,
-    `${formatNumber(s.failed)} failed`,
-    `${s.nodes_ready}/${s.nodes_total} nodes`,
-    `${s.warning_events} warnings`,
-  ]
-  return parts.join(' · ')
+  return t('dashboard.compactStats', {
+    total: formatNumber(s.total_pods),
+    running: formatNumber(s.running),
+    failed: formatNumber(s.failed),
+    nodesReady: s.nodes_ready,
+    nodesTotal: s.nodes_total,
+    warnings: s.warning_events,
+  })
 })
 
 const recentActivity = computed(() => {
@@ -291,9 +294,9 @@ const recentActivity = computed(() => {
       </Card>
       <Card class="p-0">
         <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">Pods</div>
+          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statPods') }}</div>
           <div class="text-2xl font-bold tabular-nums">{{ formatNumber(stats.total_pods) }}</div>
-          <div class="text-2xs text-muted-foreground mt-1">Running {{ formatNumber(stats.running) }}</div>
+          <div class="text-2xs text-muted-foreground mt-1">{{ t('dashboard.statPodsRunning', { count: formatNumber(stats.running) }) }}</div>
         </CardContent>
       </Card>
       <Card class="p-0">

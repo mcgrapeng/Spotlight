@@ -21,8 +21,19 @@ export * from './types'
  * `string | WritableComputedRef` and neither `.value` nor `.t()` type-checks.
  * We always build composition mode (`legacy: false`), so pin that here
  * instead of casting at every call site.
+ *
+ * The `Messages` slot lists the two locale keys as `{ 'zh-CN': {}; 'en-US': {} }`
+ * — deliberately not `{}`. vue-i18n types `locale` as
+ * `ResourceLocales = PickupLocales<Messages>`, and `{}` makes that `never`, which
+ * drops `global.locale.value` all the way back to vue-i18n's own `Locale`
+ * (plain `string` here) and forced an `as Locale` cast in `main.ts`. Naming the
+ * keys narrows it to our union. `{}` values are intentional: the message *shapes*
+ * stay unchecked, so `t()` still takes any key.
+ *
+ * `OptionLocale` is pinned to our own `Locale` because that is exactly what
+ * `createI18n` infers from `locale: initial` (`initial: Locale`).
  */
-type SpotlightI18n = I18n<{}, {}, {}, string, false>
+type SpotlightI18n = I18n<{ 'zh-CN': {}; 'en-US': {} }, {}, {}, Locale, false>
 
 /**
  * Map a browser-reported BCP-47 tag onto one of the two supported locales.
