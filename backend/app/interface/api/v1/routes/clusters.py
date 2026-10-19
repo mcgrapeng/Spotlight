@@ -28,15 +28,15 @@ def current_cluster(uc: ClusterUseCases = Depends(cluster_uc)):
 
 @router.get("/namespaces", response_model=list[NamespaceOut])
 async def list_namespaces(
-    cluster: str | None = Query(default=None),
+    context: str | None = Query(default=None),
     uc: NamespaceUseCases = Depends(namespace_uc),
 ):
-    return await uc.list_namespaces(cluster)
+    return await uc.list_namespaces(context)
 
 
 @router.get("/nodes", response_model=list[NodeOut])
 async def list_nodes(
-    cluster: str | None = Query(default=None),
+    context: str | None = Query(default=None),
     uc: NodeUseCases = Depends(node_uc),
 ):
-    return await uc.list_nodes(cluster)
+    return await uc.list_nodes(context)

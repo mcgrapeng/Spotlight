@@ -57,6 +57,15 @@ export const useClusterStore = defineStore('cluster', () => {
       // `if (Array.isArray(v))` was always false because loadOrHydrate
       // returned void, leaving activeCluster null on first login.
       await clustersFetch.loadOrHydrate()
+      // A selection restored from localStorage belongs to whoever used this
+      // browser last. If the current login cannot see that cluster, every
+      // request carries a context its session kubeconfig does not have and the
+      // server answers 409. Drop it and fall through to the default below.
+      if (activeCluster.value && !clusters.value.some((c) => c.name === activeCluster.value)) {
+        activeCluster.value = null
+        activeNamespace.value = '_all'
+        persist()
+      }
       if (clusters.value.length && !activeCluster.value) {
         const cur = clusters.value.find((c) => c.is_current) ?? clusters.value[0]
         activeCluster.value = cur?.name ?? null
@@ -70,9 +79,13 @@ export const useClusterStore = defineStore('cluster', () => {
   // ponytail: namespaces are scoped to the active cluster, so the cache
   // key includes the cluster name. Hit the same cluster twice within
   // 5 min and the second call returns from localStorage.
-  const nsFetchKey = computed(() => `namespaces:${activeCluster.value ?? 'none'}`)
+  //
+  // The key must be read inside loadNamespaces(), not once at store setup: a
+  // Pinia setup store body runs exactly once, while activeCluster is still
+  // null, so a `nsFetchKey.value` captured here froze at "namespaces:none"
+  // and served one cluster's namespaces for every other cluster.
   const nsFetch = useCachedFetch<NamespaceOut[]>({
-    key: nsFetchKey.value,
+    key: '',
     fetcher: () => namespacesApi.list(activeCluster.value!),
     data: namespaces as unknown as import('vue').Ref<NamespaceOut[] | null>,
     loading: ref(false) as unknown as import('vue').Ref<boolean>,
@@ -82,6 +95,7 @@ export const useClusterStore = defineStore('cluster', () => {
 
   async function loadNamespaces() {
     if (!activeCluster.value) return
+    nsFetch.rekey(`namespaces:${activeCluster.value}`)
     try {
       const v = await nsFetch.loadOrHydrate()
       if (Array.isArray(v)) namespaces.value = v
@@ -102,8 +116,32 @@ export const useClusterStore = defineStore('cluster', () => {
     persist()
   }
 
+  /** Wipe all cluster state, both in memory and in localStorage. Called on
+   *  logout so the next login starts from a blank slate. */
+  function reset() {
+    clusters.value = []
+    namespaces.value = []
+    activeCluster.value = null
+    activeNamespace.value = '_all'
+    clustersFetch.rekey('clusters:list')
+    nsFetch.rekey('')
+    try {
+      localStorage.removeItem(SELECTION_KEY)
+      // `cached:` is the prefix useCachedFetch writes; everything under it is
+      // a snapshot of another user's clusters/namespaces/pods. Iterate by
+      // index rather than Object.keys — that returns the method names on a
+      // non-standard Storage shim, and misses every real entry.
+      const doomed: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k?.startsWith('cached:')) doomed.push(k)
+      }
+      for (const k of doomed) localStorage.removeItem(k)
+    } catch { /* private mode / disabled storage */ }
+  }
+
   return {
     clusters, namespaces, activeCluster, activeNamespace, currentCluster,
-    loadClusters, loadNamespaces, setCluster, setNamespace, restore,
+    loadClusters, loadNamespaces, setCluster, setNamespace, restore, reset,
   }
 })

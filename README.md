@@ -62,7 +62,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-uvicorn app.main:app --reload --port 8002
+python -m app.server --reload --port 8002
 ```
 
 ```bash
@@ -85,13 +85,43 @@ VITE_API_PROXY=http://127.0.0.1:8002
 busy. It prints the URL it actually bound — open that, don't assume a fixed port.
 
 <details>
-<summary>Auth, Teleport, and locking the API down</summary>
+<summary>Auth: Teleport, shared token, or direct kubeconfig</summary>
 
-For local development leave `API_TOKEN` and `TELEPORT_*` unset — the API starts open and logs a startup warning. To require a token, set `API_TOKEN=<your-token>` in `backend/.env` and log in with any `Authorization: Bearer <token>`.
+Pick **one** of three modes. All three are real and supported — Teleport is
+just the one that needs a bastion.
 
-**Using Teleport?** Set `TELEPORT_PROXY`, `TELEPORT_AUTH` and `TELEPORT_CLUSTER` in `.env`. Spotlight issues per-session `tsh login` credentials and needs no kubeconfig at all.
+**A · Direct kubeconfig (no bastion).** Set nothing. Spotlight reads
+`$KUBECONFIG` or `~/.kube/config` on the server and talks to the apiserver
+directly. The API starts open and logs a startup warning. This is the mode for
+a laptop or a single-team internal tool, where everyone sharing the server's
+cluster identity is fine.
 
-**Writing your own auth plugin?** Implement `AuthPlugin` in `backend/app/infrastructure/auth/plugins/`, register it in that package's `REGISTRY`, and set `AUTH_PROVIDER=<your-plugin-id>`. The login form adapts itself to the plugin's `form_fields()`.
+**B · Shared token.** Set `API_TOKEN` (and optionally `AUTH_PROVIDER=token`).
+Callers send `Authorization: Bearer <token>`; there is no login form to fill
+in. The cluster credential is still the *server's* kubeconfig, so this changes
+who may enter, not what they may see.
+
+**C · Teleport (real per-user isolation).** Set `TELEPORT_PROXY`,
+`TELEPORT_AUTH` and `AUTH_PROVIDER=teleport`. Each browser session gets its
+own private `tsh login` state and its own kubeconfig — users see only what
+their Teleport role allows. Set `TELEPORT_CLUSTER` when your proxy hostname is
+not the cluster name.
+
+Modes A and B share one Kubernetes identity. If you need "each engineer sees
+only their own RBAC scope", that is mode C, or a new `AuthPlugin`.
+
+**Behind a reverse proxy**, set `TRUSTED_PROXY_IPS` to your LB subnet and start
+the server with `python -m app.server` (see Quick start). It is a uvicorn
+setting, so the bare `uvicorn app.main:app` form ignores it — and without it
+the login rate limiter sees only the proxy's IP and throttles every user as one
+shared bucket.
+
+**Writing your own auth plugin?** Implement `AuthPlugin` in
+`backend/app/infrastructure/auth/plugins/`, register it in that package's
+`REGISTRY`, and set `AUTH_PROVIDER=<your-plugin-id>`. The login form adapts
+itself to the plugin's `form_fields()`. `acquire()` returns the kubeconfig to
+write into the session's private directory; per-session isolation, client
+pooling and cleanup are already handled for you.
 
 </details>
 
@@ -191,7 +221,7 @@ flowchart TB
 
 - [x] **v2.0** — multi-cluster kubeconfig, SSE log streaming, LiteLLM, UI v6, hexagonal backend
 - [ ] **v2.1** — Helm chart · single-binary mode · SQLite → Postgres
-- [ ] **v2.2** — RBAC-aware views · multi-user session isolation · audit log UI
+- [ ] **v2.2** — multi-user session isolation (per-user cluster credentials via a new `AuthPlugin`) · audit log UI
 - [ ] **v3.0** — plugin SDK · authenticated public read-only share links
 
 Open a [Discussion](https://github.com/mcgrapeng/Spotlight/discussions) if something matters to you — the roadmap follows what people actually use.

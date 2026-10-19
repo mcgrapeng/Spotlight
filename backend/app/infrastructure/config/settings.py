@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     api_token: str = ""
     session_ttl_seconds: int = 43200  # 12h
 
+    # Reverse proxies that are allowed to set X-Forwarded-For. Empty (the
+    # default) means the header is ignored and every request is attributed to
+    # the proxy's own IP — which makes the login rate limiter one shared bucket
+    # for the whole user base. Set it to the LB/ingress subnet (e.g. "10.0.0.0/8")
+    # in any deployment that sits behind a proxy. Never "*": that lets anyone
+    # spoof their source IP and bypass the limiter.
+    trusted_proxy_ips: str = ""
+
     # 活跃认证插件 id（见 infrastructure/auth/plugins/REGISTRY）。空 = 开发开放模式。
     auth_provider: str = ""
 
@@ -58,6 +66,11 @@ class Settings(BaseSettings):
     @property
     def cors_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def trusted_proxy_list(self) -> list[str]:
+        """For `ProxyHeadersMiddleware.forwarded_allow_ips`."""
+        return [o.strip() for o in self.trusted_proxy_ips.split(",") if o.strip()]
 
     @property
     def teleport_configured(self) -> bool:

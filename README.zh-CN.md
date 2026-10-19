@@ -62,7 +62,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-uvicorn app.main:app --reload --port 8002
+python -m app.server --reload --port 8002
 ```
 
 ```bash
@@ -85,13 +85,35 @@ VITE_API_PROXY=http://127.0.0.1:8002
 实际绑定的 URL —— 打开那个，不要假定固定端口。
 
 <details>
-<summary>鉴权、Teleport，以及把 API 锁起来</summary>
+<summary>鉴权：Teleport、共享令牌，或直连 kubeconfig</summary>
 
-本地开发时把 `API_TOKEN` 和 `TELEPORT_*` 留空即可 —— API 会以开放状态启动，并打印一条启动告警。要开启鉴权，在 `backend/.env` 里设 `API_TOKEN=<你的 token>`，然后用任意 `Authorization: Bearer <token>` 登录。
+三种模式任选其一，全部真实可用 —— 需要跳板机的只是 Teleport 那一种。
 
-**在用 Teleport？** 在 `.env` 里设 `TELEPORT_PROXY`、`TELEPORT_AUTH`、`TELEPORT_CLUSTER`。Spotlight 会签发按会话生效的 `tsh login` 凭据，完全不需要 kubeconfig。
+**A · 直连 kubeconfig（无需跳板机）** 什么都不设。Spotlight 读取服务端的
+`$KUBECONFIG` 或 `~/.kube/config`，直接和 apiserver 对话。API 以开放状态启动并
+打印告警。适合笔记本、或者团队内部工具 —— 所有人共用服务端那一个集群身份。
 
-**想自己写鉴权插件？** 在 `backend/app/infrastructure/auth/plugins/` 实现 `AuthPlugin`，在该包的 `REGISTRY` 里注册，然后设 `AUTH_PROVIDER=<你的插件 id>`。登录表单会依据插件的 `form_fields()` 自动适配。
+**B · 共享令牌** 设 `API_TOKEN`（可选再设 `AUTH_PROVIDER=token`）。调用方带
+`Authorization: Bearer <token>`，没有登录表单可填。集群凭据仍然是**服务端**的
+kubeconfig，所以它只决定"谁能进来"，不决定"能看到什么"。
+
+**C · Teleport（真正的按人隔离）** 设 `TELEPORT_PROXY`、`TELEPORT_AUTH` 和
+`AUTH_PROVIDER=teleport`。每个浏览器会话有独立的 `tsh login` 状态和独立的
+kubeconfig，用户只能看到自己 Teleport 角色允许的内容。当 proxy 域名不等于集群
+名时，务必设 `TELEPORT_CLUSTER`。
+
+模式 A 和 B 共用同一个 K8s 身份。如果需要"每位工程师只看到自己 RBAC 范围内的
+集群"，那是模式 C，或者新写一个 `AuthPlugin`。
+
+**部署在反向代理后面时**，把 `TRUSTED_PROXY_IPS` 设成你的负载均衡网段，并用
+`python -m app.server` 启动（见快速开始）。这是 uvicorn 层的配置，直接用
+`uvicorn app.main:app` 启动会被忽略 —— 不设的话登录限流只会看到代理的 IP，
+全公司被算作同一个桶，上线当天就会被打挂。
+
+**想自己写鉴权插件？** 在 `backend/app/infrastructure/auth/plugins/` 实现
+`AuthPlugin`，在该包的 `REGISTRY` 里注册，然后设 `AUTH_PROVIDER=<你的插件 id>`。
+登录表单会依据插件的 `form_fields()` 自动适配。`acquire()` 返回要写进会话私有目录
+的 kubeconfig 即可，按会话隔离、客户端池化和清理都已处理好。
 
 </details>
 
@@ -191,7 +213,7 @@ flowchart TB
 
 - [x] **v2.0** —— 多集群 kubeconfig、SSE 日志流、LiteLLM、UI v6、六边形后端
 - [ ] **v2.1** —— Helm chart · 单二进制模式 · SQLite → Postgres
-- [ ] **v2.2** —— RBAC 感知的视图 · 多用户会话隔离 · 审计日志界面
+- [ ] **v2.2** —— 多用户会话隔离（用新的 `AuthPlugin` 提供按人集群凭据）· 审计日志界面
 - [ ] **v3.0** —— 插件 SDK · 带鉴权的公开只读分享链接
 
 如果你有在意的能力，开个 [Discussion](https://github.com/mcgrapeng/Spotlight/discussions) —— 路线图是跟着真实使用走的。

@@ -90,10 +90,10 @@ async def analyze_logs(
     namespace: str,
     name: str,
     payload: AIAnalyzeIn,
-    cluster: str | None = None,
+    context: str | None = None,
     uc: AIUseCases = Depends(ai_uc),
 ):
-    ref = ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
+    ref = ResourceRef(cluster=context or "", namespace=namespace, kind="Pod", name=name)
     try:
         result = await uc.analyze_logs(payload.provider_id, ref, payload.log_lines, payload.question)
     except (ValueError, LookupError) as e:

@@ -72,23 +72,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/permissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Permissions */
-        get: operations["get_permissions_api_v1_auth_permissions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/logout": {
         parameters: {
             query?: never;
@@ -697,6 +680,8 @@ export interface components {
              * @default
              */
             message: string;
+            /** Clusters Error */
+            clusters_error?: string | null;
         };
         /** NamespaceOut */
         NamespaceOut: {
@@ -968,28 +953,6 @@ export interface operations {
             };
         };
     };
-    get_permissions_api_v1_auth_permissions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
-                };
-            };
-        };
-    };
     post_logout_api_v1_auth_logout_post: {
         parameters: {
             query?: never;
@@ -1055,7 +1018,7 @@ export interface operations {
     list_namespaces_api_v1_namespaces_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
             };
             header?: never;
             path?: never;
@@ -1086,7 +1049,7 @@ export interface operations {
     list_nodes_api_v1_nodes_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
             };
             header?: never;
             path?: never;
@@ -1117,7 +1080,7 @@ export interface operations {
     list_pods_api_v1_pods_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
                 /** @description namespace name or '_all' */
                 namespace?: string | null;
                 status?: string;
@@ -1153,7 +1116,7 @@ export interface operations {
     stats_api_v1_pods_stats_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
             };
             header?: never;
             path?: never;
@@ -1184,7 +1147,7 @@ export interface operations {
     get_pod_api_v1_pods__namespace___name__get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
             };
             header?: never;
             path: {
@@ -1218,7 +1181,7 @@ export interface operations {
     read_history_api_v1_pods__namespace___name__logs_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
                 container?: string | null;
                 tail_lines?: number;
                 /** @description ISO timestamp or short form like 5m / 1h / 7d */
@@ -1256,7 +1219,7 @@ export interface operations {
     stream_api_v1_pods__namespace___name__logs_stream_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
                 container?: string | null;
                 tail_lines?: number;
                 keepalive_seconds?: number;
@@ -1293,7 +1256,7 @@ export interface operations {
     list_events_api_v1_events_get: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
                 namespace?: string | null;
                 involved?: string | null;
                 limit?: number;
@@ -1557,7 +1520,7 @@ export interface operations {
     analyze_logs_api_v1_ai_analyze__namespace___name__post: {
         parameters: {
             query?: {
-                cluster?: string | null;
+                context?: string | null;
             };
             header?: never;
             path: {

@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@lucide/vue'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
-import { usePermissionsStore } from '@/stores/permissions'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
@@ -45,12 +44,8 @@ const error = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
 
-const perms = usePermissionsStore()
-const nodesBlocked = computed(() => perms.isBlocked('nodes') === true)
-
-const statsCacheKey = computed(() => `dashboard:${cluster.activeCluster || 'none'}`)
 const statsFetch = useCachedFetch<DashboardOut>({
-  key: statsCacheKey.value,
+  key: '',
   fetcher: () => podsApi.stats(cluster.activeCluster!),
   data: stats as unknown as import('vue').Ref<DashboardOut | null>,
   loading,
@@ -62,6 +57,9 @@ const statsFetch = useCachedFetch<DashboardOut>({
 // miss → fetch + cache. silent=true → bypass cache (user wants fresh).
 async function load(silent = false) {
   if (!cluster.activeCluster) return
+  // Rekey here, not at setup: a `computed(...).value` captured at store setup
+  // freezes at 'none' and serves one cluster's dashboard for every other one.
+  statsFetch.rekey(`dashboard:${cluster.activeCluster}`)
   error.value = null
   if (silent) {
     refreshing.value = true
@@ -89,12 +87,8 @@ async function load(silent = false) {
   }
 }
 
-async function probePerms() {
-  await perms.refresh()
-}
-
-onMounted(() => { load(); probePerms() })
-watch(() => cluster.activeCluster, () => { load(); probePerms() })
+onMounted(load)
+watch(() => cluster.activeCluster, () => load())
 watch(() => cluster.activeNamespace, () => load(true))
 
 // ponytail: 健康度只统计"长生命周期" Pod 阶段（Succeeded 是 Job 完成态，不算健康也不算故障）。
@@ -314,10 +308,7 @@ const recentActivity = computed(() => {
           <div class="text-2xl font-bold tabular-nums" :class="stats.nodes_ready < stats.nodes_total ? 'text-error' : ''">
             {{ stats.nodes_ready }}<span class="text-xs text-muted-foreground">/{{ stats.nodes_total }}</span>
           </div>
-          <div class="text-2xs text-muted-foreground mt-1">
-            <template v-if="nodesBlocked">{{ t('dashboard.nodesBlocked') }}</template>
-            <template v-else>{{ t('dashboard.nodesReady') }}</template>
-          </div>
+          <div class="text-2xs text-muted-foreground mt-1">{{ t('dashboard.nodesReady') }}</div>
         </CardContent>
       </Card>
     </div>

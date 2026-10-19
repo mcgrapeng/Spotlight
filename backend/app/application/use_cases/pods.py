@@ -8,13 +8,14 @@ from __future__ import annotations
 from app.application.dto import PodListOut, PodOut
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.value_objects.primitives import LabelSelector, ResourceRef
-from app.infrastructure.cache.ttl_cache import TTLCache
+from app.infrastructure.cache.ttl_cache import ScopedCaches
 from app.infrastructure.config.settings import get_settings
 
 # Module-level shared cache. Bounded to MAX_SLOTS via FIFO eviction.
-_caches: dict[str, TTLCache[PodListOut]] = {}
-_order: list[str] = []
+# One slot per (session, cluster, filter combo) — many more combinations than
+# the other modules produce, hence the smaller bound.
 MAX_SLOTS = 32
+_caches: ScopedCaches[PodListOut] = ScopedCaches(max_slots=MAX_SLOTS)
 
 
 def _list_key(scope: str, cluster: str | None, namespace: str | None, status: str | None,
@@ -22,16 +23,8 @@ def _list_key(scope: str, cluster: str | None, namespace: str | None, status: st
     return f"{scope}|{cluster or ''}|{namespace or ''}|{status or ''}|{search or ''}|{label_selector or ''}"
 
 
-def _cache_for(key: str) -> TTLCache[PodListOut]:
-    c = _caches.get(key)
-    if c is None:
-        c = TTLCache(float(get_settings().cache_ttl_pods))
-        _caches[key] = c
-        _order.append(key)
-        if len(_order) > MAX_SLOTS:
-            evict = _order.pop(0)
-            _caches.pop(evict, None)
-    return c
+def _cache_for(key: str):
+    return _caches.get(key, float(get_settings().cache_ttl_pods))
 
 
 class PodUseCases:

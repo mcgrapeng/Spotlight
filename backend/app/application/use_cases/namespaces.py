@@ -3,21 +3,18 @@ from __future__ import annotations
 
 from app.application.dto import NamespaceOut
 from app.application.ports.outbound import K8sRepositoryPort
-from app.infrastructure.cache.ttl_cache import TTLCache
+from app.infrastructure.cache.ttl_cache import ScopedCaches
 from app.infrastructure.config.settings import get_settings
 
 # Module-level cache keyed by (scope, cluster). Namespaces are scoped to a cluster,
 # so a single cluster has at most one cache slot per session.
-_caches: dict[tuple[str, str | None], TTLCache[list[NamespaceOut]]] = {}
+_caches: ScopedCaches[list[NamespaceOut]] = ScopedCaches(max_slots=128)
 
 
-def _cache_for(scope: str, cluster: str | None) -> TTLCache[list[NamespaceOut]]:
-    key = (scope, cluster)
-    c = _caches.get(key)
-    if c is None:
-        c = TTLCache(float(get_settings().cache_ttl_namespaces))
-        _caches[key] = c
-    return c
+def _cache_for(scope: str, cluster: str | None):
+    # `<scope>|…` prefix is what `invalidate_scope` matches on.
+    key = f"{scope}|{cluster or ''}"
+    return _caches.get(key, float(get_settings().cache_ttl_namespaces))
 
 
 class NamespaceUseCases:

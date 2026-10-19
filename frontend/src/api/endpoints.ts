@@ -34,6 +34,11 @@ export interface LoginResult {
   ok: boolean
   kube_clusters: string[]
   message: string
+  /** Non-null when enumeration FAILED (not "there are none"). An empty
+   * `kube_clusters` together with this set means the UI must NOT continue on
+   * the host kubeconfig — that would show the server's cluster, not the
+   * user's. */
+  clusters_error: string | null
 }
 export interface ChooseClusterResult {
   ok: boolean
@@ -56,9 +61,6 @@ export const authApi = {
     ).then((r) => r.data),
   kubeClusters: () =>
     http.get<string[]>('/auth/kube-clusters', { timeout: 15_000 }).then((r) => r.data),
-  permissions: () =>
-    http.get<Record<string, boolean>>('/auth/permissions', { timeout: 15_000 })
-      .then((r) => r.data),
   logout: () => http.post('/auth/logout').then((r) => r.data as { ok: boolean }),
 }
 
@@ -124,7 +126,9 @@ export const eventsApi = {
       params: {
         context: params.cluster || undefined,
         namespace: params.namespace || undefined,
-        involved_name: params.involved || undefined,
+        // Wire name is `involved`. `involved_name` is the RESPONSE field, and
+        // sending it meant FastAPI dropped it — the filter did nothing.
+        involved: params.involved || undefined,
         limit: params.limit || 200,
       },
     }).then((r) => r.data),
@@ -155,6 +159,6 @@ export const aiApi = {
     http.post<AIAnalyzeOut>(
       `/ai/analyze/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
       { provider_id: providerId, question, log_lines: logLines },
-      { params: { cluster: cluster || undefined } },
+      { params: { context: cluster || undefined } },
     ).then((r) => r.data),
 }

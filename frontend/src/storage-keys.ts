@@ -8,8 +8,10 @@
  * - TTLs live next to the key, not buried in random `.5 * 60_000` literals.
  *
  * Naming convention:
- * - `app.*`        — long-lived user preferences, written under user control
- * - `cache.*`      — short-lived fetch cache managed by useCachedFetch
+ * - `app.*`  — long-lived user preferences, written under user control
+ * - `cache.*` — short-lived fetch cache. These strings are handed to
+ *   useCachedFetch, which persists them under a `cached:` prefix
+ *   (`cached:cache:nodes:prod`). TTL lives in the useCachedFetch call.
  */
 export const STORAGE_KEYS = {
   /** AppLayout sidebar collapsed/expanded, per user */
@@ -30,17 +32,12 @@ export const STORAGE_KEYS = {
   /** UI locale ('zh-CN' | 'en-US') — survives reload, user-controlled */
   appLocale: 'spotlight.locale',
 
-  // ─── useCachedFetch-managed ────────────────────────────────────────
-  // Format: `cache:{useCachedFetch key}` — TTL is in the useCachedFetch call,
-  // not here. We just namespace them so a manual `localStorage.clear()` is
-  // safe (won't wipe user prefs) and the keys can't collide with `app.*`.
-  cacheClusters: 'cache:clusters:list',
-  cacheClustersFor: (cluster: string) => `cache:namespaces:${cluster}`,
-  cacheDashboardFor: (cluster: string) => `cache:dashboard:${cluster}`,
-  cacheNodesFor: (cluster: string) => `cache:nodes:${cluster}`,
+  // ─── useCachedFetch keys ───────────────────────────────────────
+  // Passed to useCachedFetch; it prefixes them with `cached:` itself. Only
+  // list a key here if some code builds it from this registry — an entry
+  // nothing reads is a second place to keep in sync for no benefit.
   cacheEventsBadgeFor: (cluster: string, ns: string) =>
     `cache:events-badge:${cluster}:${ns}`,
-  cachePermissions: 'cache:permissions:rbac',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

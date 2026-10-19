@@ -1,0 +1,156 @@
+name: CI
+
+# Every push and PR. The repo had no automation at all, which is how a
+# `?context=` / `?cluster=` query-parameter mismatch survived from the initial
+# commit — nothing ever ran the real thing.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref; nobody wants to wait for a stale build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Interpreter the backend tests run on by default. 3.13 rather than 3.14:
+  # the requirements are unpinned below 3.14 and litellm is the long pole.
+  # A developer's local .venv may be either, which is exactly why the backend
+  # job below is a matrix — see the reasoning there.
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '22'
+  # pnpm, not npm: package.json's own `build` script shells out to
+  # `pnpm run types:check`, and pnpm-lock.yaml is the lockfile still being
+  # maintained. `npm ci` would fail on that inner call.
+  PNPM_VERSION: '9'
+
+jobs:
+  # ── backend: unit + integration, including the ones that fork real servers ──
+  backend:
+    name: backend tests (py ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # A local `.venv` is 3.14 while this job was pinned to 3.13, so "all
+        # tests pass locally" proved nothing about CI — a 3.14-only break
+        # reached main silently. requirements.txt permits both, so test both,
+        # with 3.13 keeping the fast-failing role.
+        python-version: ['3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Test
+        working-directory: backend
+        run: python -m pytest -q --cov=app --cov-report=term-missing --cov-report=xml
+
+  frontend:
+    name: frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Unit tests
+        working-directory: frontend
+        run: pnpm run test
+      - name: Type check
+        working-directory: frontend
+        # Split out from `pnpm run build`, which also runs `types:check`
+        # against a live backend and so needs the servers below.
+        run: pnpm exec vue-tsc --noEmit
+
+  # ── e2e: real Chromium, real backend, two fake apiservers ────────────────
+  # The cluster-switch spec runs the genuine stack, so it cannot be faked with
+  # page.route() — a mock answers whatever it is asked for, which is exactly
+  # what let the query-parameter mismatch go unnoticed.
+  e2e:
+    name: e2e (browser + live backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Install frontend
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build + OpenAPI drift check
+        # `vite build` alone needs nothing; the drift gate is the valuable part
+        # and it fetches /openapi.json from a live backend, so one is started
+        # here and torn down after. `cd` explicitly rather than
+        # `working-directory`, since the two halves run in different folders.
+        run: |
+          set -euo pipefail
+          cd backend
+          python -m app.server --port 18080 --host 127.0.0.1 --log-level warning &
+          BACKEND_PID=$!
+          trap 'kill $BACKEND_PID 2>/dev/null || true' EXIT
+          cd ../frontend
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:18080/healthz >/dev/null && break
+            sleep 1
+          done
+          # Fails if src/api/types.gen.ts drifted from the live spec — the gate
+          # that stops a route change shipping without its generated types.
+          pnpm exec openapi-typescript http://127.0.0.1:18080/openapi.json \
+            -o src/api/types.gen.ts --check
+          pnpm exec vite build
+
+      - name: E2E
+        working-directory: frontend
+        env:
+          # The spec spawns the backend itself; point it at CI's interpreter
+          # rather than a developer-style ./backend/.venv.
+          SPOTLIGHT_BACKEND_PY: python
+        run: pnpm exec playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: |
+            frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

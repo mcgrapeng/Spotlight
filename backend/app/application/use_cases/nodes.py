@@ -3,19 +3,16 @@ from __future__ import annotations
 
 from app.application.dto import NodeOut
 from app.application.ports.outbound import K8sRepositoryPort
-from app.infrastructure.cache.ttl_cache import TTLCache
+from app.infrastructure.cache.ttl_cache import ScopedCaches
 from app.infrastructure.config.settings import get_settings
 
-_caches: dict[tuple[str, str | None], TTLCache[list[NodeOut]]] = {}
+_caches: ScopedCaches[list[NodeOut]] = ScopedCaches(max_slots=128)
 
 
-def _cache_for(scope: str, cluster: str | None) -> TTLCache[list[NodeOut]]:
-    key = (scope, cluster)
-    c = _caches.get(key)
-    if c is None:
-        c = TTLCache(float(get_settings().cache_ttl_nodes))
-        _caches[key] = c
-    return c
+def _cache_for(scope: str, cluster: str | None):
+    # `<scope>|…` prefix is what `invalidate_scope` matches on.
+    key = f"{scope}|{cluster or ''}"
+    return _caches.get(key, float(get_settings().cache_ttl_nodes))
 
 
 class NodeUseCases:

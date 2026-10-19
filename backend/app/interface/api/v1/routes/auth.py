@@ -8,8 +8,9 @@ Login is driven by the active `AuthPlugin`:
   4. GET  /auth/kube-clusters  → plugin.list_clusters (re-listing)
   5. POST /auth/logout         → plugin.logout + revoke_session
 
-`/auth/permissions` keeps using `probe_rbac(None)` for the host-bound
-kubeconfig until per-session RBAC probing is wired.
+There is no RBAC probe endpoint: every user is a developer on the same pages,
+so "is this resource denied or genuinely empty" is not a question the UI needs
+to answer.
 """
 from __future__ import annotations
 
@@ -31,8 +32,7 @@ from app.application.dto import (
 from app.infrastructure.auth import session as session_store
 from app.infrastructure.auth.plugins import active_plugin
 from app.infrastructure.auth.plugins.base import AuthError, Identity
-from app.infrastructure.auth.rbac import probe_rbac
-from app.infrastructure.cache.ttl_cache import invalidate_all
+from app.infrastructure.cache.ttl_cache import invalidate_scope
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.k8s.client.pool import get_pool
 from app.infrastructure.logging import get_logger
@@ -48,12 +48,34 @@ _attempts: dict[str, list[float]] = {}
 _attempts_lock = Lock()
 
 
+def client_ip(request: Request) -> str:
+    """The caller's IP as uvicorn resolved it.
+
+    Do not re-parse X-Forwarded-For here. uvicorn already does it, one layer
+    down, honouring its own `forwarded_allow_ips` — so by the time a handler
+    runs, `request.client.host` IS the client address and the header has been
+    consumed. Parsing it a second time is wrong twice over: the peer we would
+    compare against the trust list is already the rewritten client, and any
+    header that survives is attacker-controlled.
+
+    `TRUSTED_PROXY_IPS` is applied where it has to be — when uvicorn is
+    configured, in `app/server.py`. Keeping that in one place is what makes the
+    rate limiter's identity trustworthy.
+    """
+    return request.client.host if request.client else "unknown"
+
+
 def _rate_limited(ip: str) -> bool:
     now = time.monotonic()
     with _attempts_lock:
         kept = [t for t in _attempts.get(ip, []) if now - t < _RATE_WINDOW]
-        if len(kept) >= _RATE_MAX:
+        if kept:
             _attempts[ip] = kept
+        else:
+            # Drop the key entirely once its window is empty, otherwise every
+            # source IP that ever touched this endpoint leaves a permanent entry.
+            _attempts.pop(ip, None)
+        if len(kept) >= _RATE_MAX:
             return True
         kept.append(now)
         _attempts[ip] = kept
@@ -131,7 +153,7 @@ def status(request: Request) -> StatusOut:
 @router.post("/auth/login", response_model=LoginOut)
 async def post_login(payload: LoginIn, request: Request, response: Response) -> LoginOut:
     s = get_settings()
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     if _rate_limited(ip):
         raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
 
@@ -154,12 +176,24 @@ async def post_login(payload: LoginIn, request: Request, response: Response) -> 
     # (e.g. proxy for Teleport) by replacing the bootstrap identity.
     sess.identity = identity  # type: ignore[misc]
     _issue_cookie(response, request, sess.token, s.session_ttl_seconds)
+    # An enumeration failure must NOT read as "no clusters". The frontend sends
+    # the user straight through on an empty list, and no session kubeconfig was
+    # written, so `k8s_repo` falls back to the host's — which means a Teleport
+    # user whose `tsh kube ls` hiccupped would be shown the server's admin
+    # cluster, with no indication anything went wrong. Report it instead.
+    clusters_error: str | None = None
     try:
         kube_clusters = await plugin.list_clusters(identity, sess.dir)
     except AuthError as e:
         log.warning("auth.list_clusters.failed", code=e.code, ip=ip)
         kube_clusters = []
-    return LoginOut(ok=True, kube_clusters=kube_clusters, message="ok")
+        clusters_error = e.message
+    return LoginOut(
+        ok=True,
+        kube_clusters=kube_clusters,
+        message="ok",
+        clusters_error=clusters_error,
+    )
 
 
 # ── POST /auth/cluster ───────────────────────────────────────────────────
@@ -192,13 +226,15 @@ async def post_cluster(payload: ClusterSelectIn, request: Request) -> dict:
         raise _http_for_auth_error(e) from None
 
     # ponytail: write kubeconfig bytes to session.kubeconfig_path, then
-    # pool.drop_session + invalidate_all — otherwise the cached client
+    # pool.drop_session + invalidate_scope — otherwise the cached client
     # would still point at the previous (cluster, credentials) pair and
     # the next request would silently read stale data (matches T4 ledger's
     # "重要提醒": acquire must trigger reload of the same session's pool).
+    # Scoped, not global: another user switching cluster must not evict
+    # everyone's cached reads.
     sess.kubeconfig_path.write_bytes(kc.yaml)
     get_pool().drop_session(sess.token)
-    invalidate_all()
+    invalidate_scope(sess.token)
     return {"ok": True, "cluster": payload.cluster, "context": kc.context}
 
 
@@ -217,17 +253,14 @@ async def get_kube_clusters(request: Request) -> list[str]:
         raise _http_for_auth_error(e) from None
 
 
-# ── GET /auth/permissions (host-bound RBAC probe) ─────────────────────────
-@router.get("/auth/permissions", response_model=dict[str, bool], dependencies=[Depends(require_auth)])
-async def get_permissions() -> dict[str, bool]:
-    return await probe_rbac(None)
-
-
 # ── POST /auth/logout ─────────────────────────────────────────────────────
 @router.post("/auth/logout")
 async def post_logout(request: Request, response: Response) -> dict:
     sess = _resolve_session(request)
-    if sess is not None:
+    # The synthetic "dev" session backs Bearer/open-mode callers and is shared
+    # by all of them. Tearing it down would close the ApiClient out from under
+    # every other in-flight request, and it holds no real credentials anyway.
+    if sess is not None and sess.token != session_store.DEV_TOKEN:
         plugin = active_plugin()
         if plugin is not None:
             # ponytail: best-effort. Plugin logout (e.g. `tsh logout`) can

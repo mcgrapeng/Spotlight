@@ -31,6 +31,13 @@ class LoginOut(BaseModel):
     ok: bool
     kube_clusters: list[str] = []
     message: str = ""
+    # Set when enumeration FAILED, as opposed to genuinely finding zero
+    # clusters. The two must not be conflated: an empty list with no error
+    # means "this account has no cluster", and the UI may proceed on the host
+    # kubeconfig. An empty list *with* this set means "we could not ask" —
+    # proceeding would silently show the server's own admin cluster to a user
+    # who believes they are looking at their own.
+    clusters_error: str | None = None
 
 
 class ClusterSelectIn(BaseModel):

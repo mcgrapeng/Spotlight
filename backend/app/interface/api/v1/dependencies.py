@@ -77,6 +77,35 @@ def current_session(request: Request) -> Session:
     raise HTTPException(status_code=401, detail="未认证，请先登录")
 
 
+async def reject_legacy_cluster_param(request: Request) -> None:
+    """400 on `?cluster=` instead of silently ignoring it.
+
+    The kubeconfig-context parameter was renamed `cluster` -> `context`, and
+    FastAPI discards query parameters a route does not declare. A client still
+    sending the old name therefore got a 200 carrying the *default* context's
+    data: a wrong answer with no error, which is the exact failure mode the
+    rename was meant to end. It bites in any window where a browser tab runs a
+    previously-built SPA against a newer backend.
+
+    Refusing is the only honest option. Nothing distinguishes a caller using
+    the old name from one with a stray parameter, and accepting is what
+    produced the original bug.
+
+    Reads the raw query instead of declaring a parameter, so the old name never
+    reappears in the OpenAPI spec that `test_context_param_contract` pins.
+    """
+    if "cluster" in request.query_params:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "?cluster= was renamed to ?context=. The old name was being "
+                "silently dropped, so the cluster selection had no effect and "
+                "the response came from the kubeconfig's current-context. "
+                "Send ?context=<cluster-name>."
+            ),
+        )
+
+
 # ── Adapters (singletons — no per-request state) ─────────────────────────
 def k8s_repo(s: Session = Depends(current_session)) -> KubernetesAdapter:
     # Per-session kubeconfig lives under s.dir/kubeconfig.yaml; the global

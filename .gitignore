@@ -161,7 +161,21 @@ _*.mjs
 out/
 .superpowers
 backend/data
-frontend/e2e
+
+# E2E specs ARE tracked — the repo had zero committed browser tests, which is
+# how the `?context=` / `?cluster=` mismatch survived since `init`: every spec
+# mocked the API and answered regardless of what it was asked for.
+# Only the local scratch inspectors stay out (they target a hard-coded dev
+# stack on :7003 and are not written for CI).
+frontend/e2e/zz-*.spec.ts
+frontend/e2e/logs.spec.ts
+frontend/test-results/
+frontend/e2e/.tmp/
+
+# pnpm is the package manager (see frontend/README.md); pnpm-lock.yaml is the
+# lockfile. A second one checked in is how the two drift and how someone ends
+# up installing from a stale resolution.
+frontend/package-lock.json
 
 # Local audit tooling (visual README audit server) — dev-only, not shipped
 .audit/

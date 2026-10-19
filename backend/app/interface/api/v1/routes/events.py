@@ -12,10 +12,10 @@ router = APIRouter(tags=["events"])
 
 @router.get("/events", response_model=list[EventOut])
 async def list_events(
-    cluster: str | None = Query(default=None),
+    context: str | None = Query(default=None),
     namespace: str | None = Query(default=None),
     involved: str | None = Query(default=None),
     limit: int = Query(default=200, le=1000),
     uc: EventUseCases = Depends(event_uc),
 ):
-    return await uc.list_events(cluster, namespace, involved, limit)
+    return await uc.list_events(context, namespace, involved, limit)

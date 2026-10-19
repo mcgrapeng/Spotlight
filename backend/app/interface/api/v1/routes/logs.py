@@ -12,8 +12,12 @@ from sse_starlette.sse import EventSourceResponse
 from app.application.dto import LogHistoryOut
 from app.application.use_cases.logs import LogUseCases
 from app.domain.value_objects.primitives import ResourceRef
+from starlette.background import BackgroundTask
+
+from app.infrastructure.auth import session as session_store
+from app.infrastructure.auth.session import Session
 from app.infrastructure.logging import get_logger
-from app.interface.api.v1.dependencies import log_uc
+from app.interface.api.v1.dependencies import current_session, log_uc
 
 router = APIRouter(tags=["logs"])
 log = get_logger("api.logs")
@@ -21,9 +25,65 @@ log = get_logger("api.logs")
 # Each follow-stream pins one default-executor thread for its lifetime (the
 # kubernetes watch is blocking). Without a cap, a handful of idle browser
 # tabs exhausts the shared pool and freezes ALL other K8s I/O in the
-# process. At cap, new streams are rejected with 429.
-MAX_STREAMS = 8
-_stream_slots = threading.BoundedSemaphore(MAX_STREAMS)
+# process. Per-session, not per-process: a single shared budget means the 9th
+# tab across the whole team gets a 429, whoever opened it.
+MAX_STREAMS_PER_SESSION = 4
+# The synthetic dev session is not one user. It backs Bearer and open-mode
+# callers, so every host-bound request in the process shares it. Charging them
+# the per-session budget would halve the previous process-wide cap of 8 for
+# exactly the deployments with no per-session identity to separate them, so
+# they keep the old allowance.
+MAX_STREAMS_SHARED_SESSION = 8
+_session_slots: dict[str, int] = {}
+_session_slots_lock = threading.Lock()
+
+
+def _cap_for(token: str) -> int:
+    return (
+        MAX_STREAMS_SHARED_SESSION
+        if token == session_store.DEV_TOKEN
+        else MAX_STREAMS_PER_SESSION
+    )
+
+
+def _acquire_slot(session_token: str) -> bool:
+    with _session_slots_lock:
+        n = _session_slots.get(session_token, 0)
+        if n >= _cap_for(session_token):
+            return False
+        _session_slots[session_token] = n + 1
+        return True
+
+
+def _release_slot(session_token: str) -> None:
+    with _session_slots_lock:
+        n = _session_slots.get(session_token, 0) - 1
+        if n > 0:
+            _session_slots[session_token] = n
+        else:
+            _session_slots.pop(session_token, None)
+
+
+class _SlotLease:
+    """One acquired stream slot, released exactly once.
+
+    Two paths run the release: the generator's `finally`, and the response's
+    background task, which covers a client that vanished before the generator
+    ever yielded — in which case the slot used to leak for the rest of the
+    session's TTL, and four flaky reconnects would leave the panel permanently
+    429. Whichever runs first wins; a double release would hand out a slot
+    nobody paid for, so the guard lives here rather than at the call sites.
+    """
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+        self._released = False
+
+    def release(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        _release_slot(self._token)
 
 # Queue holds JSON-ready batches: ≤ QUEUE_MAX_BATCHES × BATCH_MAX lines of
 # memory per stream (≈1MB), then the producer thread applies backpressure.
@@ -35,7 +95,7 @@ BATCH_MAX = 100
 async def read_history(
     namespace: str,
     name: str,
-    cluster: Optional[str] = Query(default=None),
+    context: Optional[str] = Query(default=None),
     container: Optional[str] = Query(default=None),
     tail_lines: int = Query(default=500, ge=10, le=5000),
     since: Optional[str] = Query(
@@ -45,7 +105,7 @@ async def read_history(
 ) -> LogHistoryOut:
     try:
         items = await uc.read_history(
-            ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name),
+            ResourceRef(cluster=context or "", namespace=namespace, kind="Pod", name=name),
             container, tail_lines, since,
         )
     except ValueError as e:
@@ -58,24 +118,27 @@ async def stream(
     request: Request,
     namespace: str,
     name: str,
-    cluster: Optional[str] = Query(default=None),
+    context: Optional[str] = Query(default=None),
     container: Optional[str] = Query(default=None),
     tail_lines: int = Query(default=200, ge=10, le=5000),
     keepalive_seconds: int = Query(default=15, ge=5, le=60),
     uc: LogUseCases = Depends(log_uc),
+    s: Session = Depends(current_session),
 ) -> EventSourceResponse:
     """SSE log stream — single executor hop + 1 encode per flush.
 
     Wire format: `{"event": "log", "data": "<json-array-of-entries>"}` —
     frontend splits arrays into lines.
     """
-    if not _stream_slots.acquire(blocking=False):
+    if not _acquire_slot(s.token):
         raise HTTPException(status_code=429, detail="并发日志流已达上限，请稍后再试")
 
-    ref = ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
+    ref = ResourceRef(cluster=context or "", namespace=namespace, kind="Pod", name=name)
     stop_event = threading.Event()
     queue: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_MAX_BATCHES)
     loop = asyncio.get_event_loop()
+
+    lease = _SlotLease(s.token)
 
     async def producer() -> None:
         try:
@@ -131,9 +194,14 @@ async def stream(
             # next line or the watch socket timeout.)
             stop_event.set()
             task.cancel()
-            _stream_slots.release()
+            lease.release()
 
-    return EventSourceResponse(event_gen())
+    try:
+        return EventSourceResponse(event_gen(), background=BackgroundTask(lease.release))
+    except Exception:
+        # The response never started, so the generator's finally will not run.
+        lease.release()
+        raise
 
 
 def _drain(

@@ -21,23 +21,35 @@
 
 ## 开发
 
+用 **pnpm**（`package.json` 里的 `build` 脚本内部就调用 `pnpm run`，且
+`pnpm-lock.yaml` 是仍在维护的 lockfile）。
+
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 ## 构建
 
 ```bash
-npm run build
+# 注意：build 会先跑 types:check，它需要 18080（或 .env 里 VITE_API_PROXY
+# 指定端口）上有后端在跑；只想打包产物就用 pnpm exec vite build
+pnpm run build
 ```
 
 ## 测试
 
 ```bash
-npm run test          # Vitest 单元
-npm run test:e2e      # Playwright E2E
+pnpm run test          # Vitest 单元
+pnpm run test:e2e      # Playwright E2E
 ```
+
+E2E 分两类，说明见 [`e2e/README.md`](./e2e/README.md)：
+
+- 大部分 spec 用 `page.route()` mock 掉 `/api`，只测 UI
+- `cluster-switch.spec.ts` 跑**真实后端 + 两个假 apiserver**，验证「切换集群
+  真的换了数据」。它需要 `../backend/.venv` 存在；CI 里通过
+  `SPOTLIGHT_BACKEND_PY` 指定解释器。缺了解释器会直接报错，不会静默跳过。
 
 ## 目录结构
 

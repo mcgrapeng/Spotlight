@@ -29,6 +29,11 @@ export const useAuthStore = defineStore('auth', () => {
   // cluster dropdown.
   const pendingClusters = ref<string[]>([])
 
+  // Set when the server could not enumerate clusters (as opposed to finding
+  // none). Kept separate from `pendingClusters` because the difference decides
+  // whether the user may proceed at all.
+  const clustersError = ref<string | null>(null)
+
   async function refreshStatus() {
     try {
       status.value = await authApi.status()
@@ -53,16 +58,20 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(username: string, fields: Record<string, string>): Promise<LoginResult | null> {
     busy.value = true
     error.value = null
+    clustersError.value = null
     try {
       const r = await authApi.login(username, fields)
       if (r.ok) {
         pendingClusters.value = r.kube_clusters ?? []
-        if (!pendingClusters.value.length) {
+        clustersError.value = r.clusters_error ?? null
+        if (!pendingClusters.value.length && !clustersError.value) {
           // Token login (host-bound deployment) or Teleport with zero
-          // accessible clusters — no kube-cluster step needed.
+          // accessible clusters — genuinely none, so no kube-cluster step.
           required.value = false
         }
-        // else: required stays true until chooseCluster() lands
+        // else: required stays true until chooseCluster() lands. An
+        // enumeration failure also stays here, so the guard keeps the user on
+        // this page rather than letting them walk into the host kubeconfig.
         return r
       }
       error.value = r.message || t('login.failed')
@@ -73,6 +82,34 @@ export const useAuthStore = defineStore('auth', () => {
       const d = e?.response?.data?.detail
       error.value = typeof d === 'string' ? d : (d?.message ?? e?.message ?? t('login.failed'))
       return null
+    } finally {
+      busy.value = false
+    }
+  }
+
+  /** Re-ask the server which clusters this session can reach.
+   *
+   * The login response and this endpoint differ in how they fail: `/auth/login`
+   * must not turn a listing error into a failed login, so it reports the
+   * problem in the body, whereas `/auth/kube-clusters` propagates it as a real
+   * HTTP status — which is what a retry wants.
+   */
+  async function retryClusters(): Promise<boolean> {
+    busy.value = true
+    clustersError.value = null
+    try {
+      const list = await authApi.kubeClusters()
+      pendingClusters.value = list
+      if (!list.length) {
+        // This time we really do have none.
+        required.value = false
+      }
+      return true
+    } catch (e: any) {
+      const d = e?.response?.data?.detail
+      clustersError.value =
+        typeof d === 'string' ? d : (d?.message ?? e?.message ?? t('login.clustersUnavailable'))
+      return false
     } finally {
       busy.value = false
     }
@@ -120,12 +157,22 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     required.value = true
     pendingClusters.value = []
+    clustersError.value = null
+    error.value = null
+    // The server drops the session, but every trace of the previous user's
+    // selection and cached cluster data is still in this browser. Left in
+    // place, the next person to log in inherits a cluster name their session
+    // cannot resolve (409 on every page) and stale namespaces (wrong data,
+    // no error). Clear both before the request goes out.
+    status.value = null
+    useClusterStore().reset()
     // Revoke the server session; ignore network errors (local state is
     // already cleared — the TTL will reap the cookie anyway).
     authApi.logout().catch(() => {})
   }
 
   return { status, required, busy, error,
-           pendingClusters,
-           refreshStatus, requireLogin, login, chooseCluster, logout }
+           pendingClusters, clustersError,
+           refreshStatus, requireLogin, login, retryClusters,
+           chooseCluster, logout }
 })

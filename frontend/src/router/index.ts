@@ -21,10 +21,15 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (to.meta.public) return true
   const auth = useAuthStore()
-  // First navigation: refresh status; otherwise we trust the cached value.
+  // Always resolve the server's auth posture first, including on /login.
+  // LoginView renders its credential fields from `auth.status.provider`, so
+  // skipping this for public routes made a direct visit to /login (bookmark,
+  // hard refresh, shared sign-in link) render a form with zero fields and a
+  // submit that always reports "wrong password".
   if (auth.status === null) await auth.refreshStatus()
+  if (to.meta.public) return true
+  // First navigation: refresh status; otherwise we trust the cached value.
   if (auth.required) {
     return { name: 'login', query: { next: to.fullPath } }
   }

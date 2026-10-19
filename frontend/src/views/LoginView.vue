@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { KeyRound, LogIn, Loader2, Server } from '@lucide/vue'
+import { KeyRound, LogIn, Loader2, RefreshCw, Server } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -24,10 +24,6 @@ const cluster = ref('')
 
 const availableClusters = computed(() => auth.pendingClusters)
 const fields = computed<ProviderField[]>(() => auth.status?.provider?.fields ?? [])
-const singleCluster = computed(() =>
-  availableClusters.value.length === 1 ? availableClusters.value[0] : null,
-)
-if (singleCluster.value) cluster.value = singleCluster.value
 
 function inputTypeFor(f: ProviderField): string {
   if (f.type === 'password') return 'password'
@@ -49,7 +45,16 @@ function clearForm() {
 }
 
 function redirectAfterLogin() {
-  const next = (route.query.next as string) || '/dashboard'
+  // `next` is attacker-controlled (it comes from the URL). Only a same-origin
+  // absolute path is allowed: a protocol-relative "//evil.com" survives
+  // vue-router's resolver and pushState sends the browser to that origin,
+  // right after a real, successful login, which makes for convincing phishing.
+  // The lookahead also rejects backslashes because the WHATWG URL parser
+  // treats "\" as "/" in a path — "/\evil.com" resolves cross-origin too.
+  // It fails closed either way (pushState throws), but there is no reason to
+  // lean on the throw.
+  const raw = route.query.next
+  const next = typeof raw === 'string' && /^\/(?![/\\])/.test(raw) ? raw : '/dashboard'
   router.replace(next)
 }
 
@@ -61,8 +66,14 @@ async function submitAuth() {
   for (const f of fields.value) payload[f.name] = (fieldValues[f.name] ?? '').trim()
   const r = await auth.login(username.value.trim(), payload)
   if (!r) return
+  if (r.clusters_error) {
+    // We do not know what this account can reach. Continuing would land the
+    // user on the server's own kubeconfig — the admin cluster — while they
+    // believe they are looking at their own. Stay here and let them retry.
+    return
+  }
   if (r.kube_clusters.length === 0) {
-    // Token plugin or Teleport returning zero clusters — straight in.
+    // Token plugin or Teleport genuinely returning zero clusters — straight in.
     clearForm()
     redirectAfterLogin()
     return
@@ -84,6 +95,26 @@ async function submitPick() {
     clearForm()
     redirectAfterLogin()
   }
+}
+
+/** Re-query the cluster list after a failed enumeration. On success fall
+ *  through to the normal post-login handling. */
+async function onRetryClusters() {
+  const ok = await auth.retryClusters()
+  if (!ok) return
+  if (availableClusters.value.length === 0) {
+    clearForm()
+    redirectAfterLogin()
+    return
+  }
+  if (availableClusters.value.length === 1) {
+    const picked = await auth.chooseCluster(availableClusters.value[0])
+    if (picked) {
+      clearForm()
+      redirectAfterLogin()
+    }
+  }
+  // else: the picker renders on the next tick.
 }
 </script>
 
@@ -108,9 +139,39 @@ async function submitPick() {
           </p>
         </div>
 
-        <!-- Step 1: plugin auth -->
+        <!-- Step 1: plugin auth. Empty `fields` means the server accepts an
+             API_TOKEN but has no login plugin — nothing to type here. -->
+        <div v-if="availableClusters.length === 0 && fields.length === 0" class="space-y-3">
+          <p class="text-sm text-muted-foreground">{{ t('login.bearerOnly') }}</p>
+          <p class="text-2xs text-muted-foreground font-mono break-all bg-muted/40 border border-border rounded-md px-3 py-2">
+            Authorization: Bearer &lt;API_TOKEN&gt;
+          </p>
+        </div>
+
+        <!-- Cluster enumeration failed. We do not know what this account can reach,
+             and proceeding would silently show the server's own kubeconfig,
+             so offer a retry instead of letting them walk in there.
+
+             This must come BEFORE the credential form: enumeration failure also
+             yields zero clusters, so a later branch would match first and the
+             login form would swallow it — the user would be invited to log in
+             again, which is exactly the loop that looks like a wrong password. -->
+        <div v-else-if="auth.clustersError" class="space-y-3">
+          <p class="text-sm text-error" role="alert">{{ auth.clustersError }}</p>
+          <p class="text-2xs text-muted-foreground">{{ t('login.clustersUnavailableHint') }}</p>
+          <Button
+            class="w-full"
+            :disabled="auth.busy"
+            @click="onRetryClusters"
+          >
+            <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
+            <RefreshCw v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
+            {{ t('login.retryClusters') }}
+          </Button>
+        </div>
+
         <form
-          v-if="availableClusters.length === 0"
+          v-else-if="availableClusters.length === 0"
           class="space-y-3"
           @submit.prevent="submitAuth"
         >
@@ -175,7 +236,7 @@ async function submitPick() {
 
         <!-- Step 2: pick a kube cluster -->
         <form
-          v-else
+          v-else-if="availableClusters.length > 0"
           class="space-y-3"
           @submit.prevent="submitPick"
         >

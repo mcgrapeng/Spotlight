@@ -231,14 +231,6 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     else if (opts.enabled.value) start()
   })
 
-  // When the user re-engages auto-follow (clicks the pill or scrolls to
-  // the top), flush whatever the SSE stream was holding back. Without this
-  // watcher the deferred backlog would stay invisible until the next history
-  // re-fetch.
-  watch(() => opts.autoFollow?.value, (v) => {
-    if (alive && v === true) commitDeferred()
-  })
-
   onBeforeUnmount(() => {
     alive = false
     closeStream()

@@ -83,7 +83,7 @@ describe('auth store', () => {
 
   it('login posts {username, fields} and keeps the gate armed until chooseCluster lands', async () => {
     vi.mocked(authApi.login).mockResolvedValueOnce({
-      ok: true, kube_clusters: ['c1', 'c2'], message: '',
+      ok: true, kube_clusters: ['c1', 'c2'], message: '', clusters_error: null,
     })
     const store = useAuthStore()
     store.required = true
@@ -96,7 +96,7 @@ describe('auth store', () => {
 
   it('token login (no kube clusters) completes immediately', async () => {
     vi.mocked(authApi.login).mockResolvedValueOnce({
-      ok: true, kube_clusters: [], message: 'ok',
+      ok: true, kube_clusters: [], message: 'ok', clusters_error: null,
     })
     const store = useAuthStore()
     store.required = true
@@ -109,7 +109,7 @@ describe('auth store', () => {
 
   it('login failure surfaces backend message', async () => {
     vi.mocked(authApi.login).mockResolvedValueOnce({
-      ok: false, kube_clusters: [], message: 'wrong password',
+      ok: false, kube_clusters: [], message: 'wrong password', clusters_error: null,
     })
     const store = useAuthStore()
     const r = await store.login('alice', { password: 'wrong', otp: '' })

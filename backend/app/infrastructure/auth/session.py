@@ -19,6 +19,7 @@ from app.infrastructure.auth.plugins.base import Identity
 COOKIE_NAME = "spotlight_session"
 SESSIONS_ROOT = Path("./data/sessions")
 MAX_SESSIONS = 256
+DEV_TOKEN = "dev"
 
 _lock = Lock()
 
@@ -83,17 +84,48 @@ def sweep_expired() -> int:
     return len(dead)
 
 
+def purge_orphans() -> int:
+    """Delete session dirs with no in-memory Session.
+
+    Sessions live in memory only, so a restart orphans every directory under
+    SESSIONS_ROOT — each holding a real kubeconfig with a long-lived token.
+    Called on shutdown (all of them are orphans then) and on startup (reap
+    whatever a previous run or a crash left behind).
+
+    Single-process only, which is no loss: `_sessions` is per-process, so a
+    second worker could never serve another worker's cookie anyway, and its
+    startup would reap directories that worker is actively using. Run one
+    worker (or put a sticky load balancer in front) if you need more.
+    """
+    if not SESSIONS_ROOT.is_dir():
+        return 0
+    with _lock:
+        live = {s.dir.resolve() for s in _sessions.values()}
+    removed = 0
+    for child in SESSIONS_ROOT.iterdir():
+        if not child.is_dir():
+            continue
+        try:
+            if child.resolve() in live:
+                continue
+            shutil.rmtree(child)
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def dev_session() -> Session:
     with _lock:
-        s = _sessions.get("dev")
+        s = _sessions.get(DEV_TOKEN)
         if s is None:
             SESSIONS_ROOT.mkdir(parents=True, exist_ok=True)
-            dir_ = SESSIONS_ROOT / "dev"
+            dir_ = SESSIONS_ROOT / DEV_TOKEN
             dir_.mkdir(mode=0o700, exist_ok=True)
-            s = Session(token="dev", provider_id="dev",
+            s = Session(token=DEV_TOKEN, provider_id="dev",
                         identity=Identity(username="dev"),
                         dir=dir_, expires_at=time.monotonic() + 10 * 365 * 86400)
-            _sessions["dev"] = s
+            _sessions[DEV_TOKEN] = s
         return s
 
 

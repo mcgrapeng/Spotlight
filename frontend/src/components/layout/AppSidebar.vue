@@ -30,13 +30,8 @@ let badgeTimer: ReturnType<typeof setInterval> | null = null
 // ponytail: badge namespace 跟随顶部 combobox，与 Events 页面对齐。
 // 否则用户在 default namespace 看到 badge 24 但页面 0 条，怀疑事件丢了。
 // (Audit §2.3 + 用户实测反馈)
-const badgeKey = computed(() =>
-  STORAGE_KEYS.cacheEventsBadgeFor(
-    cluster.activeCluster ?? 'none', cluster.activeNamespace || '_all',
-  ),
-)
 const badgeFetch = useCachedFetch<number>({
-  key: badgeKey.value,
+  key: '',
   fetcher: async () => {
     const events = await eventsApi.list({
       cluster: cluster.activeCluster,
@@ -59,6 +54,12 @@ async function refreshEventBadge() {
     eventBadge.value = 0
     return
   }
+  // Rekey before reading: the watchers below fire on cluster/namespace change,
+  // and a handle pinned to the setup-time key would keep replaying the count
+  // captured for whatever was selected on mount.
+  badgeFetch.rekey(STORAGE_KEYS.cacheEventsBadgeFor(
+    cluster.activeCluster, cluster.activeNamespace || '_all',
+  ))
   try {
     const v = await badgeFetch.loadOrHydrate()
     if (typeof v === 'number') eventBadge.value = v

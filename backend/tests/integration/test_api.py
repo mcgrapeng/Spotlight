@@ -15,7 +15,8 @@ from app.domain.entities.resources import (
     Container, K8sEvent, LogEntry, Namespace, Node, Pod,
 )
 from app.domain.value_objects.primitives import LabelSelector, ResourceRef
-from app.infrastructure.cache.ttl_cache import invalidate_all
+from app.infrastructure.auth.session import DEV_TOKEN
+from app.infrastructure.cache.ttl_cache import invalidate_scope
 from app.interface.api.v1.dependencies import ai_repo, favorite_uc, k8s_repo
 from app.main import app
 
@@ -121,9 +122,11 @@ class FakeFavRepo:
 # ── Fixtures ────────────────────────────────────────────────────────────────
 @pytest.fixture(autouse=True)
 def _clear_caches():
-    invalidate_all()
+    # These tests all authenticate as the shared dev session, so one scope
+    # covers every cache they can populate.
+    invalidate_scope(DEV_TOKEN)
     yield
-    invalidate_all()
+    invalidate_scope(DEV_TOKEN)
 
 
 @pytest.fixture

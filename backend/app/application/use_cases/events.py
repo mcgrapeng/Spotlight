@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from app.application.dto import EventOut
 from app.application.ports.outbound import K8sRepositoryPort
-from app.infrastructure.cache.ttl_cache import TTLCache
+from app.infrastructure.cache.ttl_cache import ScopedCaches
 from app.infrastructure.config.settings import get_settings
 
-_caches: dict[str, TTLCache[list[EventOut]]] = {}
-_order: list[str] = []
+# One slot per (session, cluster, namespace, involved, limit).
 MAX_SLOTS = 32
+_caches: ScopedCaches[list[EventOut]] = ScopedCaches(max_slots=MAX_SLOTS)
 
 
 def _list_key(scope: str, cluster: str | None, namespace: str | None,
@@ -16,16 +16,8 @@ def _list_key(scope: str, cluster: str | None, namespace: str | None,
     return f"{scope}|{cluster or ''}|{namespace or ''}|{involved or ''}|{limit}"
 
 
-def _cache_for(key: str) -> TTLCache[list[EventOut]]:
-    c = _caches.get(key)
-    if c is None:
-        c = TTLCache(float(get_settings().cache_ttl_events))
-        _caches[key] = c
-        _order.append(key)
-        if len(_order) > MAX_SLOTS:
-            evict = _order.pop(0)
-            _caches.pop(evict, None)
-    return c
+def _cache_for(key: str):
+    return _caches.get(key, float(get_settings().cache_ttl_events))
 
 
 class EventUseCases:

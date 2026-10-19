@@ -36,6 +36,55 @@ def test_settings_exposes_teleport_configured():
     assert s2.teleport_configured is False
 
 
+async def test_login_targets_the_configured_cluster(monkeypatch, tmp_path):
+    """TELEPORT_CLUSTER 曾经是死配置：README 让运维填它，代码却始终用
+    `_proxy_to_cluster(proxy)` 推导。多集群 proxy 上 hostname ≠ cluster，
+    于是登录静默连错集群。"""
+    from app.infrastructure.auth.plugins import teleport as tp
+
+    captured: dict = {}
+
+    async def fake_run_with_pty(cmd, lines, *, env=None, timeout=60.0, inter_line_delay=1.0):
+        captured["cmd"] = cmd
+        return (0, "", "")
+
+    monkeypatch.setattr(tp, "_run_with_pty", fake_run_with_pty)
+    monkeypatch.setattr(tp, "tsh_available", lambda *_: True)
+    monkeypatch.setattr(tp, "get_settings", lambda: Settings(
+        teleport_proxy="proxy.example.com:443",
+        teleport_cluster="prod-cluster",
+        teleport_auth="local",
+    ))
+
+    await tp.TeleportPlugin().login(
+        "alice", {"password": "pw", "otp": ""}, tmp_path,
+    )
+    assert captured["cmd"][-1] == "prod-cluster"
+
+
+async def test_login_falls_back_to_proxy_hostname_when_cluster_unset(monkeypatch, tmp_path):
+    from app.infrastructure.auth.plugins import teleport as tp
+
+    captured: dict = {}
+
+    async def fake_run_with_pty(cmd, lines, *, env=None, timeout=60.0, inter_line_delay=1.0):
+        captured["cmd"] = cmd
+        return (0, "", "")
+
+    monkeypatch.setattr(tp, "_run_with_pty", fake_run_with_pty)
+    monkeypatch.setattr(tp, "tsh_available", lambda *_: True)
+    monkeypatch.setattr(tp, "get_settings", lambda: Settings(
+        teleport_proxy="proxy.example.com:443",
+        teleport_cluster="",           # operator did not name one
+        teleport_auth="local",
+    ))
+
+    await tp.TeleportPlugin().login(
+        "alice", {"password": "pw", "otp": ""}, tmp_path,
+    )
+    assert captured["cmd"][-1] == "proxy.example.com"
+
+
 def test_settings_drops_teleport_user_field():
     s = Settings()
     assert "teleport_user" not in s.model_fields

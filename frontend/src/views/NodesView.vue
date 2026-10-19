@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle, ShieldOff } from '@lucide/vue'
+import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -12,7 +12,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn, parseCPU, parseMemory, formatMillicores, formatMiB } from '@/lib/utils'
 import { nodesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
-import { usePermissionsStore } from '@/stores/permissions'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import type { NodeOut } from '@/api/types'
 
@@ -21,14 +20,9 @@ const { t } = useI18n()
 const nodes = ref<NodeOut[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
-// Shared RBAC probe — see stores/permissions.ts. The 5min cache means
-// navigating Dashboard → Nodes doesn't re-probe (Dashboard already did it).
-const perms = usePermissionsStore()
-const blockedByRbac = computed(() => perms.isBlocked('nodes') === true)
 
-const nodesCacheKey = computed(() => `nodes:${cluster.activeCluster || 'none'}`)
 const nodesFetch = useCachedFetch<NodeOut[]>({
-  key: nodesCacheKey.value,
+  key: '',
   fetcher: () => nodesApi.list(cluster.activeCluster!),
   data: nodes,
   loading,
@@ -38,6 +32,9 @@ const nodesFetch = useCachedFetch<NodeOut[]>({
 
 async function load() {
   if (!cluster.activeCluster) return
+  // Rekey here, not at setup: `computed(...).value` captured above would be
+  // frozen at 'none' and serve one cluster's nodes for every other cluster.
+  nodesFetch.rekey(`nodes:${cluster.activeCluster}`)
   nodesFetch.hydrateFromCache()
   loading.value = true
   error.value = null
@@ -50,12 +47,8 @@ async function load() {
   }
 }
 
-async function probePerms() {
-  // Delegates to the shared store; cheap hit on cache, else single probe.
-  await perms.refresh()
-}
-onMounted(() => { load(); probePerms() })
-watch(() => cluster.activeCluster, () => { load(); probePerms() })
+onMounted(load)
+watch(() => cluster.activeCluster, load)
 
 const ready = computed(() => nodes.value.filter((n) => n.status === 'Ready').length)
 const notReady = computed(() => nodes.value.length - ready.value)
@@ -289,20 +282,6 @@ function podOverloaded(n: NodeOut): boolean {
     </div>
 
     <LoadingState v-else-if="!nodes.length && loading" :message="t('nodes.loading')" />
-    <EmptyState
-      v-else-if="blockedByRbac === true"
-      :title="t('nodes.rbacTitle')"
-      :description="t('nodes.rbacDescription')"
-    >
-      <template #icon>
-        <ShieldOff :size="40" :stroke-width="1.5" class="text-warning" />
-      </template>
-      <pre class="text-left text-2xs font-mono bg-muted/40 border border-border rounded-md px-3 py-2 mt-3 overflow-x-auto whitespace-pre">kubernetes_resources:
-- kind: nodes
-  name: '*'
-  verbs: ['*']
-  api_group: '*'</pre>
-    </EmptyState>
     <EmptyState v-else :title="t('nodes.emptyTitle')" :description="t('nodes.emptyDescription')">
       <template #icon>
         <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />

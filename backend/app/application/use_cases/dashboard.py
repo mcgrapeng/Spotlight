@@ -12,19 +12,23 @@ from collections import Counter
 from app.application.dto import DashboardOut, EventOut
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.value_objects.primitives import LabelSelector
-from app.infrastructure.cache.ttl_cache import TTLCache
+from app.infrastructure.cache.ttl_cache import ScopedCaches
 from app.infrastructure.config.settings import get_settings
 
-_caches: dict[tuple[str, str | None], TTLCache[DashboardOut]] = {}
+# One slot per (session, cluster). Bounded because sessions are reaped but
+# their slots are not: without a cap this grew by one entry per expired
+# session, for the life of the process.
+_caches: ScopedCaches[DashboardOut] = ScopedCaches(max_slots=128)
 
 
-def _cache_for(scope: str, cluster: str | None) -> TTLCache[DashboardOut]:
-    key = (scope, cluster)
-    c = _caches.get(key)
-    if c is None:
-        c = TTLCache(float(get_settings().cache_ttl_pods))
-        _caches[key] = c
-    return c
+def _cache_key(scope: str, cluster: str | None) -> str:
+    # `<scope>|…` prefix is what `invalidate_scope` matches on.
+    return f"{scope}|{cluster or ''}"
+
+
+def _cache_for(scope: str, cluster: str | None):
+    key = _cache_key(scope, cluster)
+    return _caches.get(key, float(get_settings().cache_ttl_pods))
 
 
 class DashboardUseCases:

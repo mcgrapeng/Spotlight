@@ -5,7 +5,8 @@
   目录的子路径；不同会话之间互不污染，K8s 客户端池按 session_dir 加载。
 - 复用原 `teleport.py` 的子进程/PTY 工程：`_run_with_pty` 带 shield 排水、
   MFA 提示快速失败（无 OTP 时 20s、有 OTP 时 60s）、OTM 输出分类。
-- `probe_rbac` 与 Teleport 无关，迁到 `rbac.py`。
+- RBAC 探测与 Teleport 无关，且所有用户都是开发者、看到相同页面，需求上不需要，
+  随旧 `rbac.py` 一并删除。
 - 启动期自动登录（`startup_login_if_configured`）退役：会话驱动后由前端
   `/auth/login` + `create_session` 接管。
 """
@@ -168,10 +169,21 @@ async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
 def _feed_lines(fd: int, lines: list[bytes], delay: float) -> None:
     """Write each line (with newline appended) to the PTY master, pausing
     `delay` seconds between lines so the child has time to consume each.
+
+    A write that fails is normal, not exceptional. Once the child exits its
+    PTY slave is closed, and writing to the master then raises EIO — which
+    happens routinely on the password+OTP path, where `tsh` may finish with
+    the password before the one-time code is fed. Letting that OSError
+    escape would skip the `communicate()` below, lose the exit code and the
+    MFA prompt text, and surface as a 500 instead of "wrong code". Stop
+    feeding instead; the caller's normal exit-code handling decides the answer.
     """
     import time as _time
     for i, line in enumerate(lines):
-        os.write(fd, line + b"\n")
+        try:
+            os.write(fd, line + b"\n")
+        except OSError:
+            return
         if i < len(lines) - 1:
             _time.sleep(delay)
 
@@ -288,9 +300,13 @@ class TeleportPlugin:
         otp = fields.get("otp", "")
         if not password:
             raise AuthError("invalid_credentials", "用户名或密码错误")
+        # `tsh login <cluster>` wants the Teleport cluster name. Only fall back to
+        # the proxy hostname when the operator did not name one explicitly —
+        # on multi-cluster proxies the hostname is often not the cluster.
+        cluster = s.teleport_cluster.strip() or _proxy_to_cluster(s.teleport_proxy)
         cmd = [s.tsh_binary, "login", f"--proxy={s.teleport_proxy}",
                f"--auth={s.teleport_auth}", f"--user={username}",
-               _proxy_to_cluster(s.teleport_proxy)]
+               cluster]
         if s.teleport_insecure:
             cmd.append("--insecure")
         lines = [password.encode("utf-8")] + ([otp.encode("ascii")] if otp else [])

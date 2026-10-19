@@ -17,34 +17,34 @@ log = get_logger("api.pods")
 
 @router.get("/pods", response_model=PodListOut)
 async def list_pods(
-    cluster: str | None = Query(default=None),
+    context: str | None = Query(default=None),
     namespace: str | None = Query(default=None, description="namespace name or '_all'"),
     status: str = Query(default="all"),
     search: str | None = Query(default=None),
     label_selector: str | None = Query(default=None),
     uc: PodUseCases = Depends(pod_uc),
 ):
-    return await uc.list_pods(cluster, namespace, status, search, label_selector)
+    return await uc.list_pods(context, namespace, status, search, label_selector)
 
 
 @router.get("/pods/stats", response_model=DashboardOut)
 async def stats(
-    cluster: str | None = Query(default=None),
+    context: str | None = Query(default=None),
     uc: DashboardUseCases = Depends(dashboard_uc),
 ):
-    return await uc.build(cluster)
+    return await uc.build(context)
 
 
 @router.get("/pods/{namespace}/{name}", response_model=PodOut)
 async def get_pod(
     namespace: str,
     name: str,
-    cluster: str | None = Query(default=None),
+    context: str | None = Query(default=None),
     uc: PodUseCases = Depends(pod_uc),
 ):
     try:
         return await uc.get_pod(
-            ResourceRef(cluster=cluster or "", namespace=namespace, kind="Pod", name=name)
+            ResourceRef(cluster=context or "", namespace=namespace, kind="Pod", name=name)
         )
     except ApiException as e:
         # Only a genuine not-found is a 404 — auth/ratelimit/timeout must

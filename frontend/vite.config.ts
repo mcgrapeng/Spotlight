@@ -5,6 +5,15 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_PROXY || 'http://127.0.0.1:8000'
+  // Same proxy for `vite dev` and `vite preview`. Without it on preview, the
+  // preview server serves the built SPA but nothing answers its `/api`
+  // requests — so every e2e had to mock the API, which is exactly why the
+  // `?context=` / `?cluster=` mismatch went unnoticed for the whole history of
+  // the repo (a mocked fixture answers whatever it is asked for).
+  const proxy = {
+    '/api': { target: apiTarget, changeOrigin: true },
+    '/healthz': { target: apiTarget, changeOrigin: true },
+  }
   return {
     plugins: [vue()],
     resolve: {
@@ -18,10 +27,13 @@ export default defineConfig(({ mode }) => {
       port: Number(env.VITE_PORT) || undefined,
       strictPort: false,
       host: env.VITE_HOST || '127.0.0.1',
-      proxy: {
-        '/api': { target: apiTarget, changeOrigin: true },
-        '/healthz': { target: apiTarget, changeOrigin: true },
-      },
+      proxy,
+    },
+    preview: {
+      port: Number(env.VITE_PREVIEW_PORT) || undefined,
+      strictPort: false,
+      host: env.VITE_HOST || '127.0.0.1',
+      proxy,
     },
     build: { target: 'es2022' },
   }

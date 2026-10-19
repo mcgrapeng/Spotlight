@@ -52,6 +52,65 @@ describe('cluster store', () => {
     expect(store.activeCluster).toBe('a')  // kept the user's choice
   })
 
+  it('drops a restored selection the current login cannot see', async () => {
+    // Alice picked prod-east and logged out; Bob logs in and only has
+    // staging-eu. Keeping prod-east makes every request carry a context his
+    // session kubeconfig lacks → 409 on every page.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ cluster: 'prod-east', namespace: 'payments' }))
+    vi.mocked(clustersApi.list).mockResolvedValueOnce([
+      { name: 'staging-eu', cluster: '', user: '', namespace: '', is_current: true },
+    ] as any)
+    const store = useClusterStore()
+    store.restore()
+    expect(store.activeCluster).toBe('prod-east')
+    await store.loadClusters()
+    expect(store.activeCluster).toBe('staging-eu')   // re-synced, not left stale
+    expect(store.activeNamespace).toBe('_all')
+  })
+
+  it('rekeys the namespace cache per cluster', async () => {
+    // The old setup captured `computed(...).value` once (always "none"), so
+    // the second cluster's namespaces came from the first cluster's cache.
+    vi.mocked(clustersApi.list).mockResolvedValue([
+      { name: 'prod', cluster: '', user: '', namespace: '', is_current: true },
+      { name: 'staging', cluster: '', user: '', namespace: '', is_current: false },
+    ] as any)
+    vi.mocked(namespacesApi.list)
+      .mockResolvedValueOnce([{ name: 'prod-only', status: 'Active', labels: {}, age: null }] as any)
+      .mockResolvedValueOnce([{ name: 'staging-only', status: 'Active', labels: {}, age: null }] as any)
+
+    const store = useClusterStore()
+    await store.loadClusters()
+    await store.setCluster('prod')
+    expect(store.namespaces.map((n) => n.name)).toEqual(['prod-only'])
+
+    await store.setCluster('staging')
+    expect(store.namespaces.map((n) => n.name)).toEqual(['staging-only'])
+    // Different key per cluster → the fetcher really ran twice.
+    expect(namespacesApi.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('reset() clears selection and every cached snapshot', () => {
+    const store = useClusterStore()
+    store.activeCluster = 'prod'
+    store.activeNamespace = 'payments'
+    store.setNamespace('payments')
+    localStorage.setItem('cached:cache:namespaces:prod', '{"value":["a"],"ts":1}')
+    localStorage.setItem('cached:cache:nodes:prod', '{"value":[],"ts":1}')
+    localStorage.setItem('spotlight-sidebar-collapsed', '1')   // a user pref, must survive
+
+    store.reset()
+
+    expect(store.activeCluster).toBeNull()
+    expect(store.activeNamespace).toBe('_all')
+    expect(store.clusters).toEqual([])
+    expect(store.namespaces).toEqual([])
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem('cached:cache:namespaces:prod')).toBeNull()
+    expect(localStorage.getItem('cached:cache:nodes:prod')).toBeNull()
+    expect(localStorage.getItem('spotlight-sidebar-collapsed')).toBe('1')
+  })
+
   it('setNamespace persists to localStorage', () => {
     const store = useClusterStore()
     store.activeCluster = 'c'

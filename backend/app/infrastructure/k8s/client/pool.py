@@ -38,6 +38,28 @@ from app.infrastructure.logging import get_logger
 log = get_logger("k8s.client")
 
 
+class UnknownContextError(Exception):
+    """The requested context is not in the kubeconfig we loaded.
+
+    Almost always a stale client: the browser kept a cluster name from a
+    previous login while the current session's kubeconfig only holds the
+    cluster that login actually selected. Callers turn this into a 4xx so the
+    UI can re-sync instead of showing a 500.
+    """
+
+
+def _host_kubeconfig_exists() -> bool:
+    """Whether the SDK would find a kubeconfig at all.
+
+    KUBECONFIG may be a `:`-separated list, which is legal but not the common
+    case — check each entry rather than treating the whole string as a path.
+    """
+    env = os.environ.get("KUBECONFIG", "").strip()
+    if env:
+        return any(os.path.exists(p) for p in env.split(os.pathsep) if p.strip())
+    return os.path.exists(os.path.join(os.path.expanduser("~"), ".kube", "config"))
+
+
 class KubernetesClientPool:
     def __init__(self) -> None:
         self._clients: dict[tuple[str, str], client.ApiClient] = {}
@@ -62,13 +84,34 @@ class KubernetesClientPool:
         cfg = client.Configuration()
         path = kubeconfig_path
         if path and os.path.exists(path):
-            config.load_kube_config(
-                config_file=path, context=context, client_configuration=cfg
-            )
+            try:
+                config.load_kube_config(
+                    config_file=path, context=context, client_configuration=cfg
+                )
+            except config.ConfigException as e:
+                # The path exists but the context in it does not — a stale
+                # cluster name, not a broken kubeconfig. Let the caller answer
+                # 4xx instead of letting this surface as a 500.
+                raise UnknownContextError(
+                    f"context {context!r} not found in {path}"
+                ) from e
         else:
             try:
                 config.load_kube_config(context=context, client_configuration=cfg)
-            except config.ConfigException:
+            except config.ConfigException as e:
+                # Two unrelated failures arrive here, and telling them apart is
+                # the whole job: either there is no kubeconfig at all (in-cluster
+                # is then the right answer), or there is one and it simply does
+                # not contain this context — a stale selection from a previous
+                # login, which is a 4xx the UI can recover from.
+                #
+                # Guessing wrong in either direction is bad: treat a stale
+                # context as "no config" and every request 500s on a connection
+                # error that never gets a chance to be reported as a 409.
+                if _host_kubeconfig_exists():
+                    raise UnknownContextError(
+                        f"context {context!r} not found in the host kubeconfig"
+                    ) from e
                 config.load_incluster_config(client_configuration=cfg)
         return client.ApiClient(configuration=cfg)
 

@@ -1,14 +1,28 @@
+# Upper bounds are deliberate, not cargo-cult: these two change response and
+# request shapes between minor releases.
+#   kubernetes — a past minor bump silently broke log decoding; see
+#     tests/unit/infrastructure/test_log_decode.py, which exists only to pin
+#     that regression. Bump the ceiling only together with that test.
+#   litellm — the acompletion call path is not covered by a test that would
+#     fail on a shape change, so an unattended upgrade reaches production
+#     with no CI signal at all.
+# For a fully reproducible install, generate and commit a lockfile:
+#   pip freeze > requirements.lock && pip install -r requirements.lock
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
-kubernetes>=31.0.0
+kubernetes>=31.0.0,<38
 sse-starlette>=2.1.0
 sqlalchemy>=2.0.0
 aiosqlite>=0.20.0
 greenlet>=3.1.0
 httpx>=0.28.0
 structlog>=24.4.0
-litellm>=1.81.0
+litellm>=1.81.0,<2
+
+# Tests. pytest-cov is listed because backend/README.md documents a
+# `pytest --cov=app` invocation that fails without it.
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
+pytest-cov>=5.0.0
