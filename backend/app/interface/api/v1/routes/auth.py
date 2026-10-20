@@ -31,12 +31,13 @@ from app.application.dto import (
 )
 from app.infrastructure.auth import session as session_store
 from app.infrastructure.auth.plugins import active_plugin
+from app.application.use_cases.permissions import PermissionUseCases
 from app.infrastructure.auth.plugins.base import AuthError, Identity
 from app.infrastructure.cache.ttl_cache import invalidate_scope
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.k8s.client.pool import get_pool
 from app.infrastructure.logging import get_logger
-from app.interface.api.v1.dependencies import require_auth
+from app.interface.api.v1.dependencies import permission_uc, require_auth
 
 router = APIRouter(tags=["auth"])
 log = get_logger("api.auth")
@@ -124,7 +125,10 @@ def _resolve_session(request: Request):
 
 # ── GET /auth/status ──────────────────────────────────────────────────────
 @router.get("/auth/status", response_model=StatusOut)
-def status(request: Request) -> StatusOut:
+async def status(
+    request: Request,
+    uc: PermissionUseCases = Depends(permission_uc),
+) -> StatusOut:
     s = get_settings()
     plugin = active_plugin()
     provider: ProviderInfoOut | None = None
@@ -140,12 +144,19 @@ def status(request: Request) -> StatusOut:
             ],
         )
     sess = _resolve_session(request)
+    # The permission list is only meaningful for a caller with an identity:
+    # an anonymous pre-login request has nobody to resolve.
+    permissions: list[str] = []
+    if sess is not None:
+        effective = await uc.effective_permissions(sess.identity.username)
+        permissions = list(effective.permissions)
     return StatusOut(
         configured=plugin is not None,
         provider=provider,
         auth_required=bool(plugin is not None or s.api_token),
         client_session=sess is not None,
         session=SessionInfoOut(username=sess.identity.username) if sess is not None else None,
+        permissions=permissions,
     )
 
 

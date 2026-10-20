@@ -2,7 +2,16 @@
 from fastapi import APIRouter, Depends
 
 from app.interface.api.v1.dependencies import reject_legacy_cluster_param, require_auth
-from app.interface.api.v1.routes import ai, auth, clusters, events, favorites, logs, pods
+from app.interface.api.v1.routes import (
+    ai,
+    auth,
+    clusters,
+    events,
+    favorites,
+    logs,
+    permissions,
+    pods,
+)
 
 # Refuse `?cluster=` on every route that selects a kubeconfig context. FastAPI
 # drops query parameters a route does not declare, so the pre-rename name turned
@@ -26,3 +35,7 @@ v1_router.include_router(logs.router, dependencies=_context_auth)
 v1_router.include_router(events.router, dependencies=_context_auth)
 v1_router.include_router(favorites.router, dependencies=_auth)
 v1_router.include_router(ai.router, dependencies=_context_auth)
+# /permissions/me + /permissions/catalog are readable by any signed-in
+# caller (the frontend needs them to decide what to render); the admin
+# endpoints carry their own `roles.manage` / `users.manage` guards.
+v1_router.include_router(permissions.router, dependencies=_auth)

@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # 活跃认证插件 id（见 infrastructure/auth/plugins/REGISTRY）。空 = 开发开放模式。
     auth_provider: str = ""
 
+    # Comma-separated usernames that always resolve to the admin role.
+    # This is the bootstrap: without it the first deployment would have
+    # nobody able to grant the admin role to anybody.
+    admin_users: str = ""
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
     # 逗号分隔的允许来源。留空 = 开发模式：由 cors_origin_regex 放行
@@ -71,6 +76,11 @@ class Settings(BaseSettings):
     def trusted_proxy_list(self) -> list[str]:
         """For `ProxyHeadersMiddleware.forwarded_allow_ips`."""
         return [o.strip() for o in self.trusted_proxy_ips.split(",") if o.strip()]
+
+    @property
+    def admin_user_list(self) -> list[str]:
+        """Usernames that are always granted the admin role."""
+        return [u.strip() for u in self.admin_users.split(",") if u.strip()]
 
     @property
     def teleport_configured(self) -> bool:

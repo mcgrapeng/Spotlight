@@ -5,12 +5,16 @@ from fastapi import APIRouter, Depends, Query
 
 from app.application.dto import EventOut
 from app.application.use_cases.events import EventUseCases
-from app.interface.api.v1.dependencies import event_uc
+from app.interface.api.v1.dependencies import event_uc, require_permission
 
 router = APIRouter(tags=["events"])
 
 
-@router.get("/events", response_model=list[EventOut])
+@router.get(
+    "/events",
+    response_model=list[EventOut],
+    dependencies=[Depends(require_permission("events.read"))],
+)
 async def list_events(
     context: str | None = Query(default=None),
     namespace: str | None = Query(default=None),

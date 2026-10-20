@@ -9,6 +9,7 @@ from __future__ import annotations
 import secrets
 
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.use_cases.ai import AIUseCases
@@ -19,15 +20,25 @@ from app.application.use_cases.favorites import FavoriteUseCases
 from app.application.use_cases.logs import LogUseCases
 from app.application.use_cases.namespaces import NamespaceUseCases
 from app.application.use_cases.nodes import NodeUseCases
+from app.application.use_cases.permissions import (
+    EffectivePermissions,
+    PermissionUseCases,
+)
 from app.application.use_cases.pods import PodUseCases
+from app.domain.value_objects.permissions import DEFAULT_ROLE, builtin_permissions
 from app.infrastructure.ai.providers.litellm_provider import LiteLLMAIRepository
 from app.infrastructure.ai.providers.sql_provider import SQLAIProviderRepository
 from app.infrastructure.auth import session as session_store
 from app.infrastructure.auth.session import Session
 from app.infrastructure.config.settings import get_settings, is_open_mode
 from app.infrastructure.k8s.adapter import KubernetesAdapter
+from app.infrastructure.logging import get_logger
 from app.infrastructure.persistence.db import get_session
 from app.infrastructure.persistence.repositories.favorite_repo import SQLFavoriteRepository
+from app.infrastructure.persistence.repositories.permission_repo import SQLPermissionRepository
+
+
+log = get_logger("api.permissions")
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────
@@ -75,6 +86,63 @@ def current_session(request: Request) -> Session:
     if is_open_mode():
         return session_store.dev_session()
     raise HTTPException(status_code=401, detail="未认证，请先登录")
+
+
+# ── Permissions ───────────────────────────────────────────────────────────
+def current_username(request: Request) -> str:
+    """The caller's username, as vouched for by the auth plugin.
+
+    A Bearer-token or open-mode caller has no per-user identity, so it
+    resolves to the shared `dev` identity — the same one `dev_session()`
+    carries.
+    """
+    cookie_token = request.cookies.get(session_store.COOKIE_NAME)
+    sess = session_store.get_session(cookie_token)
+    if sess is not None:
+        return sess.identity.username
+    return session_store.DEV_TOKEN
+
+
+def permission_uc(session: AsyncSession = Depends(get_session)) -> PermissionUseCases:
+    return PermissionUseCases(
+        SQLPermissionRepository(session),
+        admin_users=tuple(get_settings().admin_user_list),
+    )
+
+
+def require_permission(code: str):
+    """Dependency factory: reject callers without `code` (403).
+
+    The 403 body carries the missing code so the frontend can explain what
+    is missing instead of showing a generic "forbidden".
+
+    On a database failure the check falls back to the default role instead
+    of locking everybody out: the permission layer gates *Spotlight* features
+    (AI, role management, …), while the K8s data itself is already limited
+    by the session's own kubeconfig credentials. A console that refuses to
+    serve pods because SQLite hiccuped is worse than a console that briefly
+    forgets a restriction — and the fallback deliberately does NOT include
+    the admin-only permissions.
+    """
+    async def _guard(
+        request: Request,
+        uc: PermissionUseCases = Depends(permission_uc),
+    ) -> None:
+        username = current_username(request)
+        try:
+            effective = await uc.effective_permissions(username)
+        except SQLAlchemyError as e:
+            log.warning("permissions.lookup_failed", error=str(e), username=username)
+            effective = EffectivePermissions(
+                username, (DEFAULT_ROLE,), builtin_permissions(DEFAULT_ROLE)
+            )
+        if not effective.allows(code):
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "forbidden", "permission": code},
+            )
+
+    return _guard
 
 
 async def reject_legacy_cluster_param(request: Request) -> None:

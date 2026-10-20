@@ -14,7 +14,8 @@ from app.infrastructure.auth import session as session_store
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.k8s.client.pool import UnknownContextError, get_pool
 from app.infrastructure.logging import configure_logging, get_logger
-from app.infrastructure.persistence.db import init_db
+from app.infrastructure.persistence.db import init_db, session_scope
+from app.infrastructure.persistence.repositories.permission_repo import seed_builtin_roles
 from app.interface.api.v1.router import v1_router
 
 configure_logging()
@@ -62,6 +63,16 @@ async def lifespan(_: FastAPI):
 
     await init_db()
     log.info("db.ready")
+    # Seed the built-in roles (admin / user / viewer). Idempotent: a role
+    # that already exists is left alone, so an operator's edit to the
+    # `viewer` profile survives a restart.
+    try:
+        async with session_scope() as db_session:
+            seeded = await seed_builtin_roles(db_session)
+        if seeded:
+            log.info("permissions.builtin_roles_seeded", created=seeded)
+    except Exception as e:  # noqa: BLE001 — a seeding failure must not stop the app
+        log.warning("permissions.seed_failed", error=str(e))
     reaper = asyncio.create_task(_session_reaper())
     try:
         yield

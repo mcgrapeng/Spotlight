@@ -83,3 +83,7 @@ class StatusOut(BaseModel):
     client_session: bool
     # Session info (only populated when client_session=True).
     session: SessionInfoOut | None = None
+    # The caller's effective permission codes (only populated when
+    # client_session=True). The frontend uses them to hide what the caller
+    # may not do; the server enforces the same codes on every route.
+    permissions: list[str] = []

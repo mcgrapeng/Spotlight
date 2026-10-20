@@ -12,7 +12,7 @@ from app.application.dto import (
 from app.application.use_cases.ai import AIUseCases, SingleActiveProviderError
 from app.domain.entities.ai import AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
-from app.interface.api.v1.dependencies import ai_uc
+from app.interface.api.v1.dependencies import ai_uc, require_permission
 
 router = APIRouter(tags=["ai"])
 
@@ -44,13 +44,25 @@ def _to_out(p: AIProviderConfig) -> AIProviderOut:
     )
 
 
-@router.get("/ai/providers", response_model=list[AIProviderOut])
+@router.get(
+    "/ai/providers",
+    response_model=list[AIProviderOut],
+    # Reading the provider list is part of USING the AI panel (it picks the
+    # model to call), not of managing it — so it needs `ai.use`, not
+    # `ai.manage`.
+    dependencies=[Depends(require_permission("ai.use"))],
+)
 async def list_providers(uc: AIUseCases = Depends(ai_uc)):
     """Return ALL providers (enabled + disabled) so the UI can manage them."""
     return [_to_out(p) for p in await uc.list_providers()]
 
 
-@router.post("/ai/providers", response_model=AIProviderOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/ai/providers",
+    response_model=AIProviderOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("ai.manage"))],
+)
 async def add_provider(payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc)):
     try:
         return _to_out(await uc.upsert_provider(_to_entity(payload)))
@@ -58,7 +70,11 @@ async def add_provider(payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc)):
         raise HTTPException(status_code=409, detail=str(e)) from e
 
 
-@router.put("/ai/providers/{provider_id}", response_model=AIProviderOut)
+@router.put(
+    "/ai/providers/{provider_id}",
+    response_model=AIProviderOut,
+    dependencies=[Depends(require_permission("ai.manage"))],
+)
 async def update_provider(
     provider_id: int, payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc),
 ):
@@ -68,7 +84,11 @@ async def update_provider(
         raise HTTPException(status_code=409, detail=str(e)) from e
 
 
-@router.delete("/ai/providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/ai/providers/{provider_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("ai.manage"))],
+)
 async def delete_provider(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
     ok = await uc.delete_provider(provider_id)
     if not ok:
@@ -76,7 +96,11 @@ async def delete_provider(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
     return None
 
 
-@router.post("/ai/providers/{provider_id}/default", response_model=AIProviderOut)
+@router.post(
+    "/ai/providers/{provider_id}/default",
+    response_model=AIProviderOut,
+    dependencies=[Depends(require_permission("ai.manage"))],
+)
 async def set_default(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
     return _to_out(await uc.set_default(provider_id))
 
@@ -85,6 +109,7 @@ async def set_default(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
     "/ai/analyze/{namespace}/{name}",
     response_model=AIAnalyzeOut,
     summary="Analyze pod logs with the configured LLM",
+    dependencies=[Depends(require_permission("ai.use"))],
 )
 async def analyze_logs(
     namespace: str,

@@ -1,6 +1,7 @@
 """Async SQLAlchemy engine + session helpers."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -28,6 +29,19 @@ async def init_db() -> None:
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    if _sessionmaker is None:
+        get_engine()
+    async with _sessionmaker() as session:  # type: ignore[misc]
+        yield session
+
+
+@asynccontextmanager
+async def session_scope():
+    """A session for startup/shutdown work (outside the request DI).
+
+    `get_session` is the request-scoped dependency; this one is for code that
+    runs around the application (seeding the built-in roles, for instance).
+    """
     if _sessionmaker is None:
         get_engine()
     async with _sessionmaker() as session:  # type: ignore[misc]

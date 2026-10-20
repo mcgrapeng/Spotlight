@@ -39,3 +39,37 @@ def _isolate_env(monkeypatch):
     yield
     get_settings.cache_clear()
     sess._sessions.clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _database_schema():
+    """Create the SQL schema (and the built-in roles) once per test session.
+
+    The permission layer resolves the caller's roles on every request, so the
+    schema has to exist even for the tests that never touch the database on
+    purpose. `create_all` is idempotent and the engine is disposed right
+    after, so no connection leaks out of this fixture's event loop into a
+    test's.
+    """
+    import asyncio
+    from pathlib import Path
+
+    from app.infrastructure.persistence.db import get_engine, session_scope
+    from app.infrastructure.persistence.models.orm import Base
+    from app.infrastructure.persistence.repositories.permission_repo import (
+        seed_builtin_roles,
+    )
+
+    if get_settings().database_url.startswith("sqlite"):
+        Path("data").mkdir(parents=True, exist_ok=True)
+
+    async def _create() -> None:
+        engine = get_engine()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+        async with session_scope() as session:
+            await seed_builtin_roles(session)
+
+    asyncio.run(_create())
+    yield

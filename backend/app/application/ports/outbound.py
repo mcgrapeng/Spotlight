@@ -12,6 +12,7 @@ from typing import AsyncIterator, Iterator, Protocol, runtime_checkable
 
 from app.domain.entities.ai import AIProviderConfig
 from app.domain.entities.ai import AIAnalysisRequest, AIAnalysisResult, Favorite
+from app.domain.entities.permissions import AppUser, Role
 from app.domain.entities.resources import Cluster, K8sEvent, LogEntry, Namespace, Node, Pod
 from app.domain.value_objects.primitives import LabelSelector, ResourceRef
 
@@ -62,4 +63,25 @@ class AIRepositoryPort(Protocol):
     async def analyze(self, cfg: AIProviderConfig, req: AIAnalysisRequest) -> AIAnalysisResult: ...
 
 
-__all__ = ["K8sRepositoryPort", "FavoriteRepositoryPort", "AIRepositoryPort"]
+@runtime_checkable
+class PermissionRepositoryPort(Protocol):
+    """Storage for roles and for the roles granted to each user."""
+
+    async def list_roles(self) -> list[Role]: ...
+    async def get_role(self, role_id: int) -> Role | None: ...
+    async def get_role_by_name(self, name: str) -> Role | None: ...
+    async def add_role(self, role: Role) -> Role: ...
+    async def update_role(self, role: Role) -> Role: ...
+    async def remove_role(self, role_id: int) -> bool: ...
+
+    async def list_users(self) -> list[AppUser]: ...
+    async def get_user(self, username: str) -> AppUser | None: ...
+    async def upsert_user(self, user: AppUser) -> AppUser: ...
+
+
+__all__ = [
+    "K8sRepositoryPort",
+    "FavoriteRepositoryPort",
+    "AIRepositoryPort",
+    "PermissionRepositoryPort",
+]

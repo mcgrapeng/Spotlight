@@ -23,6 +23,14 @@ from app.application.dto.events import EventOut
 from app.application.dto.favorites import FavoriteCreate, FavoriteOut
 from app.application.dto.logs import LogHistoryOut, LogStreamParams
 from app.application.dto.pods import ContainerOut, PodListOut, PodOut
+from app.application.dto.permissions import (
+    MeOut,
+    PermissionOut,
+    RoleIn,
+    RoleOut,
+    UserAssignmentIn,
+    UserOut,
+)
 from app.application.dto.ai import (
     AIAnalyzeIn,
     AIAnalyzeOut,
@@ -54,4 +62,10 @@ __all__ = [
     "ProviderInfoOut",
     "SessionInfoOut",
     "StatusOut",
+    "MeOut",
+    "PermissionOut",
+    "RoleIn",
+    "RoleOut",
+    "UserAssignmentIn",
+    "UserOut",
 ]

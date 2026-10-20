@@ -9,13 +9,21 @@ from app.application.use_cases.dashboard import DashboardUseCases
 from app.application.use_cases.pods import PodUseCases
 from app.domain.value_objects.primitives import ResourceRef
 from app.infrastructure.logging import get_logger
-from app.interface.api.v1.dependencies import dashboard_uc, pod_uc
+from app.interface.api.v1.dependencies import (
+    dashboard_uc,
+    pod_uc,
+    require_permission,
+)
 
 router = APIRouter(tags=["pods"])
 log = get_logger("api.pods")
 
 
-@router.get("/pods", response_model=PodListOut)
+@router.get(
+    "/pods",
+    response_model=PodListOut,
+    dependencies=[Depends(require_permission("pods.read"))],
+)
 async def list_pods(
     context: str | None = Query(default=None),
     namespace: str | None = Query(default=None, description="namespace name or '_all'"),
@@ -27,7 +35,11 @@ async def list_pods(
     return await uc.list_pods(context, namespace, status, search, label_selector)
 
 
-@router.get("/pods/stats", response_model=DashboardOut)
+@router.get(
+    "/pods/stats",
+    response_model=DashboardOut,
+    dependencies=[Depends(require_permission("pods.read"))],
+)
 async def stats(
     context: str | None = Query(default=None),
     uc: DashboardUseCases = Depends(dashboard_uc),
@@ -35,7 +47,11 @@ async def stats(
     return await uc.build(context)
 
 
-@router.get("/pods/{namespace}/{name}", response_model=PodOut)
+@router.get(
+    "/pods/{namespace}/{name}",
+    response_model=PodOut,
+    dependencies=[Depends(require_permission("pods.read"))],
+)
 async def get_pod(
     namespace: str,
     name: str,

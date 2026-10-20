@@ -11,22 +11,34 @@ from app.interface.api.v1.dependencies import (
     cluster_uc,
     namespace_uc,
     node_uc,
+    require_permission,
 )
 
 router = APIRouter(tags=["clusters"])
 
 
-@router.get("/clusters", response_model=list[ClusterOut])
+@router.get(
+    "/clusters",
+    response_model=list[ClusterOut],
+    dependencies=[Depends(require_permission("clusters.read"))],
+)
 async def list_clusters(uc: ClusterUseCases = Depends(cluster_uc)):
     return await uc.list_clusters()
 
 
-@router.get("/clusters/current")
+@router.get(
+    "/clusters/current",
+    dependencies=[Depends(require_permission("clusters.read"))],
+)
 def current_cluster(uc: ClusterUseCases = Depends(cluster_uc)):
     return {"name": uc.current_cluster()}
 
 
-@router.get("/namespaces", response_model=list[NamespaceOut])
+@router.get(
+    "/namespaces",
+    response_model=list[NamespaceOut],
+    dependencies=[Depends(require_permission("namespaces.read"))],
+)
 async def list_namespaces(
     context: str | None = Query(default=None),
     uc: NamespaceUseCases = Depends(namespace_uc),
@@ -34,7 +46,11 @@ async def list_namespaces(
     return await uc.list_namespaces(context)
 
 
-@router.get("/nodes", response_model=list[NodeOut])
+@router.get(
+    "/nodes",
+    response_model=list[NodeOut],
+    dependencies=[Depends(require_permission("nodes.read"))],
+)
 async def list_nodes(
     context: str | None = Query(default=None),
     uc: NodeUseCases = Depends(node_uc),

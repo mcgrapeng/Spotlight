@@ -17,7 +17,11 @@ from starlette.background import BackgroundTask
 from app.infrastructure.auth import session as session_store
 from app.infrastructure.auth.session import Session
 from app.infrastructure.logging import get_logger
-from app.interface.api.v1.dependencies import current_session, log_uc
+from app.interface.api.v1.dependencies import (
+    current_session,
+    log_uc,
+    require_permission,
+)
 
 router = APIRouter(tags=["logs"])
 log = get_logger("api.logs")
@@ -91,7 +95,11 @@ QUEUE_MAX_BATCHES = 100
 BATCH_MAX = 100
 
 
-@router.get("/pods/{namespace}/{name}/logs", response_model=LogHistoryOut)
+@router.get(
+    "/pods/{namespace}/{name}/logs",
+    response_model=LogHistoryOut,
+    dependencies=[Depends(require_permission("pods.logs"))],
+)
 async def read_history(
     namespace: str,
     name: str,
@@ -113,7 +121,10 @@ async def read_history(
     return LogHistoryOut(total=len(items), items=items)
 
 
-@router.get("/pods/{namespace}/{name}/logs/stream")
+@router.get(
+    "/pods/{namespace}/{name}/logs/stream",
+    dependencies=[Depends(require_permission("pods.logs"))],
+)
 async def stream(
     request: Request,
     namespace: str,

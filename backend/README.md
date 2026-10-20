@@ -32,6 +32,37 @@ and drives it through a real PTY, `test_client_ip_real.py` starts a real uvicorn
 behind a real proxy, and `test_stale_context_live.py` serves over a real socket.
 They need no cluster and no network beyond `127.0.0.1`.
 
+## Permissions
+
+Spotlight gates its own features with a small RBAC model: a **permission** is
+a code (`pods.read`, `pods.logs`, `ai.use`, `users.manage`, …), a
+**role** is a named set of codes, and a **user** is an auth-plugin username
+plus the roles granted to it. The codes are about *Spotlight*, not about the
+cluster behind it — the K8s side is already limited by each session's own
+kubeconfig credentials.
+
+- Catalog: `app/domain/value_objects/permissions.py` — the codes that exist.
+- Built-in roles: `admin` (everything), `user` (everything but the admin
+  surface), `viewer` (read-only). Seeded on startup; `admin` is immutable.
+- A username nobody assigned a role to keeps today's behaviour: the `user`
+  role. Locking somebody out is an explicit act (`disabled`).
+- `ADMIN_USERS=alice,bob` in `.env` grants the admin role to those
+  usernames — the bootstrap, since otherwise the first deployment would have
+  nobody able to grant the admin role to anybody.
+
+| Endpoint (under `/api/v1`) | Needs |
+|---|---|
+| `GET /permissions/me` | any signed-in caller — the codes the UI should honour |
+| `GET /permissions/catalog` | any signed-in caller |
+| `GET`/`POST` `/permissions/roles`, `PUT`/`DELETE` `/permissions/roles/{id}` | `roles.manage` |
+| `GET /permissions/users`, `PUT /permissions/users/{username}` | `users.manage` |
+
+`GET /auth/status` also carries the caller's `permissions`, so the frontend
+needs one call on boot instead of two. The server enforces the same codes on
+the routes that already existed (`/clusters`, `/pods`, `/pods/{ns}/{name}/logs`,
+`/nodes`, `/events`, `/favorites`, `/ai/*`); the frontend only uses them
+to hide what the caller cannot do.
+
 ## CI
 
 `.github/workflows/ci.yml` runs three jobs: backend tests, frontend
