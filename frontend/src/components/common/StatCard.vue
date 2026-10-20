@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, formatNumber } from '@/lib/utils'
 
 const props = withDefaults(defineProps<{
   label: string
@@ -17,7 +17,8 @@ const props = withDefaults(defineProps<{
 const displayValue = computed(() => {
   if (props.format === 'raw') return String(props.value)
   if (typeof props.value === 'number') {
-    return new Intl.NumberFormat('zh-CN').format(props.value)
+    // ponytail: 之前写死 'zh-CN'，英文界面里数字还是中文分组格式。
+    return formatNumber(props.value)
   }
   return props.value
 })

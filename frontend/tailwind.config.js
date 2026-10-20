@@ -93,7 +93,10 @@ export default {
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
       fontSize: {
-        '2xs': ['11px', '16px'],
+        // ponytail: 2xs 原来是 11px。全项目 76 处用到，其中大量是中文
+        // （「Running 258」「1 未就绪」「最近 1h」），11px 中文字笔画粘连，
+        // 且中文字面框比拉丁字母窄，视觉上比 11px 数字更糊。抬到 12px。
+        '2xs': ['12px', '16px'],
         xs: ['12px', '16px'],
         sm: ['13px', '18px'],
         base: ['14px', '20px'],
@@ -131,5 +134,8 @@ export default {
       },
     },
   },
-  plugins: [],
+  // ponytail: tailwindcss-animate 之前没装，但 DialogContent / PopoverContent /
+  // SheetContent 全在用 `animate-in` / `fade-in-0` / `zoom-in-95` —— 那些类
+  // 在构建产物里命中数为 0，所有浮层都是硬切。插件装上后这些类才真正存在。
+  plugins: [require('tailwindcss-animate')],
 }

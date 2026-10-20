@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
   Copy, X, Terminal, Filter, Clock, WrapText, Download, AlertCircle, HelpCircle,
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { useLogFilters } from '@/composables/useLogFilters'
-import { useLogSeverityCounts, SEVERITY_CHIP_THRESHOLDS } from '@/composables/useLogSeverityCounts'
+import { useLogSeverityCounts, SEVERITY_FILTER_CHIPS, cumulativeSeverityCounts } from '@/composables/useLogSeverityCounts'
 import { useLogKeyboardShortcuts } from '@/composables/useLogKeyboardShortcuts'
 import { ansiToHtml, getAnsiFor } from '@/utils/ansiToHtml'
 import { stripAnsi } from '@/domain/services/logFormat'
@@ -706,6 +707,8 @@ function toggleExpand(key: string) {
 
 // === Severity counts (4 aggregated buckets, over full unfiltered set) ===
 const counts = useLogSeverityCounts(toRef(props, 'lines'))
+// 芯片显示的是「点了之后会看到几行」，不是该档位自己的行数。
+const chipCounts = computed(() => cumulativeSeverityCounts(counts.value))
 
 // === Additional filter pipeline: container ===
 const selectedContainer = ref<string | null>(null)
@@ -965,7 +968,15 @@ async function copyAll() {
   const text = displayedLines.value
     .map(l => `${l.raw.timestamp} [${l.raw.severity.toUpperCase()}] [${l.raw.container}] ${l.raw.content}`)
     .join('\n')
-  try { await navigator.clipboard.writeText(text) } catch (err) { console.error('clipboard', err) }
+  try {
+    await navigator.clipboard.writeText(text)
+    // ponytail: 复制是静默的 —— 用户按了 C 键，什么都没发生，只能自己
+    // 去别的窗口粘贴才知道成没成。给一个瞬时确认。
+    toast.success(t('toast.logsCopied', { count: displayedLines.value.length }))
+  } catch (err) {
+    console.error('clipboard', err)
+    toast.error(t('toast.logsCopyFailed'))
+  }
 }
 
 onMounted(() => {
@@ -1030,9 +1041,9 @@ const SEV_CLASS: Record<string, string> = {
   trace: 'text-muted-foreground', debug: 'text-muted-foreground',
   info: 'text-foreground', notice: 'text-foreground',
   warn: 'text-warning', warning: 'text-warning',
-  error: 'text-red-700', err: 'text-red-700',
-  critical: 'text-red-700 font-semibold', fatal: 'text-red-700 font-bold',
-  alert: 'text-red-700 font-bold', emergency: 'text-red-700 font-bold',
+  error: 'text-error', err: 'text-error',
+  critical: 'text-error font-semibold', fatal: 'text-error font-bold',
+  alert: 'text-error font-bold', emergency: 'text-error font-bold',
   unknown: 'text-foreground',
 }
 const SEV_ERROR_KEYS = new Set(['error', 'err', 'critical', 'fatal', 'alert', 'emergency'])
@@ -1040,10 +1051,10 @@ const SEV_FATAL_KEYS = new Set(['critical', 'fatal', 'alert', 'emergency'])
 
 function severityBorderFor(s: string): string {
   const k = s.toLowerCase()
-  if (SEV_FATAL_KEYS.has(k)) return 'border-l-red-500'
-  if (SEV_ERROR_KEYS.has(k)) return 'border-l-red-500/70'
-  if (k === 'warn' || k === 'warning') return 'border-l-amber-500/60'
-  if (k === 'info' || k === 'notice') return 'border-l-blue-500/30'
+  if (SEV_FATAL_KEYS.has(k)) return 'border-l-error'
+  if (SEV_ERROR_KEYS.has(k)) return 'border-l-error/70'
+  if (k === 'warn' || k === 'warning') return 'border-l-warning/60'
+  if (k === 'info' || k === 'notice') return 'border-l-info/30'
   return 'border-l-transparent'
 }
 
@@ -1065,10 +1076,13 @@ const SEV_BADGE_CLASS: Record<string, string> = {
   fatal: 'bg-error text-background border-error font-bold',
   alert: 'bg-error text-background border-error font-bold',
   emergency: 'bg-error text-background border-error font-bold',
-  error: 'bg-error/15 text-red-700 border-error/40 font-semibold',
-  err: 'bg-error/15 text-red-700 border-error/40 font-semibold',
-  warn: 'bg-warning/15 text-warning border-warning/40 font-medium',
-  warning: 'bg-warning/15 text-warning border-warning/40 font-medium',
+  // ponytail: 底色从 bg-error/15 换成 bg-error-bg。
+  // 15% 的 error 叠在白底上比 error-bg 本身更深（绿通道 222 vs 242），
+  // text-error 落在上面只有 4.08:1 —— 徽章是正文文字，必须过 AA。
+  error: 'bg-error-bg text-error border-error/40 font-semibold',
+  err: 'bg-error-bg text-error border-error/40 font-semibold',
+  warn: 'bg-warning-bg text-warning border-warning/40 font-medium',
+  warning: 'bg-warning-bg text-warning border-warning/40 font-medium',
   info: 'bg-muted text-foreground border-border font-medium',
   notice: 'bg-muted text-foreground border-border font-medium',
   trace: 'bg-transparent text-muted-foreground border-transparent',
@@ -1185,9 +1199,9 @@ function tokenizeJsonLine(line: string): string {
         if (str !== undefined) {
           return colon !== undefined
             ? `<span class="text-info">${str}</span>${colon}`
-            : `<span class="text-green-800">${str}</span>`
+            : `<span class="text-success">${str}</span>`
         }
-        if (bool !== undefined) return `<span class="text-red-700">${bool}</span>`
+        if (bool !== undefined) return `<span class="text-error">${bool}</span>`
         if (num !== undefined) return `<span class="text-warning">${num}</span>`
         return m
       },
@@ -1334,6 +1348,7 @@ function downloadLogs() {
   // becomes invalid. Calling revokeObjectURL synchronously after .click() works
   // in Chrome but Safari sometimes races; deferring is the documented pattern.
   setTimeout(() => URL.revokeObjectURL(url), 0)
+  toast.success(t('toast.logsDownloaded', { count: source.length }))
 }
 
 function clearAllFilters() {
@@ -1376,27 +1391,27 @@ const helpRows = computed(() => [
       </button>
       <span class="text-muted-foreground/30 mx-0.5">·</span>
       <button
-        v-for="(rank, bucket) in SEVERITY_CHIP_THRESHOLDS"
-        :key="bucket"
+        v-for="chip in SEVERITY_FILTER_CHIPS"
+        :key="chip.bucket"
         type="button"
-        :disabled="counts[bucket] === 0"
-        :aria-pressed="minSeverity === rank"
+        :disabled="chipCounts[chip.bucket] === 0"
+        :aria-pressed="minSeverity === chip.rank"
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors text-2xs',
           'disabled:opacity-30 disabled:cursor-default',
-          minSeverity === rank
+          minSeverity === chip.rank
             ? 'border-foreground bg-foreground text-background'
             : cn(
                 'border-transparent hover:bg-accent hover:text-foreground',
-                SEV_CLASS[bucket] ?? 'text-muted-foreground',
+                SEV_CLASS[chip.bucket] ?? 'text-muted-foreground',
               ),
         )"
-        @click="setSeverity(rank)"
-        :title="t('log.severityLines', { bucket, count: counts[bucket].toLocaleString() })"
+        @click="setSeverity(chip.rank)"
+        :title="t('log.severityLines', { bucket: chip.bucket, count: chipCounts[chip.bucket].toLocaleString() })"
       >
-        <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[bucket] }}</span>
-        <span class="uppercase tracking-wider">{{ bucket }}</span>
-        <span class="tabular-nums">{{ counts[bucket].toLocaleString() }}</span>
+        <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[chip.bucket] }}</span>
+        <span class="uppercase tracking-wider">&ge; {{ chip.bucket }}</span>
+        <span class="tabular-nums">{{ chipCounts[chip.bucket].toLocaleString() }}</span>
       </button>
     </div>
 
@@ -1597,7 +1612,7 @@ const helpRows = computed(() => [
       </button>
       <button
         type="button"
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-red-700 hover:border-error/30 transition-colors ml-auto"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ml-auto"
         :title="t('log.clearFieldFilter')"
         :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
@@ -1934,7 +1949,7 @@ const helpRows = computed(() => [
         {{ t('log.linesUnit') }}
       </span>
       <div class="flex items-center gap-3">
-        <span v-if="streaming" class="flex items-center gap-1 text-green-800">
+        <span v-if="streaming" class="flex items-center gap-1 text-success">
           <span class="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
           {{ t('log.live') }}
         </span>

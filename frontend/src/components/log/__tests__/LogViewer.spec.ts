@@ -29,19 +29,32 @@ function makeLines(n: number): LogLineOut[] {
 }
 
 describe('LogViewer', () => {
-  it('renders 4 severity chip buckets (ERROR/WARN/INFO/DEBUG)', () => {
+  it('renders the severity filter chips (全部 + ≥INFO/≥WARN/≥ERROR)', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(20), unreadCount: 0 },
       global: { plugins: [i18n] },
     })
     const chips = wrapper.findAll('button[aria-pressed]')
-    // "全部" + 4 buckets = 5
-    expect(chips.length).toBeGreaterThanOrEqual(5)
+    // "全部" + 3 thresholds = 4. DEBUG is deliberately absent: its rank is 0,
+    // the same as "全部", so it used to render as a second active black pill
+    // while meaning exactly the same thing.
+    expect(chips.length).toBe(4)
     const labels = chips.map((c) => c.text().toLowerCase()).join('|')
     expect(labels).toMatch(/error/)
     expect(labels).toMatch(/warn/)
     expect(labels).toMatch(/info/)
-    expect(labels).toMatch(/debug/)
+  })
+
+  it('never has two filter chips active at the same time', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(20), unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    const pressed = () =>
+      wrapper.findAll('button[aria-pressed]').filter((c) => c.attributes('aria-pressed') === 'true')
+    // Regression: "全部" and "DEBUG" both had rank 0, so both rendered as
+    // active black pills — two contradicting states of the same control.
+    expect(pressed().length).toBe(1)
   })
 
   it('hides the unread pill when unreadCount is 0', () => {
@@ -125,14 +138,14 @@ describe('LogViewer', () => {
     const classOf = (i: number) => rows[i]!.attributes('class') ?? ''
     // critical: full-opacity red 3px bar
     expect(classOf(0)).toContain('border-l-[3px]')
-    expect(classOf(0)).toContain('border-l-red-500')
+    expect(classOf(0)).toContain('border-l-error')
     // error: 70% red bar
     expect(classOf(1)).toContain('border-l-[3px]')
-    expect(classOf(1)).toContain('border-l-red-500/70')
+    expect(classOf(1)).toContain('border-l-error/70')
     // warn: 60% amber bar
-    expect(classOf(2)).toContain('border-l-amber-500/60')
+    expect(classOf(2)).toContain('border-l-warning/60')
     // info: faint blue 30% bar
-    expect(classOf(3)).toContain('border-l-blue-500/30')
+    expect(classOf(3)).toContain('border-l-info/30')
     // debug: transparent bar (badge carries the signal)
     expect(classOf(4)).toContain('border-l-transparent')
   })
@@ -248,13 +261,13 @@ describe('LogViewer', () => {
       global: { plugins: [i18n] },
     })
     // The badge is a span containing ×N. Find it by text and assert its class includes
-    // the severity tint (border-l-red-500/70 for error).
+    // the severity tint (border-l-error/70 for error).
     const all = wrapper.findAll('span')
     const badge = all.find((s) => /^×\d+$/.test(s.text().trim()))
     expect(badge).toBeTruthy()
     const cls = badge!.attributes('class') ?? ''
-    // error → border-l-red-500/70 from severityBorderFor()
-    expect(cls).toMatch(/border-l-red-500/)
+    // error → border-l-error/70 from severityBorderFor()
+    expect(cls).toMatch(/border-l-error/)
   })
 
   // Rows are wrapped in v-memo, which skips the whole subtree when its dependency

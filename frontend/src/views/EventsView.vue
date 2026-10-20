@@ -6,19 +6,18 @@ import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight, Layer
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useResource } from '@/composables/useResource'
+import { useRelativeTime } from '@/composables/useRelativeTime'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { cn } from '@/lib/utils'
+import { isAllNamespaces } from '@/utils/namespace'
 import dayjs from '@/utils/dayjs'
 import type { EventOut } from '@/api/types'
 
-function formatRel(iso: string | null) {
-  if (!iso) return '—'
-  return dayjs(iso).fromNow()
-}
+const { formatRel } = useRelativeTime()
 
 const route = useRoute()
 const router = useRouter()
@@ -95,7 +94,9 @@ const warningEntries = computed(() =>
   <PageHeader
     :title="`${t('route.events')} · ${cluster.activeCluster || ''}`"
     :subtitle="t('events.subtitle', {
-      namespace: cluster.activeNamespace,
+      namespace: isAllNamespaces(cluster.activeNamespace)
+        ? t('namespace.all')
+        : cluster.activeNamespace,
       filtered: filtered.length,
       total: totalEvents,
     })"
@@ -151,7 +152,7 @@ const warningEntries = computed(() =>
   <!-- ponytail: 顶部 namespace 提示，让用户立刻知道当前在看哪个 namespace，
        避免 default (0 events) 被误认为"事件丢了"。点 [所有 namespace] 一键切换。 -->
   <div
-    v-if="cluster.activeNamespace && cluster.activeNamespace !== '_all'"
+    v-if="!isAllNamespaces(cluster.activeNamespace)"
     class="mt-3 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-xs text-muted-foreground"
   >
     <Layers :size="13" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />

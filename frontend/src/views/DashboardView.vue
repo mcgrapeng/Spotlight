@@ -4,38 +4,27 @@ import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
+import { useRelativeTime } from '@/composables/useRelativeTime'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, formatNumber } from '@/lib/utils'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
+import PhaseBar, { type PhaseSlice } from '@/components/common/PhaseBar.vue'
+import RestartBars from '@/components/common/RestartBars.vue'
+import StatCard from '@/components/common/StatCard.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import type { DashboardOut } from '@/api/types'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import dayjs from '@/utils/dayjs'
 import { useI18n } from 'vue-i18n'
 
-// ponytail: formatRel memoized per 60s bucket — events page renders 500 rows
-// each parsing dayjs. Bucket keeps the string identical between rows on the
-// same minute so 500 calls in 1s = 1 dayjs() + 500 Map hits. Locale is part of
-// the key so a language switch invalidates cached strings; reading `locale.value`
-// inside formatRel is also what makes the computeds that call it depend on it,
-// so they re-render on switch.
-const { locale, t } = useI18n()
+const { t } = useI18n()
 
-const _relCache = new Map<string, string>()
-function formatRel(iso: string | null) {
-  if (!iso) return '—'
-  const bucket = Math.floor(Date.now() / 60_000)
-  const key = `${locale.value}:${bucket}:${iso}`
-  let v = _relCache.get(key)
-  if (v === undefined) {
-    v = dayjs(iso).fromNow()
-    _relCache.set(key, v)
-    if (_relCache.size > 1000) _relCache.clear()
-  }
-  return v
-}
+// ponytail: 相对时间格式化之前在这个文件里另写了一份（和 Events / PodDetail
+// 重复三遍）。现在统一走 useRelativeTime。
+const { formatRel } = useRelativeTime()
 
 const cluster = useClusterStore()
 const stats = ref<DashboardOut | null>(null)
@@ -111,6 +100,30 @@ const phaseCounts = computed(() => {
   }
 })
 
+// ponytail: 阶段分布。DashboardOut 一直带着 running/pending/failed/succeeded，
+// 但之前只有 failed 被读到 —— 258 个 running 和 17 个 pending 从来没显示过，
+// 一个 287 Pod 的集群在界面上就是四个平级数字。
+const phaseSlices = computed<PhaseSlice[]>(() => {
+  const c = phaseCounts.value
+  return [
+    { key: 'running', label: 'Running', value: c.running, color: 'hsl(var(--success))' },
+    { key: 'pending', label: 'Pending', value: c.pending, color: 'hsl(var(--warning))' },
+    { key: 'failed', label: 'Failed', value: c.failed, color: 'hsl(var(--error))' },
+    { key: 'succeeded', label: 'Succeeded', value: c.succeeded, color: 'hsl(var(--muted-foreground))' },
+  ]
+})
+
+const podTotal = computed(() =>
+  phaseSlices.value.reduce((acc, s) => acc + s.value, 0),
+)
+
+const healthVerdict = computed(() => {
+  if (!stats.value) return { key: 'ok', label: t('dashboard.heroVerdictOk'), tone: 'text-success' }
+  if (healthIsCritical.value) return { key: 'bad', label: t('dashboard.heroVerdictBad'), tone: 'text-error' }
+  if (healthScore.value < 90) return { key: 'warn', label: t('dashboard.heroVerdictWarn'), tone: 'text-warning' }
+  return { key: 'ok', label: t('dashboard.heroVerdictOk'), tone: 'text-success' }
+})
+
 // ponytail: noisyRestarts hoisted out of template. Previous version ran
 // `stats.restart_top.filter(p => p.restarts > 5).slice(0, 5)` twice per render
 // (once for v-if, once for v-for) — now computed once.
@@ -169,10 +182,13 @@ const actionItems = computed<Array<{
 
   const noisy = (stats.value?.restart_top ?? []).filter(p => p.restarts > 10).slice(0, 3)
   if (noisy.length > 0) {
+    const worst = Math.max(...noisy.map(p => p.restarts))
     items.push({
       severity: 'warning',
       label: t('dashboard.actionFrequentRestarts', { count: noisy.length }),
-      detail: noisy.map(p => `${p.pod.split('/').pop()} ×${p.restarts}`).join(', '),
+      // 之前这里塞的是一串 pod 名 + 次数的逗号连缀，在卡片里糊成一片。
+      // 详情说人话：最高多少次。具体的哪个 pod 交给下面的条形图。
+      detail: t('dashboard.actionFrequentRestartsDetail', { count: formatNumber(worst) }),
       link: { name: 'pods' },
     })
   }
@@ -206,7 +222,7 @@ const recentActivity = computed(() => {
     if (ev.last_seen) {
       items.push({
         time: formatRel(ev.last_seen),
-        icon: '⚠',
+        icon: 'warn',
         label: ev.reason,
         pod: `${ev.namespace}/${ev.involved_name}`,
       })
@@ -232,6 +248,47 @@ const recentActivity = computed(() => {
         </Button>
       </template>
     </PageHeader>
+
+    <!--
+      Hero：整个首屏只回答一个问题 —— 现在最该管的是什么。
+      之前是四张等大的白卡片（26px 数字）+ 一块琥珀色行动卡：视觉重量被平均
+      分配到每一处，于是没有一处读起来重要，最该被看见的「3 个 Pod 重启了
+      21,320 次」只是第三张卡里一行 12px 灰字。
+      现在健康度是一个 48px 的主数字 + 一条阶段分布堆叠条，
+      关键事实自己占第一屏，第二屏才是行动清单。
+    -->
+    <Card class="p-0 mb-4">
+      <CardContent class="p-5">
+        <div class="flex flex-col lg:flex-row lg:items-center gap-6">
+          <div class="shrink-0 lg:w-[200px]">
+            <div class="text-xs text-muted-foreground tracking-wide mb-1">{{ t('dashboard.heroHealth') }}</div>
+            <div class="flex items-baseline gap-1">
+              <span
+                class="text-5xl font-bold tabular-nums tracking-tight leading-none"
+                :class="healthIsCritical ? 'text-error' : 'text-foreground'"
+              >{{ healthScore }}</span>
+              <span class="text-lg text-muted-foreground font-medium">%</span>
+            </div>
+            <div class="mt-2 text-xs font-medium" :class="healthVerdict.tone">{{ healthVerdict.label }}</div>
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline justify-between gap-3 mb-2">
+              <span class="text-xs text-muted-foreground tracking-wide">{{ t('dashboard.phaseDistribution') }}</span>
+              <span class="text-xs text-muted-foreground tabular-nums">{{ formatNumber(podTotal) }} Pod</span>
+            </div>
+            <PhaseBar :slices="phaseSlices" height="12px" />
+            <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
+              <div v-for="s in phaseSlices" :key="s.key" class="flex items-center gap-1.5 text-xs">
+                <span class="size-2 rounded-full shrink-0" :style="{ background: s.color }" aria-hidden="true" />
+                <span class="text-muted-foreground">{{ s.label }}</span>
+                <span class="font-mono tabular-nums font-medium">{{ formatNumber(s.value) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
     <!-- Section 1: Action Required (only if there ARE actions) -->
     <Card v-if="actionItems.length > 0" class="p-0 mb-4 border-warning">
@@ -268,49 +325,26 @@ const recentActivity = computed(() => {
       </CardContent>
     </Card>
 
-    <!-- Section 2: Compact stats row -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-      <Card class="p-0">
-        <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statHealth') }}</div>
-          <div class="flex items-baseline gap-1.5">
-            <span class="text-2xl font-bold tabular-nums" :class="healthIsCritical && 'text-error'">{{ healthScore }}</span>
-            <span class="text-xs text-muted-foreground">%</span>
-            <span class="ml-auto h-1.5 w-12 rounded-full bg-muted overflow-hidden">
-              <span
-                class="block h-full transition-all"
-                :class="healthIsCritical ? 'bg-error' : healthScore >= 90 ? 'bg-success' : 'bg-warning'"
-                :style="{ width: `${healthScore}%` }"
-              />
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-      <Card class="p-0">
-        <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statPods') }}</div>
-          <div class="text-2xl font-bold tabular-nums">{{ formatNumber(stats.total_pods) }}</div>
-          <div class="text-2xs text-muted-foreground mt-1">{{ t('dashboard.statPodsRunning', { count: formatNumber(stats.running) }) }}</div>
-        </CardContent>
-      </Card>
-      <Card class="p-0">
-        <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statAlerts') }}</div>
-          <div class="text-2xl font-bold tabular-nums" :class="stats.warning_events > 0 ? 'text-warning' : 'text-muted-foreground/70'">
-            {{ formatNumber(stats.warning_events) }}
-          </div>
-          <div class="text-2xs text-muted-foreground mt-1">{{ t('dashboard.statAlertsHint') }}</div>
-        </CardContent>
-      </Card>
-      <Card class="p-0">
-        <CardContent class="p-4">
-          <div class="text-2xs text-muted-foreground uppercase tracking-wide mb-1">{{ t('dashboard.statNodes') }}</div>
-          <div class="text-2xl font-bold tabular-nums" :class="stats.nodes_ready < stats.nodes_total ? 'text-error' : ''">
-            {{ stats.nodes_ready }}<span class="text-xs text-muted-foreground">/{{ stats.nodes_total }}</span>
-          </div>
-          <div class="text-2xs text-muted-foreground mt-1">{{ t('dashboard.nodesReady') }}</div>
-        </CardContent>
-      </Card>
+    <!-- Section 2: 次级指标。改用通用 StatCard —— 之前 Dashboard 手搓了四个
+         样式不同的卡片（text-2xs uppercase 标签 + 26px 数字），Nodes 页却用
+         StatCard（12px 标签 + 34px 数字）：同一个概念两套视觉语言，差两级字号。 -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+      <StatCard
+        :label="t('dashboard.statAlerts')"
+        :value="stats.warning_events"
+        :hint="t('dashboard.statAlertsHint')"
+        :class="stats.warning_events > 0 ? 'text-warning' : ''"
+      />
+      <StatCard
+        :label="t('dashboard.statNodes')"
+        :value="`${stats.nodes_ready}/${stats.nodes_total}`"
+        format="raw"
+        :hint="t('dashboard.nodesReady')"
+      />
+      <StatCard
+        :label="t('dashboard.statNamespaces')"
+        :value="stats.namespaces_count"
+      />
     </div>
 
     <!-- Section 3: Recent Activity + Top Noisy -->
@@ -323,9 +357,10 @@ const recentActivity = computed(() => {
             {{ t('dashboard.recentActivity') }}
             <span class="text-2xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
           </h3>
-          <div v-if="recentActivity.length === 0" class="text-sm text-muted-foreground py-4 text-center">
-            {{ t('dashboard.recentActivityEmpty') }}
-          </div>
+          <EmptyState
+            v-if="recentActivity.length === 0"
+            :title="t('dashboard.recentActivityEmpty')"
+          />
           <ol v-else class="space-y-1.5">
             <li
               v-for="(item, i) in recentActivity"
@@ -333,11 +368,14 @@ const recentActivity = computed(() => {
               class="flex items-start gap-3 text-sm py-1"
             >
               <span
-                :class="cn(
-                  'shrink-0 w-5 text-center font-mono text-xs',
-                  item.icon === '⚠' ? 'text-warning' : 'text-muted-foreground'
-                )"
-              >{{ item.icon }}</span>
+                class="shrink-0 w-5 flex justify-center pt-1.5"
+                aria-hidden="true"
+              >
+                <span
+                  class="block size-1.5 rounded-full"
+                  :class="item.icon === 'warn' ? 'bg-warning' : 'bg-muted-foreground/40'"
+                />
+              </span>
               <span class="shrink-0 text-2xs text-muted-foreground w-16 tabular-nums">{{ item.time }}</span>
               <span class="shrink-0 px-1.5 py-0 rounded text-2xs font-medium bg-muted text-foreground border border-border">
                 {{ item.label }}
@@ -355,24 +393,11 @@ const recentActivity = computed(() => {
             <AlertTriangle :size="15" :stroke-width="1.75" />
             {{ t('dashboard.frequentRestarts') }}
           </h3>
-          <div v-if="noisyRestarts.length === 0" class="text-sm text-muted-foreground py-4 text-center">
-            {{ t('dashboard.frequentRestartsEmpty') }}
-          </div>
-          <ol v-else class="space-y-1.5">
-            <li
-              v-for="(p, i) in noisyRestarts"
-              :key="p.pod"
-              class="flex items-center gap-2 text-sm py-0.5"
-            >
-              <span class="shrink-0 text-2xs text-muted-foreground tabular-nums w-4 text-right">{{ i + 1 }}</span>
-              <router-link :to="{ name: 'pod-detail', params: { namespace: p.pod.split('/')[0], name: p.pod.split('/')[1] } }" class="flex-1 min-w-0 truncate font-mono text-xs hover:text-foreground hover:underline">
-                {{ p.pod.split('/')[1] }}
-              </router-link>
-              <span class="shrink-0 text-sm font-semibold tabular-nums" :class="p.restarts > 100 ? 'text-error' : 'text-warning'">
-                ×{{ p.restarts }}
-              </span>
-            </li>
-          </ol>
+          <EmptyState
+            v-if="noisyRestarts.length === 0"
+            :title="t('dashboard.frequentRestartsEmpty')"
+          />
+          <RestartBars v-else :items="noisyRestarts" />
         </CardContent>
       </Card>
     </div>

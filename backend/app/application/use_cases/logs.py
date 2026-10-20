@@ -29,6 +29,12 @@ class LogUseCases:
         stop_event=None,
     ) -> Iterator[LogStreamParams]:
         for entry in self._repo.stream_logs(ref, container, tail, stop_event=stop_event):
+            # `None` is the repo's poll-boundary marker (this poll is done,
+            # flush what it produced). It carries no content and must not be
+            # classified or enriched.
+            if entry is None:
+                yield None  # type: ignore[misc]
+                continue
             yield self._enrich(entry)
 
     def _enrich(self, entry) -> LogStreamParams:

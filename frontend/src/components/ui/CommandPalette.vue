@@ -69,7 +69,7 @@ const actions = computed(() => [
 
 const shortcuts = computed(() => [
   { combo: '⌘ K / Ctrl K', desc: t('palette.shortcuts.openPalette') },
-  { combo: 'g d / p / n / e / f / a', desc: t('palette.shortcuts.quickNav') },
+  { combo: 'g then d/p/n/e/f/a', desc: t('palette.shortcuts.quickNav') },
   { combo: '? (Shift+/)', desc: t('palette.shortcuts.showPanel') },
   { combo: '/', desc: t('palette.shortcuts.focusSearch') },
   { combo: 'k / K', desc: t('palette.shortcuts.pauseStream') },

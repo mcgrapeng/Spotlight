@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Star, Trash2, ExternalLink } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import { favoritesApi } from '@/api/endpoints'
 import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -25,6 +26,7 @@ const favorites = computed(() => _raw.value ?? [])
 
 async function remove(id: number) {
   await favoritesApi.remove(id)
+  toast.success(t('toast.favoriteDeleted'))
   // Optimistic local remove — re-list on next mount. Write the source ref,
   // not the readonly derived computed.
   _raw.value = (_raw.value ?? []).filter(f => f.id !== id)

@@ -81,7 +81,7 @@ function close() {
         </div>
 
         <div class="grid gap-1.5">
-          <label class="text-sm font-medium" for="provider-provider">Provider</label>
+          <label class="text-sm font-medium" for="provider-provider">{{ t('ai.fieldProvider') }}</label>
           <AppSelect
             id="provider-provider"
             v-model="form.provider"
@@ -91,12 +91,12 @@ function close() {
         </div>
 
         <div class="grid gap-1.5">
-          <label class="text-sm font-medium" for="provider-model">Model</label>
+          <label class="text-sm font-medium" for="provider-model">{{ t('ai.fieldModel') }}</label>
           <Input id="provider-model" v-model="form.model" placeholder="gpt-4o-mini" required />
         </div>
 
         <div class="grid gap-1.5">
-          <label class="text-sm font-medium" for="provider-key">API Key</label>
+          <label class="text-sm font-medium" for="provider-key">{{ t('ai.fieldApiKey') }}</label>
           <Input id="provider-key" v-model="form.api_key" type="password" placeholder="sk-..." />
         </div>
 

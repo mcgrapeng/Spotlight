@@ -17,20 +17,23 @@ export const STORAGE_KEYS = {
   /** AppLayout sidebar collapsed/expanded, per user */
   appSidebarCollapsed: 'spotlight-sidebar-collapsed',
 
+  /** Pod 表格行密度（compact / standard / loose），per user */
+  podTableDensity: 'spotlight:pod-table-density',
+
   /** LogViewer wrap vs nowrap toggle */
   appLogWrap: 'spotlight:log-wrap',
 
   /** LogViewer recent search history (last 10 entries) */
   appLogSearchHistory: 'spotlight:log-search-history',
 
-  /** PodDetailView collapsed/expanded of the metadata block */
-  appPodMetaCollapsed: 'spotlight:pod-meta-collapsed',
-
   /** cluster store active cluster + namespace — survives reload */
   appClusterSelection: 'spotlight.selection.v2',
 
   /** UI locale ('zh-CN' | 'en-US') — survives reload, user-controlled */
   appLocale: 'spotlight.locale',
+
+  /** Theme mode ('light' | 'dark' | 'system') — survives reload, user-controlled */
+  appThemeMode: 'spotlight.theme-mode',
 
   // ─── useCachedFetch keys ───────────────────────────────────────
   // Passed to useCachedFetch; it prefixes them with `cached:` itself. Only

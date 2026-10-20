@@ -88,11 +88,17 @@ test('Dashboard renders health score, pod counts, warnings, restart top', async 
   await expect(pageTitle(page)).toContainText(/demo-cluster|总览/)
 
   // Health score: running / (running+pending+failed) = 258/275 → 94.
-  await expect(page.getByText('健康', { exact: true }).first()).toBeVisible()
+  // The dashboard leads with a hero row (48px health number + phase
+  // distribution) instead of four equal stat cards, so the label is
+  // 「集群健康度」rather than 「健康」.
+  await expect(page.getByText('集群健康度', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('94', { exact: true }).first()).toBeVisible()
 
-  // Pods card (287 total)
-  await expect(page.getByText('Pods', { exact: true }).first()).toBeVisible()
+  // Phase distribution — the 287 pods are now a stacked bar with a legend
+  // (Running 258 / Pending 17 / Failed 0 / Succeeded 12) instead of a number
+  // in its own card.
+  await expect(page.getByText('Pod 阶段分布', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Running', { exact: true }).first()).toBeVisible()
 
   // Warning events card (25 from fixture)
   await expect(page.getByText('告警', { exact: true }).first()).toBeVisible()
@@ -105,7 +111,7 @@ test('Dashboard renders health score, pod counts, warnings, restart top', async 
 
   // Refresh button visible + clickable, doesn't crash.
   await page.getByRole('button', { name: '刷新' }).first().click()
-  await expect(page.getByText('健康', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('集群健康度', { exact: true }).first()).toBeVisible()
 
   expect(filterCritical(errors)).toHaveLength(0)
 })
@@ -160,7 +166,7 @@ test('PodDetail Logs tab renders LogViewer and survives tab switching', async ({
   await page.goto('/pods/default/webapp-001', { waitUntil: 'networkidle' })
 
   // Logs tab is selected by default and history backfills automatically.
-  await expect(page.getByRole('tab', { name: 'Logs' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '日志' })).toBeVisible()
 
   // LogViewer toolbar appears (search, clear, pause/play).
   // The pause button's aria-label toggles between "暂停 (K)" (streaming) and
@@ -178,11 +184,11 @@ test('PodDetail Logs tab renders LogViewer and survives tab switching', async ({
   await expect(page.getByRole('button', { name: 'AI 分析' })).toBeVisible()
 
   // Switch to Events tab — log lines should disappear, no crash.
-  await page.getByRole('tab', { name: 'Events' }).click()
+  await page.getByRole('tab', { name: '事件' }).click()
   await expect(page.getByText('该 Pod 无相关事件')).toBeVisible()
 
   // Back to Logs — lines render again (tab switching survives).
-  await page.getByRole('tab', { name: 'Logs' }).click()
+  await page.getByRole('tab', { name: '日志' }).click()
   await expect(page.getByText('service ready')).toBeVisible({ timeout: 10_000 })
 
   expect(filterCritical(errors)).toHaveLength(0)

@@ -7,14 +7,18 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { isAllNamespaces } from '@/utils/namespace'
 import { useClusterStore } from '@/stores/cluster'
 import { useAuthStore } from '@/stores/auth'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const cluster = useClusterStore()
 const auth = useAuthStore()
 const { t } = useI18n()
 const currentCluster = computed(() => cluster.clusters.find(c => c.name === cluster.activeCluster) ?? null)
+const { mode: themeMode } = useTheme()
 
 // computed, not plain arrays: `t()` must be re-read on a locale switch.
 const settingsItems = computed(() => [
@@ -29,7 +33,6 @@ const settingsItems = computed(() => [
 
 const aboutItems = computed(() => [
   { label: t('settings.aboutApp'), value: `Spotlight · ${t('nav.tagline')}` },
-  { label: t('settings.aboutTheme'), value: t('settings.aboutThemeValue') },
   { label: t('settings.aboutStorage'), value: t('settings.aboutStorageValue') },
 ])
 
@@ -105,8 +108,8 @@ function confirmLogout() {
             <Layers :size="16" :stroke-width="1.75" class="text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
             <div class="min-w-0 flex-1">
               <div class="text-2xs text-muted-foreground tracking-wide">Namespace</div>
-              <div class="mt-0.5 font-mono text-sm text-foreground">
-                {{ cluster.activeNamespace }}
+              <div class="mt-0.5 text-sm text-foreground" :class="isAllNamespaces(cluster.activeNamespace) ? '' : 'font-mono'">
+                {{ isAllNamespaces(cluster.activeNamespace) ? t('namespace.all') : cluster.activeNamespace }}
               </div>
             </div>
           </div>
@@ -161,6 +164,12 @@ function confirmLogout() {
             <Info :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" aria-hidden="true" />
             <span class="text-muted-foreground w-16 shrink-0">{{ item.label }}</span>
             <span class="text-foreground font-mono text-xs">{{ item.value }}</span>
+          </div>
+          <div class="flex items-center gap-3 px-4 py-3 text-sm border-t border-border">
+            <Info :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" aria-hidden="true" />
+            <span class="text-muted-foreground w-16 shrink-0">{{ t('settings.aboutTheme') }}</span>
+            <span class="text-foreground text-xs mr-2">{{ t(`theme.${themeMode}`) }}</span>
+            <ThemeToggle />
           </div>
         </CardContent>
       </Card>

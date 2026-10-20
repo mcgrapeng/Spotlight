@@ -2,9 +2,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, RefreshCw, Bot, PanelLeftClose, PanelLeftOpen, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
+import { ArrowLeft, RefreshCw, Bot, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
 import { podsApi, eventsApi, aiApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { useRelativeTime } from '@/composables/useRelativeTime'
 import { usePodLogs } from '@/composables/usePodLogs'
 import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -19,13 +20,9 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { cn } from '@/lib/utils'
 import dayjs from '@/utils/dayjs'
-import { STORAGE_KEYS } from '@/storage-keys'
 import type { PodOut, LogLineOut, EventOut } from '@/api/types'
 
-function formatRel(iso: string | null) {
-  if (!iso) return '—'
-  return dayjs(iso).fromNow()
-}
+const { formatRel } = useRelativeTime()
 
 const route = useRoute()
 const router = useRouter()
@@ -34,22 +31,17 @@ const { t } = useI18n()
 const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
 const analyzerOpen = ref(false)
-const metaCollapsed = ref(true)
-const META_LS_KEY = STORAGE_KEYS.appPodMetaCollapsed
+/** 容器就绪数 —— 事实条上那个 n/n。 */
+const readyContainers = computed(
+  () => pod.value?.containers.filter((c) => c.ready).length ?? 0,
+)
 
-onMounted(() => {
-  try {
-    const stored = localStorage.getItem(META_LS_KEY)
-    if (stored !== null) metaCollapsed.value = stored === 'true'
-  } catch { /* ignore */ }
-})
-
-watch(metaCollapsed, (v) => {
-  try { localStorage.setItem(META_LS_KEY, String(v)) } catch {}
-})
-
-function toggleMeta() {
-  metaCollapsed.value = !metaCollapsed.value
+/** 容器状态点，和 Pods 表格里的圆点用同一套判定。 */
+function containerDot(c: { ready?: boolean; state?: string; reason?: string | null }): string {
+  if (c.ready) return 'bg-success'
+  if (c.state === 'waiting' && c.reason === 'CrashLoopBackOff') return 'bg-error'
+  if (c.state === 'terminated' && (c.reason === 'Error' || c.reason === 'OOMKilled')) return 'bg-error'
+  return 'bg-warning'
 }
 
 /** Map a container's K8s state/reason to a phase pill. Never label a
@@ -155,27 +147,25 @@ function back() { router.push({ name: 'pods' }) }
 <template>
   <LoadingState v-if="loading && !pod" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
-  <div v-else-if="pod">
-    <div class="flex items-center justify-between mb-2 -ml-2">
+  <!--
+    ponytail: log-first 布局。
+    之前这个页面是 2 栏 + 日志框 h-[60vh] min-h-[400px]：6 行日志时底下空 400px，
+    5000 行时刚好，而且 AI 分析按钮被挤在日志工具栏右侧像是断开的。
+    现在页面自己撑满视口高度，日志区吃掉全部剩余高度，元数据收成一条事实条。
+  -->
+  <div
+    v-else-if="pod"
+    class="flex flex-col"
+    :style="{ height: 'calc(100dvh - var(--app-chrome-h))' }"
+  >
+    <div class="flex items-center mb-1 -ml-2 shrink-0">
       <Button variant="ghost" size="sm" @click="back">
         <ArrowLeft :size="14" :stroke-width="1.75" class="mr-1" />
         {{ t('pod.backToPods') }}
       </Button>
-      <!-- ponytail: 触摸目标 32px+，Lucide PanelLeftClose/Open 比 PanelLeft/Right 语义更准 -->
-      <Button
-        variant="ghost" size="sm"
-        class="min-h-[32px]"
-        :title="metaCollapsed ? t('pod.expandMetaTitle') : t('pod.collapseMetaTitle')"
-        :aria-label="metaCollapsed ? t('pod.expandMeta') : t('pod.collapseMeta')"
-        @click="toggleMeta"
-      >
-        <PanelLeftClose v-if="metaCollapsed" :size="14" :stroke-width="1.75" class="mr-1" />
-        <PanelLeftOpen v-else :size="14" :stroke-width="1.75" class="mr-1" />
-        {{ metaCollapsed ? t('pod.meta') : t('pod.collapseMeta') }}
-      </Button>
     </div>
 
-    <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`">
+    <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`" class="shrink-0">
       <template #actions>
         <PodStatusPill :phase="pod.phase" class="mr-2" />
         <Button variant="outline" size="sm" @click="load" :disabled="loading" :aria-label="t('pod.refresh')">
@@ -184,75 +174,65 @@ function back() { router.push({ name: 'pods' }) }
       </template>
     </PageHeader>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <!-- Left: metadata -->
-      <div v-if="!metaCollapsed" class="lg:col-span-1 space-y-4">
-        <Card class="p-0">
-          <CardContent class="p-4 space-y-3">
-            <div>
-              <div class="text-xs text-muted-foreground mb-1">Pod IP</div>
-              <div class="font-mono text-sm">{{ pod.pod_ip || '—' }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-muted-foreground mb-1">Node</div>
-              <div class="font-mono text-sm">{{ pod.node || '—' }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-muted-foreground mb-1">{{ t('pod.metaRestarts') }}</div>
-              <div class="text-sm tabular-nums">{{ pod.restart_count }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-muted-foreground mb-1">{{ t('pod.metaAge') }}</div>
-              <div class="text-sm">{{ pod.age || '—' }}</div>
-            </div>
-            <div v-if="pod.owner_kind">
-              <div class="text-xs text-muted-foreground mb-1">{{ t('pod.metaOwner') }}</div>
-              <div class="text-sm">{{ pod.owner_kind }} / {{ pod.owner_name }}</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card class="p-0">
-          <CardContent class="p-4">
-            <h3 class="text-sm font-semibold mb-3">{{ t('pod.containers', { count: pod.containers.length }) }}</h3>
-            <div class="space-y-2">
-              <div
-                v-for="c in pod.containers"
-                :key="c.name"
-                class="flex items-center justify-between p-2 rounded-md border border-border"
-              >
-                <div class="min-w-0 flex-1">
-                  <div class="font-mono text-xs font-medium truncate">{{ c.name }}</div>
-                  <div class="text-2xs text-muted-foreground truncate">
-                    {{ c.image }}<span v-if="c.reason"> · {{ c.reason }}</span>
-                  </div>
-                </div>
-                <PodStatusPill :phase="containerPhase(c)" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+    <!-- 事实条：重启次数 / 存在时间 / IP 这些关键事实之前全被收在默认折叠的
+         「元数据」面板里，标题区只有 namespace · node。现在常驻一行。 -->
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 py-2.5 border-y border-border shrink-0 text-xs">
+      <div class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">{{ t('pod.metaRestarts') }}</span>
+        <span
+          class="font-medium tabular-nums"
+          :class="pod.restart_count > 100 ? 'text-error' : pod.restart_count > 5 ? 'text-warning' : 'text-foreground'"
+        >{{ pod.restart_count.toLocaleString() }}</span>
       </div>
+      <div class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">{{ t('pod.metaAge') }}</span>
+        <span class="font-medium text-foreground">{{ pod.age || '—' }}</span>
+      </div>
+      <div class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">{{ t('pod.metaIp') }}</span>
+        <span class="font-mono text-foreground">{{ pod.pod_ip || '—' }}</span>
+      </div>
+      <div v-if="pod.owner_kind" class="flex items-baseline gap-1.5 min-w-0">
+        <span class="text-muted-foreground">{{ t('pod.metaOwner') }}</span>
+        <span class="font-mono text-foreground truncate">{{ pod.owner_kind }}/{{ pod.owner_name }}</span>
+      </div>
+      <!-- 容器降级到事实条上的一个概况（几个状态点 + n/n）。
+           之前容器独占左边 280px 一栏，日志被挤得看不全；
+           逐个容器的镜像 / 状态 / reason 挪到「详情」页签里。 -->
+      <div class="flex items-baseline gap-1.5">
+        <span class="text-muted-foreground">{{ t('pod.metaContainers') }}</span>
+        <span class="flex items-center gap-1.5">
+          <span class="flex items-center gap-1" aria-hidden="true">
+            <span
+              v-for="c in pod.containers"
+              :key="c.name"
+              class="block size-1.5 rounded-full"
+              :class="containerDot(c)"
+            />
+          </span>
+          <span class="font-mono tabular-nums font-medium">{{ readyContainers }}/{{ pod.containers.length }}</span>
+        </span>
+      </div>
+    </div>
 
-      <!-- Right: tabs -->
-      <div :class="metaCollapsed ? 'lg:col-span-3' : 'lg:col-span-2'">
-        <Tabs v-model="tab" class="w-full">
-          <TabsList>
-            <TabsTrigger value="logs">Logs</TabsTrigger>
-            <TabsTrigger value="events">Events</TabsTrigger>
+    <div class="flex-1 min-h-0 mt-4 flex flex-col">
+        <Tabs v-model="tab" class="w-full flex-1 min-h-0 flex flex-col">
+          <TabsList class="self-start">
+            <TabsTrigger value="logs">{{ t('pod.tabLogs') }}</TabsTrigger>
+            <TabsTrigger value="events">{{ t('pod.tabEvents') }}</TabsTrigger>
+            <TabsTrigger value="details">{{ t('pod.tabDetails') }}</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="logs" class="mt-4">
-            <div class="flex items-center justify-between mb-2">
+          <TabsContent value="logs" class="mt-2 flex-1 min-h-0 flex flex-col">
+            <div class="flex items-center justify-between mb-2 shrink-0">
               <h3 class="text-sm font-semibold">{{ t('pod.containerLogs') }}</h3>
               <Button variant="outline" size="sm" @click="analyzerOpen = true">
                 <Bot :size="14" :stroke-width="1.75" class="mr-1" />
                 {{ t('pod.aiAnalyze') }}
               </Button>
             </div>
-            <!-- ponytail: 600px 在 1080p 屏会被 tabs/padding 挤压；改成 60vh 自适应。
-                 min-h 保证日志行有基本可读高度，max-h 防超大屏无限拉长。 -->
-            <div class="h-[60vh] min-h-[400px] max-h-[1200px]">
+            <!-- 日志区吃掉全部剩余高度：6 行时下面没有空洞，5000 行时也不用滚外层。 -->
+            <div class="flex-1 min-h-0">
               <LogViewer
                 :lines="logLines"
                 v-model:streaming="logStreaming"
@@ -270,7 +250,7 @@ function back() { router.push({ name: 'pods' }) }
             </div>
           </TabsContent>
 
-          <TabsContent value="events" class="mt-4">
+          <TabsContent value="events" class="mt-2 flex-1 min-h-0 overflow-y-auto">
             <LoadingState v-if="podEventsLoading && podEvents.length === 0" :message="t('pod.loadingEvents')" />
             <EmptyState
               v-else-if="!podEventsLoading && podEvents.length === 0"
@@ -311,8 +291,50 @@ function back() { router.push({ name: 'pods' }) }
               </div>
             </div>
           </TabsContent>
+
+          <!-- 详情：逐个容器的镜像 / 状态 / reason，以及事实条上放不下的字段。 -->
+          <TabsContent value="details" class="mt-2 flex-1 min-h-0 overflow-y-auto">
+            <Card class="p-0">
+              <CardContent class="p-4">
+                <h3 class="text-sm font-semibold mb-3">{{ t('pod.containers', { count: pod.containers.length }) }}</h3>
+                <div class="space-y-2">
+                  <div
+                    v-for="c in pod.containers"
+                    :key="c.name"
+                    class="flex items-center justify-between gap-3 p-2 rounded-md border border-border"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <div class="font-mono text-xs font-medium truncate">{{ c.name }}</div>
+                      <div class="text-2xs text-muted-foreground truncate">
+                        {{ c.image }}<span v-if="c.reason"> · {{ c.reason }}</span>
+                      </div>
+                    </div>
+                    <PodStatusPill :phase="containerPhase(c)" />
+                  </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-border grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                  <div class="flex items-baseline gap-2 text-sm">
+                    <span class="text-muted-foreground text-xs w-20 shrink-0">{{ t('pod.metaNamespace') }}</span>
+                    <span class="font-mono text-foreground truncate">{{ pod.namespace }}</span>
+                  </div>
+                  <div class="flex items-baseline gap-2 text-sm">
+                    <span class="text-muted-foreground text-xs w-20 shrink-0">{{ t('pod.metaNode') }}</span>
+                    <span class="font-mono text-foreground truncate">{{ pod.node || '—' }}</span>
+                  </div>
+                  <div class="flex items-baseline gap-2 text-sm">
+                    <span class="text-muted-foreground text-xs w-20 shrink-0">{{ t('pod.metaIp') }}</span>
+                    <span class="font-mono text-foreground truncate">{{ pod.pod_ip || '—' }}</span>
+                  </div>
+                  <div v-if="pod.owner_kind" class="flex items-baseline gap-2 text-sm min-w-0">
+                    <span class="text-muted-foreground text-xs w-20 shrink-0">{{ t('pod.metaOwner') }}</span>
+                    <span class="font-mono text-foreground truncate">{{ pod.owner_kind }}/{{ pod.owner_name }}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
-      </div>
     </div>
 
     <LogAnalyzerDrawer

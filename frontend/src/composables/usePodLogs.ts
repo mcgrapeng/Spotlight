@@ -158,30 +158,38 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     unreadCount.value = deferred.length
     error.value = null
 
-    // Dedup the SSE backlog against what the panel already shows. The
-    // follow-stream replays `tail_lines` on connect — and on every
-    // EventSource auto-reconnect — which would otherwise double every line
-    // (500 → 1000).
+    // Dedup the SSE backlog against what the panel already shows.
     //
-    // ponytail / KNOWN LIMITATION: this Set is append-only and never pruned,
-    // so it is bounded by the session's total line count, NOT by
-    // `maxBuffered` — that caps `lines`, a different array. A pod left
-    // streaming for a full shift grows it without limit (~288k entries at
-    // 10 lines/sec over 8h). Deliberately left unbounded: a ring buffer would
-    // need N larger than the largest replay window or a slow replay silently
-    // re-delivers pruned lines, trading an 8-hour-tab leak for a duplicate-
-    // lines bug that can fire in seconds. Tracked for removal with the SSE
-    // redesign, where a server-side cursor replaces this Set outright.
+    // BOUNDED, and sized from what actually has to be covered. The server now
+    // dedups its own consecutive polls (see stream_logs), so within one
+    // connection the client only has to cover two overlaps:
+    //   1. the history backfill vs the first streamed batch — the stream opens
+    //      by re-reading the tail window the backfill just read; and
+    //   2. an EventSource reconnect, which replays `tail_lines` from scratch.
+    // Both are bounded by the tail window, so sizing off `tail` with room to
+    // spare is sufficient. The previous Set was append-only and grew for the
+    // whole session (~288k entries at 10 lines/sec over 8h) while never being a
+    // fixed point for anything.
+    const seenCap = Math.max(2048, tail * 4)
     const seen = new Set<string>()
     const sigOf = (t: string, c: string) => `${t}\u0000${c}`
+    const remember = (sig: string) => {
+      // Set preserves insertion order, so the first key it yields is the
+      // oldest — correct eviction without a second data structure.
+      if (seen.size >= seenCap) {
+        const oldest = seen.values().next().value
+        if (oldest !== undefined) seen.delete(oldest)
+      }
+      seen.add(sig)
+    }
     if (sameTarget) {
       // Seed from the panel itself, because the backfill below is skipped on
       // this path and this is the only thing standing between the replay and
       // a doubled panel. `deferred` has to be seeded too: a replayed line
       // that is already waiting in the backlog would otherwise be queued in
       // `pending` and committed a second time on top of it.
-      for (const l of lines.value) seen.add(sigOf(l.timestamp, l.content))
-      for (const l of deferred) seen.add(sigOf(l.timestamp, l.content))
+      for (const l of lines.value) remember(sigOf(l.timestamp, l.content))
+      for (const l of deferred) remember(sigOf(l.timestamp, l.content))
     }
 
     // Backfill only on a target change. Re-fetching a target already on
@@ -213,7 +221,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         }
         flat.reverse()
         lines.value = flat
-        for (const l of flat) seen.add(sigOf(l.timestamp, l.content))
+        for (const l of flat) remember(sigOf(l.timestamp, l.content))
       } catch (e: any) {
         if (!alive || myGen !== gen) return
         error.value = e?.response?.data?.detail ?? e?.message ?? t('pod.logsLoadFailed')
@@ -283,7 +291,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
           for (const content of splitLogLines(raw.content)) {
             const sig = sigOf(raw.timestamp, content)
             if (seen.has(sig)) continue
-            seen.add(sig)
+            remember(sig)
             pending.push({ timestamp: raw.timestamp, content, container, severity })
           }
         }

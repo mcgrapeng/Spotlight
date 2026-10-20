@@ -49,6 +49,8 @@ No SaaS, no vendor lock. Your cluster, your data, your model.
 - **Real-time log stream** — SSE, multi-pod select, ANSI color preserved, deduplicated, downloadable.
 - **AI explainer, any model** — OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via LiteLLM.
 - **Keyboard-first** — `⌘K` palette, `g d/p/n/e/f/a` page jumps. Mouse optional.
+- **Readable in the dark** — a full dark theme (token-level, not inverted CSS), because 3 a.m. is the hour this thing gets opened.
+- **Dense when it needs to be** — sortable pod table, three density tiers, a log pane that owns the viewport.
 - **Pluggable auth** — bearer · session · Teleport `tsh` · your own plugin, one file.
 - **Type-safe end to end** — Pydantic v2 → OpenAPI → `openapi-typescript`. The UI cannot drift from the API.
 

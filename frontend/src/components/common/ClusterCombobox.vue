@@ -11,6 +11,9 @@ const { t } = useI18n()
 const cluster = useClusterStore()
 const open = ref(false)
 
+// ponytail: 让调用方决定宽度（移动端要 flex-1 min-w-0 撑满第二行）。
+const props = defineProps<{ class?: string }>()
+
 const value = computed(() => cluster.activeCluster ?? '')
 const label = computed(() => {
   const cur = cluster.currentCluster
@@ -48,7 +51,8 @@ async function selectCluster(name: string) {
           'inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm',
           'hover:bg-accent hover:text-accent-foreground transition-colors',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          'min-w-[180px] justify-between',
+          'md:min-w-[180px] justify-between',
+          props.class,
         )"
       >
         <Server :size="14" :stroke-width="1.75" class="shrink-0 text-muted-foreground" aria-hidden="true" />

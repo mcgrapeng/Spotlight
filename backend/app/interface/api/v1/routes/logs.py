@@ -247,6 +247,16 @@ def _drain(
     for entry in uc.stream(ref, container, tail_lines, stop_event=stop_event):
         if stop_event.is_set():
             return
+        if entry is None:
+            # Poll boundary: send what this poll produced instead of holding it
+            # until BATCH_MAX or end-of-stream. The stream is long-lived now, so
+            # there may never be an end-of-stream to flush against — a pod
+            # logging a line a second would otherwise show pings and no lines.
+            if batch:
+                if not _put(loop, queue, batch, stop_event):
+                    return
+                batch = []
+            continue
         batch.append({
             "timestamp": entry.timestamp, "content": entry.content,
             "container": entry.container, "severity": entry.severity,

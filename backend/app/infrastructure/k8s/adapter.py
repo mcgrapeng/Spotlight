@@ -11,11 +11,21 @@ import ast
 import asyncio
 import re
 import threading
+import time
+from collections import deque
 from datetime import datetime, timezone
-from typing import Iterator, Optional
+from typing import Deque, Iterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
-from kubernetes import watch
+from kubernetes.client.exceptions import ApiException
+
+# Follow-stream tuning. See KubernetesRepository.stream_logs for why each of
+# these exists — the numbers are measured against a real apiserver, not guessed.
+_STREAM_SINCE_SECONDS = 5      # window each poll re-reads
+_STREAM_READ_TIMEOUT = 10.0   # a preloaded read is ~1s; this is the safety net
+_STREAM_MIN_INTERVAL = 2.0    # while the pod is producing
+_STREAM_MAX_INTERVAL = 15.0   # once it goes quiet
+_STREAM_DEDUP_WINDOW = 4096   # signatures kept to cover poll overlap
 
 
 def _decode_sdk_log_content(value: object) -> str:
@@ -197,6 +207,13 @@ class KubernetesAdapter(K8sRepositoryPort):
             "container": container, "tail_lines": tail_lines,
             "_request_timeout": self._timeout,
         }
+        # Ask the apiserver for per-line timestamps. Without this every line
+        # comes back bare, and `parse_log_line` falls back to "now" — so the
+        # whole history was stamped with the moment it was fetched (all 500
+        # rows sharing one timestamp), and the follow-stream's dedup key
+        # changed on every poll, re-sending lines it had already sent. Both
+        # read paths must agree or their timestamps are not comparable.
+        kw["timestamps"] = True
         if since:
             kw["since_seconds"] = _since_to_seconds(since)
         try:
@@ -210,59 +227,141 @@ class KubernetesAdapter(K8sRepositoryPort):
                 lambda: api.read_namespaced_pod_log(**kw)
             )
         content = _decode_sdk_log_content(content)
-        # Use the timestamp parser so downstream code can sort/filter by ISO time.
-        # Content stripping happens in the use-case layer so we preserve the raw line.
-        return [
-            LogEntry(
-                timestamp=parse_log_line(line, container or "")[0] if line else "",
-                content=line, container=container or "",
+        # `timestamps=True` means every line arrives prefixed with its RFC3339
+        # stamp. Split it off here rather than leaving it in `content`: the
+        # LogViewer renders `timestamp` in its own column, so a prefixed
+        # content would show the time twice. Keeping content as the parsed
+        # remainder also makes it comparable with the follow-stream's lines.
+        entries = []
+        for line in (content or "").splitlines():
+            if not line:
+                continue
+            ts, rest = parse_log_line(line, container or "")
+            entries.append(
+                LogEntry(timestamp=ts, content=rest, container=container or "")
             )
-            for line in (content or "").splitlines()
-        ]
+        return entries
 
     def stream_logs(
         self, ref: ResourceRef, container: Optional[str], tail_lines: int,
         stop_event: Optional[threading.Event] = None,
     ) -> Iterator[LogEntry]:
-        """Stream pod logs. Caller MUST iterate in a thread (use `asyncio.to_thread`)
-        because `kubernetes.watch.Watch().stream` is a blocking sync generator.
+        """Follow a pod's logs by polling short, self-terminating snapshots.
 
-        Uses `since_seconds=5` (no `follow=True`): the kubernetes python client
-        36.x `Watch().stream` for log endpoints wraps `iter_resp_lines` and
-        sets `self._stop = True` once the response stream ends (since the
-        `resource_version` is None for log streams, so the watch-reconnect
-        path never engages). Empirical probe of `read_namespaced_pod_log(
-        follow=True, tail_lines=3, _preload_content=False)` against this
-        cluster returns after 0.2s — the apiserver's `follow=true` streaming
-        response ends as soon as the log reader closes its chunked response.
-        Compensating strategy: the frontend's SSE `EventSource` auto-
-        reconnects on close (default 1s backoff), and the `usePodLogs`
-        `seen` Set drops any overlap between snapshots. The result is a
-        continuous live tail that survives stream-end, reconnect, and
-        EventSource reconnection without a single duplicated line.
+        Caller MUST iterate in a thread (`asyncio.to_thread`), because this is
+        a blocking sync generator.
+
+        Why polling and not the streaming API — measured against this cluster,
+        not assumed. Every streaming variant leaves the apiserver holding a
+        chunked response open until the client gives up:
+
+            Watch().stream(..., since_seconds=5)      -> ReadTimeoutError @ 30s
+            Watch().stream(..., follow=True)          -> ReadTimeoutError @ 30s
+            Watch().stream(..., follow=True, since=5) -> ReadTimeoutError @ 30s
+            read_namespaced_pod_log(_preload_content=True)                  -> 1.14s
+            read_namespaced_pod_log(since_seconds=5, preload=True)         -> 0.51s
+
+        An earlier version of this docstring claimed an empirical probe showed
+        `follow=True` returning in 0.2s. That no longer reproduces, and the
+        behaviour it described is what produced a stream that lived exactly as
+        long as its read timeout: every ~30s the upstream raised
+        ReadTimeoutError, the producer logged it and finished, and the SSE
+        response closed only to be reconnected by the browser. An idle pod — the
+        common case — therefore pinned an executor thread and a session slot in
+        a guaranteed-crash cycle.
+
+        A preloaded read is self-terminating and returns in about a second, so
+        this loop never blocks in a socket read. It sleeps between polls, and
+        the interval backs off when a pod is quiet: 2s while lines are
+        arriving (so a live tail still feels live), up to 15s once it goes
+        quiet. An idle log panel costs one API call every 15s instead of a
+        permanently held connection.
+
+        Dedup happens HERE, over a bounded recent window, because consecutive
+        polls overlap by design (`since_seconds` re-reads the tail). Doing it
+        server-side is what lets the client's own dedup set be bounded too.
+
+        Terminates when the pod's container is gone (the apiserver answers 400)
+        or when `stop_event` is set, which is what lets the SSE endpoint send a
+        real `end` instead of dying of a timeout.
         """
         api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
-        w = watch.Watch()
-        supports_stop = hasattr(w, "stop")
-        try:
-            for line in w.stream(
-                api.read_namespaced_pod_log,
-                name=ref.name, namespace=ref.namespace,
-                container=container, tail_lines=tail_lines,
-                since_seconds=5, _request_timeout=30.0,
-                _preload_content=False,
-            ):
-                if stop_event is not None and stop_event.is_set():
+
+        # Bounded: only has to cover the overlap between consecutive polls,
+        # which is at most one interval's worth of lines.
+        recent: Deque[tuple[str, str]] = deque(maxlen=_STREAM_DEDUP_WINDOW)
+        interval = _STREAM_MIN_INTERVAL
+
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                return
+
+            try:
+                raw = api.read_namespaced_pod_log(
+                    name=ref.name, namespace=ref.namespace,
+                    container=container, tail_lines=tail_lines,
+                    since_seconds=_STREAM_SINCE_SECONDS,
+                    timestamps=True,
+                    _request_timeout=_STREAM_READ_TIMEOUT,
+                    _preload_content=True,
+                )
+            except ApiException as e:
+                # 400/404: the pod or its container is gone. That is a real
+                # end of stream, so return and let the caller send `end`.
+                # Anything else (a blip, a 500) is transient — keep
+                # following, because a log panel should survive an apiserver
+                # restart.
+                if e.status in (400, 404):
                     return
-                line = _decode_sdk_log_content(line)
-                ts, _ = parse_log_line(line, container or "")
-                yield LogEntry(timestamp=ts, content=line, container=container or "")
-        finally:
-            if supports_stop:
-                try:
-                    w.stop()
-                except Exception:
-                    pass
+                emitted = 0
+            except Exception:
+                # Transport blip, DNS, a dropped keep-alive. Treat it as "no
+                # new lines" rather than ending the stream.
+                emitted = 0
+            else:
+                emitted = 0
+                for line in _decode_sdk_log_content(raw).splitlines():
+                    if not line.strip():
+                        continue
+                    ts, _ = parse_log_line(line, container or "")
+                    sig = (ts, line)
+                    if sig in recent:
+                        continue
+                    recent.append(sig)
+                    emitted += 1
+                    yield LogEntry(
+                        timestamp=ts, content=line, container=container or ""
+                    )
+
+                # Poll-boundary marker: this poll is complete, flush whatever
+                # it produced. Without it a partial batch sits in `_drain`
+                # until the batch fills or the stream ends — and the stream no
+                # longer ends, because following is now a long-lived poll loop.
+                # (That partial flush used to happen by accident: the old
+                # streaming implementation died of ReadTimeoutError every 30s,
+                # and the dying generator flushed on the way out. A quiet pod
+                # therefore showed pings but no lines at all.)
+                yield None  # type: ignore[misc]
+
+            if stop_event is not None and stop_event.is_set():
+                return
+
+            # Busy pod -> poll again promptly so a live tail stays live; quiet
+            # pod -> back off, because an idle log panel should not cost an API
+            # call every two seconds for the rest of the shift.
+            interval = (
+                _STREAM_MIN_INTERVAL if emitted
+                else min(interval * 2, _STREAM_MAX_INTERVAL)
+            )
+
+            # Interruptible sleep: stop_event.wait returns as soon as the client
+            # goes away, so a closed tab does not keep this thread alive for
+            # the rest of the interval.
+            if stop_event is not None:
+                if stop_event.wait(interval):
+                    return
+            else:
+                time.sleep(interval)
 
 
 def _since_to_seconds(since: str) -> int:

@@ -49,6 +49,8 @@ Kubernetes Dashboard 告诉你它**在哪里**。
 - **实时日志流** —— SSE、多 Pod 选择、保留 ANSI 颜色、自动去重、可下载。
 - **AI 解读，任意模型** —— OpenAI · Anthropic · Bedrock · Gemini · Ollama · 经 LiteLLM 支持 100+ 家。
 - **键盘优先** —— `⌘K` 命令面板，`g d/p/n/e/f/a` 页面跳转，不碰鼠标也能用。
+- **夜里也看得清** —— 完整的暗色主题（改的是 token，不是给界面套一层滤镜），因为这个产品被打开的时间点就是凌晨三点。
+- **需要密度时就有密度** —— Pod 表格可排序、三档行密度、日志区独占视口。
 - **鉴权可插拔** —— bearer · session · Teleport `tsh` · 或者你自己写一个插件，一个文件的事。
 - **端到端类型安全** —— Pydantic v2 → OpenAPI → `openapi-typescript`，前端不可能和 API 脱节。
 

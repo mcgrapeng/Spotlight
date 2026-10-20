@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import { Plus, Star, Trash2, Pencil, AlertTriangle } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
 import { useResource } from '@/composables/useResource'
@@ -62,6 +63,7 @@ async function confirmRemove() {
   deleting.value = true
   try {
     await aiApi.deleteProvider(deleteConfirm.value.id)
+    toast.success(t('toast.providerDeleted', { name: deleteConfirm.value.name }))
     await load()  // simplest correct path; refetch from server
   } finally {
     deleting.value = false
@@ -71,6 +73,7 @@ async function confirmRemove() {
 
 async function setDefault(p: AIProviderOut) {
   await aiApi.setDefault(p.id)
+  toast.success(t('toast.providerDefault', { name: p.name }))
   await load()
 }
 </script>

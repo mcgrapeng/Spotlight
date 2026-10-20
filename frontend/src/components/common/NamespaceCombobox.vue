@@ -11,6 +11,9 @@ const { t } = useI18n()
 const cluster = useClusterStore()
 const open = ref(false)
 
+// ponytail: 见 ClusterCombobox —— 调用方控制宽度。
+const props = defineProps<{ class?: string }>()
+
 const value = computed(() => cluster.activeNamespace)
 const disabled = computed(() => cluster.namespaces.length === 0)
 
@@ -49,8 +52,9 @@ function selectNamespace(name: string) {
           'inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm',
           'hover:bg-accent hover:text-accent-foreground transition-colors',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          'min-w-[160px] justify-between',
+          'md:min-w-[160px] justify-between',
           'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background',
+          props.class,
         )"
       >
         <Layers :size="14" :stroke-width="1.75" class="shrink-0 text-muted-foreground" aria-hidden="true" />
