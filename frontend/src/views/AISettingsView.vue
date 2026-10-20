@@ -81,7 +81,7 @@ async function setDefault(p: AIProviderOut) {
 <template>
   <PageHeader :title="t('route.ai')" :subtitle="t('ai.subtitle')">
     <template #actions>
-      <Button @click="openCreate">
+      <Button size="sm" @click="openCreate">
         <Plus :size="14" :stroke-width="1.75" class="mr-1" />
         {{ t('ai.addTitle') }}
       </Button>

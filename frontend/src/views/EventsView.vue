@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import { cn } from '@/lib/utils'
 import { isAllNamespaces } from '@/utils/namespace'
 import dayjs from '@/utils/dayjs'
@@ -116,7 +117,7 @@ const warningEntries = computed(() =>
           :aria-selected="typeFilter === tab"
           @click="typeFilter = tab"
           :class="cn(
-            'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors',
+            'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app',
             typeFilter === tab
               ? tab === 'Warning'
                 ? 'bg-warning text-warning-foreground border-warning'
@@ -163,7 +164,7 @@ const warningEntries = computed(() =>
     </i18n-t>
     <button
       type="button"
-      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity font-medium"
+      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity ease-app font-medium"
       @click="cluster.setNamespace('_all')"
     >
       {{ t('namespace.all') }}
@@ -194,7 +195,7 @@ const warningEntries = computed(() =>
       v-for="ev in filtered"
       :key="ev.name"
       :class="cn(
-        'group block rounded-lg border transition-colors overflow-hidden',
+        'group block rounded-lg border transition-colors ease-app overflow-hidden',
         ev.type === 'Warning'
           ? 'border-warning/40 bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
           : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
@@ -213,12 +214,10 @@ const warningEntries = computed(() =>
         />
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
-            <span :class="cn(
-              'inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold border',
-              ev.type === 'Warning'
-                ? 'bg-warning-bg text-warning border-warning-border'
-                : 'bg-muted text-muted-foreground border-border',
-            )">{{ ev.type }}</span>
+            <StatusChip
+              :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
+              :label="ev.type"
+            />
             <span class="inline-flex items-center rounded px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
             <span class="text-xs text-muted-foreground">{{ ev.namespace }}</span>
             <span class="text-xs text-muted-foreground font-mono">{{ ev.involved_kind }}/{{ ev.involved_name }}</span>

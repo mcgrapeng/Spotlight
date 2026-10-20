@@ -18,6 +18,7 @@ import LogAnalyzerDrawer from '@/components/ai/LogAnalyzerDrawer.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import { cn } from '@/lib/utils'
 import dayjs from '@/utils/dayjs'
 import type { PodOut, LogLineOut, EventOut } from '@/api/types'
@@ -271,10 +272,11 @@ function back() { router.push({ name: 'pods' }) }
                 />
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 flex-wrap text-sm">
-                    <span :class="cn(
-                      'inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-medium border',
-                      ev.type === 'Warning' ? 'bg-warning-bg text-warning border-warning-border' : 'bg-muted text-muted-foreground border-border',
-                    )">{{ ev.type }}</span>
+                    <StatusChip
+                      :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
+                      :label="ev.type"
+                      size="xs"
+                    />
                     <span class="inline-flex items-center rounded px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">
                       {{ ev.reason }}
                     </span>

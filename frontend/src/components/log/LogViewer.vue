@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { chipClasses } from '@/lib/chip'
 import { useLogFilters } from '@/composables/useLogFilters'
 import { useLogSeverityCounts, SEVERITY_FILTER_CHIPS, cumulativeSeverityCounts } from '@/composables/useLogSeverityCounts'
 import { useLogKeyboardShortcuts } from '@/composables/useLogKeyboardShortcuts'
@@ -1071,23 +1072,23 @@ function isNewestLine(group: Group): boolean {
 }
 
 // === Severity badge (per-row label, replaces single-char icon) ===
+// ponytail: 走 @/lib/chip 的统一外观。之前这里自己写了一套 class：
+// border-error/40 的 alpha 边框（别处用的是 border-error-border token），
+// 同一个 ERROR 在日志里和在别处渲染成两种颜色。现在全站一个来源。
 const SEV_BADGE_CLASS: Record<string, string> = {
-  critical: 'bg-error text-background border-error font-bold',
-  fatal: 'bg-error text-background border-error font-bold',
-  alert: 'bg-error text-background border-error font-bold',
-  emergency: 'bg-error text-background border-error font-bold',
-  // ponytail: 底色从 bg-error/15 换成 bg-error-bg。
-  // 15% 的 error 叠在白底上比 error-bg 本身更深（绿通道 222 vs 242），
-  // text-error 落在上面只有 4.08:1 —— 徽章是正文文字，必须过 AA。
-  error: 'bg-error-bg text-error border-error/40 font-semibold',
-  err: 'bg-error-bg text-error border-error/40 font-semibold',
-  warn: 'bg-warning-bg text-warning border-warning/40 font-medium',
-  warning: 'bg-warning-bg text-warning border-warning/40 font-medium',
-  info: 'bg-muted text-foreground border-border font-medium',
-  notice: 'bg-muted text-foreground border-border font-medium',
-  trace: 'bg-transparent text-muted-foreground border-transparent',
-  debug: 'bg-transparent text-muted-foreground border-transparent',
-  unknown: 'bg-muted text-muted-foreground border-border',
+  critical: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  fatal: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  alert: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  emergency: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  error: chipClasses({ tone: 'error', size: 'xs' }),
+  err: chipClasses({ tone: 'error', size: 'xs' }),
+  warn: chipClasses({ tone: 'warning', size: 'xs' }),
+  warning: chipClasses({ tone: 'warning', size: 'xs' }),
+  info: chipClasses({ tone: 'neutral', size: 'xs' }),
+  notice: chipClasses({ tone: 'neutral', size: 'xs' }),
+  trace: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
+  debug: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
+  unknown: chipClasses({ tone: 'neutral', size: 'xs' }),
 }
 const SEV_BADGE_TEXT: Record<string, string> = {
   critical: 'CRIT', fatal: 'FATAL', alert: 'ALERT', emergency: 'EMRG',
@@ -1098,7 +1099,7 @@ const SEV_BADGE_TEXT: Record<string, string> = {
   unknown: '?',
 }
 function sevBadgeClass(s: string): string {
-  return SEV_BADGE_CLASS[s.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border'
+  return SEV_BADGE_CLASS[s.toLowerCase()] ?? chipClasses({ tone: 'neutral', size: 'xs' })
 }
 function sevBadgeText(s: string): string {
   return SEV_BADGE_TEXT[s.toLowerCase()] ?? '?'
@@ -1378,7 +1379,7 @@ const helpRows = computed(() => [
         type="button"
         :aria-pressed="minSeverity === 0"
         :class="cn(
-          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors text-2xs',
+          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors ease-app text-2xs',
           minSeverity === 0
             ? 'border-foreground bg-foreground text-background'
             : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -1397,7 +1398,7 @@ const helpRows = computed(() => [
         :disabled="chipCounts[chip.bucket] === 0"
         :aria-pressed="minSeverity === chip.rank"
         :class="cn(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors text-2xs',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app text-2xs',
           'disabled:opacity-30 disabled:cursor-default',
           minSeverity === chip.rank
             ? 'border-foreground bg-foreground text-background'
@@ -1428,7 +1429,7 @@ const helpRows = computed(() => [
         role="tab"
         :aria-selected="selectedContainer === null"
         :class="cn(
-          'px-3 py-1.5 text-2xs font-medium transition-colors border-b-2',
+          'px-3 py-1.5 text-2xs font-medium transition-colors ease-app border-b-2',
           selectedContainer === null
             ? 'border-foreground text-foreground'
             : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
@@ -1446,7 +1447,7 @@ const helpRows = computed(() => [
         :aria-selected="selectedContainer === c"
         :title="c"
         :class="cn(
-          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors border-b-2 max-w-[180px] truncate',
+          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors ease-app border-b-2 max-w-[180px] truncate',
           selectedContainer === c
             ? 'border-foreground text-foreground'
             : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
@@ -1483,8 +1484,7 @@ const helpRows = computed(() => [
         <PopoverTrigger as-child>
           <Button
             variant="ghost"
-            size="sm"
-            class="h-7 px-2"
+            size="xs"
             :aria-label="t('log.searchHistoryLabel')"
           >
             <Clock :size="13" :stroke-width="1.75" />
@@ -1513,8 +1513,7 @@ const helpRows = computed(() => [
         </PopoverContent>
       </Popover>
       <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
+        variant="outline" size="xs"
         :title="wrapMode === 'wrap' ? t('log.wrapOn') : t('log.wrapOff')"
         @click="toggleWrap"
         :aria-label="t('log.toggleWrapLabel')"
@@ -1523,8 +1522,7 @@ const helpRows = computed(() => [
         <ChevronsRight v-else :size="13" :stroke-width="1.75" />
       </Button>
       <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
+        variant="outline" size="xs"
         @click="togglePause"
         :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
         :class="cn(!streaming && 'text-warning border-warning/50')"
@@ -1533,8 +1531,7 @@ const helpRows = computed(() => [
         <Play v-else :size="13" :stroke-width="1.75" />
       </Button>
       <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
+        variant="outline" size="xs"
         @click="toggleAutoFollow"
         :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
         :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
@@ -1543,8 +1540,7 @@ const helpRows = computed(() => [
         <ChevronDown v-else :size="13" :stroke-width="1.75" />
       </Button>
       <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
+        variant="outline" size="xs"
         :disabled="!lines.length"
         @click="emit('clear')"
         :aria-label="t('log.clearLabel')"
@@ -1552,8 +1548,7 @@ const helpRows = computed(() => [
         <X :size="13" :stroke-width="1.75" />
       </Button>
       <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
+        variant="outline" size="xs"
         :disabled="!displayedLines.length"
         @click="copyAll"
         :aria-label="t('log.copyAllLabel')"
@@ -1561,8 +1556,7 @@ const helpRows = computed(() => [
         <Copy :size="13" :stroke-width="1.75" />
       </Button>
       <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
+        variant="outline" size="xs"
         :disabled="!filtered.length"
         @click="downloadLogs"
         :aria-label="t('log.downloadLabel')"
@@ -1574,8 +1568,7 @@ const helpRows = computed(() => [
         <PopoverTrigger as-child>
           <Button
             variant="ghost"
-            size="sm"
-            class="h-7 px-2"
+            size="xs"
             :aria-label="t('log.shortcutsHelpLabel')"
             :title="t('log.shortcutsTitle')"
           >
@@ -1604,7 +1597,7 @@ const helpRows = computed(() => [
         v-for="key in jsonFieldChips"
         :key="key"
         type="button"
-        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors"
+        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors ease-app"
         :title="t('log.filterField', { field: key })"
         @click="applyFieldFilter(key)"
       >
@@ -1612,7 +1605,7 @@ const helpRows = computed(() => [
       </button>
       <button
         type="button"
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ml-auto"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ease-app ml-auto"
         :title="t('log.clearFieldFilter')"
         :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
@@ -1636,8 +1629,8 @@ const helpRows = computed(() => [
       <span class="flex-1 text-xs font-medium">{{ error }}</span>
       <Button
         variant="outline"
-        size="sm"
-        class="h-6 px-2 text-2xs border-error/40 text-error hover:bg-error/15"
+        size="xs"
+        class="text-2xs border-error-border text-error hover:bg-error-bg"
         @click="emit('retry')"
         :aria-label="t('state.retry')"
       >
@@ -1670,7 +1663,7 @@ const helpRows = computed(() => [
       <button
         v-if="!autoFollow && (unreadCount ?? 0) > 0"
         type="button"
-        class="absolute top-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity"
+        class="absolute top-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app"
         @click="toggleAutoFollow"
       >
         <ChevronUp :size="12" :stroke-width="2" />
@@ -1702,7 +1695,7 @@ const helpRows = computed(() => [
           <p class="text-2xs text-muted-foreground mb-3">
             {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
           </p>
-          <Button variant="outline" size="sm" class="h-7 text-xs" @click="clearAllFilters">
+          <Button variant="outline" size="xs" class="text-xs" @click="clearAllFilters">
             <X :size="11" :stroke-width="2" class="mr-1" />
             {{ t('log.clearFilters') }}
           </Button>
@@ -1720,7 +1713,7 @@ const helpRows = computed(() => [
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
-                'hover:bg-muted/40 transition-colors',
+                'hover:bg-muted/40 transition-colors ease-app',
                 severityBorderFor(group.lines[0].raw.severity),
               )"
               v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale]"
@@ -1729,7 +1722,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all ease-app cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -1747,7 +1740,7 @@ const helpRows = computed(() => [
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
               <!-- Col 2: severity badge (sticky) -->
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <!-- Col 3: content (inline-prefix chips + ANSI-colored text + truncate toggle) -->
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
@@ -1759,7 +1752,7 @@ const helpRows = computed(() => [
                   v-if="group.lines[0].isJson"
                   type="button"
                   @click="toggleJson(`${group.key}`)"
-                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app"
                   :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
                   :aria-label="t('log.toggleJsonLabel')"
@@ -1772,7 +1765,7 @@ const helpRows = computed(() => [
                 <button
                   v-if="plainLength(group.lines[0].raw) > TRUNCATE_LIMIT"
                   type="button"
-                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app"
                   :title="truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() })"
                   @click.stop="toggleTruncate(group.lines[0].raw.content)"
                 >
@@ -1802,7 +1795,7 @@ const helpRows = computed(() => [
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
-                'hover:bg-muted/40 transition-colors',
+                'hover:bg-muted/40 transition-colors ease-app',
                 severityBorderFor(group.lines[0].raw.severity),
               )"
               v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale]"
@@ -1817,7 +1810,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all ease-app cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -1833,7 +1826,7 @@ const helpRows = computed(() => [
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
@@ -1877,7 +1870,7 @@ const helpRows = computed(() => [
                      scanability — error fold = red, warn = amber, etc. -->
                 <span
                   :class="cn(
-                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors',
+                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors ease-app',
                         severityBorderFor(group.lines[0].raw.severity),
                   )"
                   :title="t('log.foldTitle', { count: group.lines.length })"
@@ -1899,7 +1892,7 @@ const helpRows = computed(() => [
                     v-if="line.traceId"
                     type="button"
                     @click.stop="toggleTraceFilter(line.traceId)"
-                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
+                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all ease-app cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
                     :title="t('log.filterTraceTitle', { traceId: line.traceId })"
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
@@ -1916,7 +1909,7 @@ const helpRows = computed(() => [
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
-                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app"
                       :title="truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >

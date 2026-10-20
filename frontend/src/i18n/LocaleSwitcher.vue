@@ -39,7 +39,7 @@ async function pick(l: Locale) {
       type="button"
       :aria-pressed="locale === l"
       :class="cn(
-        'px-2 h-6 text-2xs font-medium rounded transition-colors',
+        'px-2 h-6 text-2xs font-medium rounded transition-colors ease-app',
         locale === l
           ? 'bg-foreground text-background'
           : 'text-muted-foreground hover:text-foreground',

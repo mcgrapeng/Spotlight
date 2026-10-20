@@ -17,6 +17,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { authApi } from '@/api/endpoints'
 
+// Every test here calls `freshRouter()`, which does `vi.resetModules()` and
+// re-imports the router. That re-transform is ~2s on its own, and the whole
+// file ran in 7.7s under the full suite's parallel load — over the default
+// 5s timeout, which failed the suite for a reason unrelated to the guard.
+vi.setConfig({ testTimeout: 20_000 })
+
 const statusMock = vi.fn()
 vi.mock('@/api/endpoints', () => ({
   authApi: { status: statusMock },

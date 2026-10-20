@@ -250,7 +250,7 @@ const emptyDescription = computed(() => {
       <div v-else class="overflow-auto max-h-[70vh] hidden md:block">
         <table
           class="w-full"
-          :class="cn(densityClass.text, loading && data.items.length > 0 && 'opacity-60 transition-opacity')"
+          :class="cn(densityClass.text, loading && data.items.length > 0 && 'opacity-60 transition-opacity ease-app')"
         >
           <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs tracking-wide text-muted-foreground backdrop-blur-sm">
             <tr>
@@ -283,7 +283,7 @@ const emptyDescription = computed(() => {
               :key="`${row.namespace}/${row.name}`"
               :style="{ contentVisibility: 'auto', containIntrinsicSize: `auto ${densityClass.intrinsic}` }"
               :class="cn(
-                'border-b border-border last:border-0 cursor-pointer transition-colors',
+                'border-b border-border last:border-0 cursor-pointer transition-colors ease-app',
                 'focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                 clsOf(row),
               )"
@@ -391,12 +391,12 @@ const emptyDescription = computed(() => {
       <!-- 平板 / 手机: 卡片列表 (Audit §14.1) -->
       <!-- Was `!loading && ...`: every filter change hid the entire card list
            on mobile while the refetch was in flight. Same flash as the table. -->
-      <div v-if="data.items.length > 0" class="md:hidden divide-y divide-border" :class="loading && 'opacity-60 transition-opacity'">
+      <div v-if="data.items.length > 0" class="md:hidden divide-y divide-border" :class="loading && 'opacity-60 transition-opacity ease-app'">
         <button
           v-for="row in pagedPods"
           :key="`${row.namespace}/${row.name}`"
           type="button"
-          class="w-full text-left p-3 active:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          class="w-full text-left p-3 active:bg-muted/60 transition-colors ease-app focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
           :class="clsOf(row)"
           :aria-label="t('pods.viewDetail', { name: row.name })"
           @click="open(row)"

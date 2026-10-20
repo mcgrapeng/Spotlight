@@ -305,7 +305,7 @@ const recentActivity = computed(() => {
             v-for="(item, i) in actionItems"
             :key="i"
             :to="item.link"
-            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors ease-app hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             :class="item.severity === 'critical' ? 'border-error-border bg-error/5' : 'border-warning-border bg-warning/5'"
           >
             <span

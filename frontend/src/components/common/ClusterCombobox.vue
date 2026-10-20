@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronsUpDown, Server } from '@lucide/vue'
+import { Server } from '@lucide/vue'
 import { cn } from '@/lib/utils'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from '@/components/ui/command'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { useClusterStore } from '@/stores/cluster'
 
+// ponytail: 这一层只负责「选项从哪来 + 选完做什么」，控件本身是 AppSelect。
+// 之前这里是 ClusterCombobox / NamespaceCombobox / AppSelect 三份几乎一样的
+// markup（307 行），trigger 的 class 串都一模一样，只有宽度和 disabled 不同。
 const { t } = useI18n()
 const cluster = useClusterStore()
-const open = ref(false)
 
 // ponytail: 让调用方决定宽度（移动端要 flex-1 min-w-0 撑满第二行）。
 const props = defineProps<{ class?: string }>()
@@ -30,65 +31,22 @@ const options = computed(() =>
 )
 
 async function selectCluster(name: string) {
-  if (name === value.value) {
-    open.value = false
-    return
-  }
+  if (name === value.value) return
   await cluster.setCluster(name)
-  open.value = false
 }
 </script>
 
 <template>
-  <Popover v-model:open="open">
-    <PopoverTrigger as-child>
-      <button
-        type="button"
-        role="combobox"
-        :aria-expanded="open"
-        :aria-label="t('cluster.select')"
-        :class="cn(
-          'inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm',
-          'hover:bg-accent hover:text-accent-foreground transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          'md:min-w-[180px] justify-between',
-          props.class,
-        )"
-      >
-        <Server :size="14" :stroke-width="1.75" class="shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span class="truncate">{{ label }}</span>
-        <ChevronsUpDown :size="14" :stroke-width="1.75" class="shrink-0 opacity-50" aria-hidden="true" />
-      </button>
-    </PopoverTrigger>
-    <PopoverContent class="w-[260px] p-0" align="start">
-      <Command :model-value="value">
-        <CommandInput :placeholder="t('cluster.search')" />
-        <CommandList>
-          <CommandEmpty>{{ t('cluster.empty') }}</CommandEmpty>
-          <CommandGroup>
-            <CommandItem
-              v-for="opt in options"
-              :key="opt.value"
-              :value="opt.value"
-              @select="selectCluster(opt.value)"
-            >
-              <Check
-                :size="14"
-                :stroke-width="2"
-                :class="cn('shrink-0', value === opt.value ? 'opacity-100' : 'opacity-0')"
-                aria-hidden="true"
-              />
-              <span class="truncate flex-1">{{ opt.label }}</span>
-              <span
-                v-if="opt.hint"
-                class="text-2xs uppercase tracking-wide text-muted-foreground"
-              >
-                {{ opt.hint }}
-              </span>
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-      </Command>
-    </PopoverContent>
-  </Popover>
+  <AppSelect
+    :model-value="value"
+    :options="options"
+    :placeholder="label"
+    :aria-label="t('cluster.select')"
+    :search-placeholder="t('cluster.search')"
+    :empty-text="t('cluster.empty')"
+    popover-width="260px"
+    :leading-icon="Server"
+    :class="cn(props.class, 'md:min-w-[180px]')"
+    @update:model-value="selectCluster"
+  />
 </template>

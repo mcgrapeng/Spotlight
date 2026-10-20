@@ -20,6 +20,12 @@ const props = withDefaults(
     /** Always exchanged as string; numeric call sites convert themselves. */
     modelValue?: string | null
     placeholder?: string
+    /** Overrides the generic "search <label>" copy. */
+    searchPlaceholder?: string
+    /** Overrides the generic "no results" copy. */
+    emptyText?: string
+    /** Fixed popover width. Omit to match the trigger's width. */
+    popoverWidth?: string
     ariaLabel?: string
     disabled?: boolean
     id?: string
@@ -35,6 +41,12 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const open = ref(false)
 const selected = computed(() =>
   props.options.find((o) => String(o.value) === String(props.modelValue ?? '')),
+)
+
+const popoverClass = computed(() =>
+  props.popoverWidth
+    ? `w-[${props.popoverWidth}] p-0`
+    : 'w-[var(--reka-popper-anchor-width)] min-w-[160px] p-0',
 )
 
 function pick(o: AppSelectOption) {
@@ -54,7 +66,7 @@ function pick(o: AppSelectOption) {
         :aria-label="ariaLabel"
         :disabled="disabled"
         :class="cn(
-          'inline-flex items-center gap-2 rounded-md border border-input bg-background text-sm transition-colors',
+          'inline-flex items-center gap-2 rounded-md border border-input bg-background text-sm transition-colors ease-app',
           'hover:bg-accent hover:text-accent-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           'disabled:opacity-50 disabled:cursor-default',
@@ -84,12 +96,12 @@ function pick(o: AppSelectOption) {
     </PopoverTrigger>
     <PopoverContent
       align="start"
-      class="w-[var(--reka-popper-anchor-width)] min-w-[160px] p-0"
+      :class="popoverClass"
     >
       <Command :model-value="String(modelValue ?? '')">
-        <CommandInput :placeholder="t('select.search', { label: ariaLabel ?? '' })" />
+        <CommandInput :placeholder="searchPlaceholder ?? t('select.search', { label: ariaLabel ?? '' })" />
         <CommandList>
-          <CommandEmpty>{{ t('select.empty') }}</CommandEmpty>
+          <CommandEmpty>{{ emptyText ?? t('select.empty') }}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="o in options"

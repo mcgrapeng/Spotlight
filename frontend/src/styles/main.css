@@ -155,10 +155,11 @@
     --radius-card: 0.75rem;                /* 12px Card */
 
     /* === Motion tokens (Audit §1.4) === */
+    /* ponytail: --dur-slow 之前定义着但全站零引用，删掉。
+       全站现在只有一条曲线：.ease-app。 */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
     --dur-fast: 120ms;
     --dur-base: 200ms;
-    --dur-slow: 320ms;
 
     /* === 外壳尺寸（Pod 详情页 log-first 布局用） === */
     /* AppLayout 的顶栏是 h-11 md:h-14，内容容器是 py-6 md:py-8。
@@ -262,25 +263,20 @@
   html {
     @apply bg-background text-foreground;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    /* ponytail: 自托管的 Inter / JetBrains Mono 只下了 latin 子集，中文全部
+       回落到 PingFang SC。PingFang 没有真正的 600 字重，浏览器会用合成粗体
+       顶替，于是中文标题比同级的英文标题看着更重。关掉合成，让两边的字重
+       都落在真实字重上。 */
+    font-synthesis: none;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont,
                  'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
   }
-  /* 移除 dark mode class (本设计仅亮色) */
 }
 
 @layer utilities {
-  /* 装饰渐变 (仅 Login 卡片底边 1px) */
-  .gradient-glow-border {
-    background: linear-gradient(
-      135deg,
-      #8EC5FF 0%,
-      #EFADF7 50%,
-      #FFD69B 100%
-    );
-  }
   /* Skip link */
   .skip-link {
     @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4

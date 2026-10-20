@@ -22,7 +22,7 @@ const OPTIONS: Array<{ key: ThemeMode; icon: typeof Sun; label: string }> = [
       type="button"
       :aria-pressed="mode === opt.key"
       :title="t(opt.label)"
-      :class="cn('inline-flex items-center justify-center size-6 rounded transition-colors', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', mode === opt.key ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')"
+      :class="cn('inline-flex items-center justify-center size-6 rounded transition-colors ease-app', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', mode === opt.key ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')"
       @click="setMode(opt.key)"
     >
       <component :is="opt.icon" :size="13" :stroke-width="1.75" aria-hidden="true" />

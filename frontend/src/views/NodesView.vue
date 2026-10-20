@@ -7,6 +7,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatCard from '@/components/common/StatCard.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, parseCPU, parseMemory, formatMillicores, formatMiB } from '@/lib/utils'
@@ -198,18 +199,12 @@ function podOverloaded(n: NodeOut): boolean {
                 <span class="tabular-nums">{{ d.node.age ?? '—' }}</span>
               </div>
             </div>
-            <span :class="cn(
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border shrink-0',
-              d.node.status === 'Ready'
-                ? 'bg-success-bg text-success border-success-border'
-                : 'bg-error-bg text-error border-error-border',
-            )">
-              <span :class="cn(
-                'inline-block w-1.5 h-1.5 rounded-full',
-                d.node.status === 'Ready' ? 'bg-success' : 'bg-error',
-              )"></span>
-              {{ d.node.status }}
-            </span>
+            <StatusChip
+              :tone="d.node.status === 'Ready' ? 'success' : 'error'"
+              :label="d.node.status"
+              dot
+              class="shrink-0"
+            />
           </div>
 
           <!-- Pod 数：核心指标，放大显示 -->
@@ -237,7 +232,7 @@ function podOverloaded(n: NodeOut): boolean {
             <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
               <div
                 :class="cn(
-                  'h-full transition-all rounded-full',
+                  'h-full transition-all ease-app rounded-full',
                   podOverloaded(d.node) ? 'bg-warning' : 'bg-foreground',
                 )"
                 :style="{ width: `${podPct(d.node)}%` }"

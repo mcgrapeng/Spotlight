@@ -284,8 +284,6 @@ async function onRetryClusters() {
           </button>
         </form>
       </CardContent>
-      <!-- ponytail: the one allowed decorative-gradient usage -->
-      <div class="h-1 gradient-glow-border" />
     </Card>
   </div>
 </template>
