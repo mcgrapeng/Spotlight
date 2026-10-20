@@ -66,6 +66,12 @@ const wrapMode = ref<'wrap' | 'nowrap'>(
 )
 watch(wrapMode, (m) => {
   try { localStorage.setItem(STORAGE_KEYS.appLogWrap, m) } catch { /* quota / disabled */ }
+  // Wrapped rows are a different height than unwrapped ones; every cached
+  // measurement is now wrong, so drop it and let the average re-seed.
+  rowHeights.clear()
+  avgHeight = LINE_HEIGHT
+  avgCalibrated = false
+  nextTick(() => { recomputeVirtualRange(); measureRendered() })
 })
 function toggleWrap() {
   wrapMode.value = wrapMode.value === 'wrap' ? 'nowrap' : 'wrap'
@@ -245,16 +251,95 @@ const groups = computed<Group[]>(() => {
 })
 
 // === Virtual scroll (NEWEST AT TOP, scrollTop=0) ===
-// ponytail: fixed LINE_HEIGHT assumes one row per group; expanded runs/JSON add extra
-// DOM rows below the header, so total scrollHeight drifts slightly past scrollTop+pad
-// when many are expanded. Acceptable for typical logs where runs stay collapsed. Upgrade
-// path: track per-group cumulative offsets with a ResizeObserver.
+// Rows are NOT a uniform height. Measured against a real pod they come out at
+// 22 / 23.5 / 24px depending on the content (`items-baseline` against a taller
+// inline box, wrapped text, expanded JSON). The old code assumed a flat 22px
+// for the padding spacers while the DOM rendered whatever the real height
+// was, so total scrollHeight was
+//     padTop + sum(actual rendered heights) + padBottom
+// and it CHANGED every time the virtual window moved: the spacers moved by a
+// flat 22px per row while the real content moved by 22-24px. That drifting
+// scrollHeight made the browser re-anchor on every scroll event, which is the
+// flicker when scrolling back through history. It could not be fixed by
+// tuning the constant — any constant is wrong for some row.
+//
+// So the spacers are derived from MEASURED heights: each group's height is
+// recorded once as it is rendered, and the pads come from a cumulative offset
+// table. Unmeasured rows fall back to a running average, which converges as
+// the user scrolls and is exact for everything already on screen — which is
+// what the scrollbar and the viewport care about.
 const LINE_HEIGHT = 22
 const BUFFER = 8
 
 const virtualRange = ref({ start: 0, end: 100 })
 // Pending scroll-position write, coalesced to one per animation frame.
 let scrollRaf = 0
+
+// Measured row height per group key. Bounded like the line buffer: a tab
+// left streaming for a shift would otherwise accumulate an entry per line
+// for the life of the component.
+const rowHeights = new Map<string, number>()
+let avgHeight = LINE_HEIGHT
+let avgCalibrated = false
+// Bumped when a measurement lands, so the offset table recomputes.
+const measureTick = ref(0)
+const wrapEl = ref<HTMLElement | null>(null)
+
+/** Record the height of every row currently in the DOM. */
+function measureRendered() {
+  const wrap = wrapEl.value
+  if (!wrap) return
+  // Read the key off each node rather than trusting DOM order: an EXPANDED
+  // run group renders one row per line, so N consecutive nodes can belong to
+  // one group. Summing per key keeps a group's height right either way.
+  const byKey = new Map<string, number>()
+  for (const node of wrap.children) {
+    const key = (node as HTMLElement).dataset.gkey
+    if (key === undefined) continue
+    const h = (node as HTMLElement).getBoundingClientRect().height
+    if (h > 0) byKey.set(key, (byKey.get(key) ?? 0) + h)
+  }
+  let sum = 0
+  let n = 0
+  for (const [key, h] of byKey) {
+    rowHeights.set(key, h)
+    sum += h
+    n++
+  }
+  if (n > 0) {
+    // Calibrate early, then FREEZE. A running average keeps changing as the
+    // window slides over rows of different height, and every change moves the
+    // estimated height of all the unmeasured rows — which moves total
+    // scrollHeight, which is the flicker again. A slightly-off estimate for
+    // rows nobody has scrolled to is a marginally wrong scrollbar; a moving
+    // one is a visibly unstable one.
+    if (!avgCalibrated && n >= 6) {
+      avgHeight = sum / n
+      avgCalibrated = true
+    }
+    // Same bound as the composable's line buffer. Entries are keyed by group
+    // so a scrolling session re-measures rather than grows, but a tab left
+    // streaming for a shift would otherwise add one entry per new line for
+    // the life of the component. Dropping the cache costs one frame of
+    // average-based padding, never correctness.
+    if (rowHeights.size > groups.value.length * 2 + 512) {
+      rowHeights.clear()
+    }
+    measureTick.value++
+  }
+}
+
+/** offsets[i] = distance from the top to row i, using measured heights where known. */
+const offsets = computed<number[]>(() => {
+  measureTick.value // re-run when a measurement lands
+  const gs = groups.value
+  const out = new Array<number>(gs.length + 1)
+  out[0] = 0
+  for (let i = 0; i < gs.length; i++) {
+    out[i + 1] = out[i] + (rowHeights.get(gs[i].key) ?? avgHeight)
+  }
+  return out
+})
 
 function recomputeVirtualRange() {
   const el = scrollEl.value
@@ -266,10 +351,63 @@ function recomputeVirtualRange() {
   }
   const top = el.scrollTop
   const viewportH = el.clientHeight
-  const start = Math.max(0, Math.floor(top / LINE_HEIGHT) - BUFFER)
-  const end = Math.min(total, Math.ceil((top + viewportH) / LINE_HEIGHT) + BUFFER)
+  // Estimate the row index from the running average, then correct: the offset
+  // table is a prefix sum, so the real boundary is a binary search away. Using
+  // it keeps `start` on an actual row boundary instead of drifting further off
+  // the more the average is wrong.
+  const off = offsets.value
+  let guess = Math.max(0, Math.min(total, Math.floor(top / Math.max(1, avgHeight)) - BUFFER))
+  while (guess > 0 && off[guess] > top) guess--
+  while (guess < total && off[guess + 1] <= top) guess++
+  let start = Math.max(0, guess - BUFFER)
+  let endGuess = Math.max(0, Math.min(total, Math.ceil((top + viewportH) / Math.max(1, avgHeight)) + BUFFER))
+  while (endGuess > start && off[endGuess] > top + viewportH) endGuess--
+  while (endGuess < total && off[endGuess + 1] <= top + viewportH) endGuess++
+  const end = Math.min(total, endGuess + BUFFER)
   if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
     virtualRange.value = { start, end }
+  }
+}
+
+/**
+ * Pin the row the user is currently looking at.
+ *
+ * Measuring a row replaces an `avgHeight` guess with its real height, which
+ * moves every offset after it. Without a correction the content slides under
+ * the cursor — that is the flicker. The anchor is the first row whose bottom
+ * is below the viewport top; after the measurements land we put it back at
+ * the same distance from the top of the viewport, so the visible rows do not
+ * move even though the rows below them just changed height.
+ */
+function captureAnchor(): { idx: number; delta: number } | null {
+  const el = scrollEl.value
+  if (!el) return null
+  const top = el.scrollTop
+  // At the very top the follower owns the position (jumpToTop); anchoring
+  // there would fight it.
+  if (autoFollow.value && top < 4) return null
+  const off = offsets.value
+  const n = groups.value.length
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (off[mid + 1] <= top) lo = mid + 1
+    else hi = mid
+  }
+  return { idx: lo, delta: top - off[lo] }
+}
+
+function applyAnchor(a: { idx: number; delta: number } | null) {
+  const el = scrollEl.value
+  if (!el || !a) return
+  const next = (offsets.value[a.idx] ?? 0) + a.delta
+  // `behavior: 'instant'` is required, not cosmetic. The container carries
+  // `scroll-smooth`, which makes a plain `el.scrollTop = x` ANIMATE — so the
+  // anchor correction would lag behind the scroll it is correcting and read
+  // as the content sliding around under the cursor.
+  if (Math.abs(next - el.scrollTop) > 0.5) {
+    el.scrollTo({ top: next, behavior: 'instant' as ScrollBehavior })
   }
 }
 
@@ -278,9 +416,12 @@ const renderedGroups = computed(() => {
   return groups.value.slice(start, end)
 })
 
-const padTop = computed(() => virtualRange.value.start * LINE_HEIGHT)
+const padTop = computed(() => offsets.value[virtualRange.value.start] ?? 0)
 const padBottom = computed(() =>
-  Math.max(0, (groups.value.length - virtualRange.value.end) * LINE_HEIGHT),
+  Math.max(
+    0,
+    (offsets.value[groups.value.length] ?? 0) - (offsets.value[virtualRange.value.end] ?? 0),
+  ),
 )
 
 function toggleExpand(key: string) {
@@ -325,7 +466,12 @@ watch(displayedLines, (v) => {
   const recentlyWatched = Date.now() - lastInteraction.value < 3000
   const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
   if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
-  nextTick(recomputeVirtualRange)
+  nextTick(() => {
+    const anchor = captureAnchor()
+    recomputeVirtualRange()
+    measureRendered()
+    applyAnchor(anchor)
+  })
 }, { immediate: true })
 
 watch(() => props.lines.length, () => {
@@ -335,7 +481,13 @@ watch(() => props.lines.length, () => {
 })
 
 function onScroll() {
+  const anchor = captureAnchor()
   recomputeVirtualRange()
+  // Rows that just scrolled in have never been measured; record them before
+  // the next scroll event reads the offset table, otherwise the pads still
+  // carry the average for exactly the rows the user is looking at.
+  measureRendered()
+  applyAnchor(anchor)
   if (!scrollEl.value) return
   const top = scrollEl.value.scrollTop
   // Restore-on-remount: switching tabs unmounts the LogViewer; persist the
@@ -474,7 +626,12 @@ onMounted(() => {
     nextTick(() => {
       try {
         const saved = sessionStorage.getItem(`k8s-log-scroll:${props.namespace}:${props.podName}`)
-        if (saved && scrollEl.value) scrollEl.value.scrollTop = Number(saved)
+        // instant, for the same reason as applyAnchor: `scroll-smooth` would
+        // animate the restore, so every tab switch slid from the top down to
+        // the saved position instead of opening where the reader left off.
+        if (saved && scrollEl.value) {
+          scrollEl.value.scrollTo({ top: Number(saved), behavior: 'instant' as ScrollBehavior })
+        }
       } catch { /* quota / disabled */ }
     })
   }
@@ -1150,11 +1307,12 @@ const helpRows = computed(() => [
           </Button>
         </template>
       </div>
-      <div v-else class="relative">
+      <div v-else ref="wrapEl" class="relative">
         <div :style="{ height: padTop + 'px' }" aria-hidden="true" />
 <template v-for="(group, idx) in renderedGroups" :key="group.key">
           <template v-if="group.kind === 'single'">
             <div
+              :data-gkey="group.key"
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
                 'hover:bg-muted/40 transition-colors',
