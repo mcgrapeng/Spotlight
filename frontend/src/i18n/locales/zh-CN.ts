@@ -40,6 +40,11 @@ export default {
     statAlertsHint: '5min 内最近',
     statNodes: '节点',
     nodesReady: '就绪',
+    heroEyebrow: '最该管的一件事',
+    heroAllClear: '一切正常',
+    heroAllClearHint: '没有需要你处理的事',
+    heroRunningFact: '{percent}% Pod 处于 Running',
+    heroOpen: '去看看',
     heroHealth: '集群健康度',
     heroVerdictOk: '一切正常',
     heroVerdictWarn: '需要关注',
@@ -52,6 +57,17 @@ export default {
     recentActivityEmpty: '安静 — 1 小时内没有事件',
     frequentRestarts: '频繁重启',
     frequentRestartsEmpty: '无',
+  },
+  // ponytail: phase 是 K8s API 的字段值，kubectl 的 STATUS 列写的就是
+  // Running / Pending / Failed / Succeeded。值班的人同时盯着 kubectl 面板和
+  // Spotlight 面板，术语对不上是真实的认知成本；但全中文又让他在 kubectl
+  // 里找不到对应词。所以首次出现的地方并列一次，之后一律用中文。
+  phase: {
+    Running: '运行中 Running',
+    Pending: '等待中 Pending',
+    Failed: '失败 Failed',
+    Succeeded: '已成功 Succeeded',
+    Unknown: '未知 Unknown',
   },
   pods: {
     subtitle: '{count} 个 · {namespace}',
@@ -219,7 +235,6 @@ export default {
     aboutHeading: '关于',
     aboutApp: '应用',
     aboutTheme: '模式',
-    aboutThemeValue: '仅亮色（设计固定）',
     aboutStorage: '存储',
     aboutStorageValue: '侧边栏折叠 + 当前集群 / namespace（localStorage）',
     logoutConfirmTitle: '确认登出？',
@@ -255,6 +270,11 @@ export default {
     ai: 'AI 模型',
     settings: '设置',
   },
+  notFound: {
+    title: '页面不存在',
+    description: '这个地址没有对应的页面。',
+    backHome: '回到总览',
+  },
   state: {
     empty: '暂无数据',
     error: '加载失败',
@@ -268,10 +288,10 @@ export default {
     hintCurrent: '当前',
   },
   namespace: {
-    select: '选择 namespace',
-    search: '搜索 namespace…',
-    empty: '没有匹配的 namespace',
-    all: '所有 namespace',
+    select: '选择命名空间',
+    search: '搜索命名空间…',
+    empty: '没有匹配的命名空间',
+    all: '所有命名空间',
   },
   // ponytail: vue-sonner 早就装好并挂载了 Toaster，但全项目 0 次调用 toast() ——
   // 删除 Provider、删除收藏、复制日志、清空日志全靠页面重渲染表达结果，
@@ -342,6 +362,13 @@ export default {
     collapse: '收起',
     expandRemaining: '展开剩余 {count} 字',
     moreChars: '+{count} 字',
+    moreActions: '更多',
+    menuToggleWrap: '切换自动换行',
+    menuClear: '清空当前屏幕',
+    menuShortcuts: '快捷键',
+    clearConfirmTitle: '清空当前日志？',
+    clearConfirmBody: '这一屏的内容会被清掉，集群里的日志不受影响。',
+    clearConfirmOk: '清空',
     foldTooltip: '本组 ×{count}（点击展开全部）',
     foldMore: '… 共 {count} 条',
     foldTitle: '本组 {count} 条相同的日志 · 点击展开',
@@ -364,6 +391,8 @@ export default {
     placeholder: '输入命令、页面或操作…',
     noResults: '未找到结果。',
     navGroup: '导航',
+    resourcesGroup: '资源',
+    resourcesEmpty: '没有匹配的 Pod 或节点',
     actionsGroup: '操作',
     shortcutsTitle: '快捷键',
     footer: {
@@ -385,6 +414,7 @@ export default {
     actions: {
       refresh: '刷新当前页面',
       ai: '打开 AI 助手',
+      jumpToPod: '跳到 Pod',
       shortcuts: '显示快捷键面板',
     },
   },

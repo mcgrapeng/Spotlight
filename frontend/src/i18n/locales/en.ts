@@ -40,6 +40,11 @@ export default {
     statAlertsHint: 'Last 5 min',
     statNodes: 'Nodes',
     nodesReady: 'Ready',
+    heroEyebrow: 'The one thing to handle',
+    heroAllClear: 'All good',
+    heroAllClearHint: 'Nothing needs your attention',
+    heroRunningFact: '{percent}% of pods are Running',
+    heroOpen: 'Take a look',
     heroHealth: 'Cluster health',
     heroVerdictOk: 'All good',
     heroVerdictWarn: 'Needs attention',
@@ -52,6 +57,15 @@ export default {
     recentActivityEmpty: 'Quiet — no events in the last hour',
     frequentRestarts: 'Frequent restarts',
     frequentRestartsEmpty: 'None',
+  },
+  // ponytail: see zh-CN.ts. The phase names are K8s API field values — the
+  // same words kubectl prints — so the English locale keeps them verbatim.
+  phase: {
+    Running: 'Running',
+    Pending: 'Pending',
+    Failed: 'Failed',
+    Succeeded: 'Succeeded',
+    Unknown: 'Unknown',
   },
   pods: {
     subtitle: '{count} · {namespace}',
@@ -219,7 +233,6 @@ export default {
     aboutHeading: 'About',
     aboutApp: 'App',
     aboutTheme: 'Theme',
-    aboutThemeValue: 'Light only (by design)',
     aboutStorage: 'Storage',
     aboutStorageValue: 'Sidebar collapse + current cluster / namespace (localStorage)',
     logoutConfirmTitle: 'Sign out?',
@@ -254,6 +267,11 @@ export default {
     favorites: 'Favorites',
     ai: 'AI Models',
     settings: 'Settings',
+  },
+  notFound: {
+    title: 'Page not found',
+    description: 'There is no page at this address.',
+    backHome: 'Back to overview',
   },
   state: {
     empty: 'No data',
@@ -341,6 +359,13 @@ export default {
     collapse: 'Collapse',
     expandRemaining: 'Expand {count} more chars',
     moreChars: '+{count} chars',
+    moreActions: 'More',
+    menuToggleWrap: 'Toggle line wrap',
+    menuClear: 'Clear the screen',
+    menuShortcuts: 'Keyboard shortcuts',
+    clearConfirmTitle: 'Clear the current log?',
+    clearConfirmBody: 'The rows on screen are cleared. The logs in the cluster are not affected.',
+    clearConfirmOk: 'Clear',
     foldTooltip: 'This group ×{count} (click to expand all)',
     foldMore: '… {count} total',
     foldTitle: '{count} identical lines in this group · click to expand',
@@ -363,6 +388,8 @@ export default {
     placeholder: 'Type a command, page, or action…',
     noResults: 'No results found.',
     navGroup: 'Navigation',
+    resourcesGroup: 'Resources',
+    resourcesEmpty: 'No matching pod or node',
     actionsGroup: 'Actions',
     shortcutsTitle: 'Shortcuts',
     footer: {
@@ -384,6 +411,7 @@ export default {
     actions: {
       refresh: 'Refresh the current page',
       ai: 'Open AI assistant',
+      jumpToPod: 'Jump to a pod',
       shortcuts: 'Show the shortcuts panel',
     },
   },
