@@ -17,23 +17,27 @@ export type ChipTone = 'success' | 'warning' | 'error' | 'neutral'
 export type ChipVariant = 'soft' | 'solid' | 'bare'
 export type ChipSize = 'sm' | 'xs'
 
-const TONE: Record<ChipTone, { soft: string; solid: string; dot: string }> = {
+const TONE: Record<ChipTone, { text: string; soft: string; solid: string; dot: string }> = {
   success: {
+    text: 'text-success',
     soft: 'bg-success-bg text-success border-success-border',
     solid: 'bg-success text-success-foreground border-success',
     dot: 'bg-success',
   },
   warning: {
+    text: 'text-warning',
     soft: 'bg-warning-bg text-warning border-warning-border',
     solid: 'bg-warning text-warning-foreground border-warning',
     dot: 'bg-warning',
   },
   error: {
+    text: 'text-error',
     soft: 'bg-error-bg text-error border-error-border',
     solid: 'bg-error text-error-foreground border-error',
     dot: 'bg-error',
   },
   neutral: {
+    text: 'text-muted-foreground',
     soft: 'bg-muted text-muted-foreground border-border',
     solid: 'bg-muted-foreground text-background border-muted-foreground',
     dot: 'bg-muted-foreground',
@@ -56,11 +60,13 @@ export function chipClasses(opts: {
   dot?: boolean
 }): string {
   const { tone, variant = 'soft', size = 'sm', dot = false } = opts
+  // `bare` drops the surface but KEEPS the tone: a bare error chip is red
+  // text, not grey text with a red dot.
   const toneClass =
     variant === 'solid'
       ? TONE[tone].solid
       : variant === 'bare'
-        ? 'bg-transparent text-muted-foreground border-transparent'
+        ? `bg-transparent border-transparent ${TONE[tone].text}`
         : TONE[tone].soft
   return [
     'inline-flex items-center border font-medium',

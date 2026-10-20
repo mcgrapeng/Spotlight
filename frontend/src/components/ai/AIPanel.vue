@@ -46,11 +46,15 @@ const noProvider = ref(false)
 
 const provider = ref<{ id: number; name: string; model: string } | null>(null)
 
-const canSubmit = computed(() =>
-  ai.mode === 'ask'
-    ? question.value.trim().length > 0 && !loading.value
-    : !!(ai.pod?.logContent) && !loading.value,
-)
+const canSubmit = computed(() => {
+  if (loading.value || !provider.value) return false
+  if (ai.mode === 'ask') {
+    // The context IS the question's grounding. Submitting before it has
+    // loaded would ask the model with nothing to read.
+    return question.value.trim().length > 0 && !loadingContext.value && context.value !== ''
+  }
+  return !!(ai.pod?.logContent)
+})
 
 /**
  * A compact snapshot of the cluster.
@@ -61,6 +65,7 @@ const canSubmit = computed(() =>
  * to answer it.
  */
 async function buildContext(): Promise<string> {
+  if (!cluster.activeCluster) throw new Error(t('ai.askNoActiveCluster'))
   const stats = await podsApi.stats(cluster.activeCluster)
   const lines: string[] = [
     `# Cluster: ${cluster.activeCluster || 'default'}`,
@@ -89,38 +94,56 @@ async function buildContext(): Promise<string> {
   return lines.join('\n')
 }
 
+// A sequence token: the panel can be opened again before the previous
+// load resolves, and a stale answer must not overwrite a newer one.
+let providerSeq = 0
+let contextSeq = 0
+
 async function loadProvider(): Promise<void> {
+  const mine = ++providerSeq
   try {
     const providers = await aiApi.listProviders()
+    if (mine !== providerSeq) return
     provider.value = providers.find((p) => p.enabled) ?? null
     noProvider.value = !provider.value
   } catch {
+    if (mine !== providerSeq) return
     provider.value = null
     noProvider.value = true
   }
 }
 
 async function loadContext(): Promise<void> {
+  const mine = ++contextSeq
   loadingContext.value = true
   try {
-    context.value = await buildContext()
+    const snapshot = await buildContext()
+    if (mine !== contextSeq) return
+    context.value = snapshot
   } catch (e: any) {
+    if (mine !== contextSeq) return
     error.value = e?.message ?? t('ai.askContextFailed')
   } finally {
-    loadingContext.value = false
+    if (mine === contextSeq) loadingContext.value = false
   }
 }
 
 // The panel is opened by the command palette, by the pod detail page, or by
 // the keyboard. Each of those arrives with a different mode, and the mode
 // decides what has to be loaded before the reader can ask anything.
+// Every open is a fresh request: the panel resets, reloads the provider
+// and — in ask mode — the cluster snapshot. Watching the request counter
+// rather than `open` means asking from a different mode while the panel
+// is already up also reloads.
 watch(
-  () => ai.open,
-  (isOpen) => {
-    if (!isOpen) return
+  () => ai.requestId,
+  () => {
     result.value = ''
     error.value = ''
     question.value = ''
+    context.value = ''
+    provider.value = null
+    noProvider.value = false
     void loadProvider()
     if (ai.mode === 'ask') void loadContext()
   },
@@ -141,7 +164,7 @@ async function submit(): Promise<void> {
         ai.pod.name,
         provider.value.id,
         ai.pod.logContent.split('\n').slice(-200),
-        t('pod.aiPrompt'),
+        t('ai.analyzePrompt'),
       )
       result.value = out.answer
     } else {
@@ -149,7 +172,9 @@ async function submit(): Promise<void> {
       result.value = out.answer
     }
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? t('pod.aiFailed')
+    error.value = e?.code === 'ECONNABORTED'
+      ? t('ai.askTimeout')
+      : e?.response?.data?.detail ?? e?.message ?? t('ai.analyzeFailed')
   } finally {
     loading.value = false
   }
@@ -178,7 +203,7 @@ async function submit(): Promise<void> {
         >
           <AlertTriangle :size="14" :stroke-width="1.75" class="mt-px shrink-0" />
           <span>
-            {{ t('pod.aiNoProvider') }}
+            {{ t('ai.noProvider') }}
             <router-link to="/ai" class="underline underline-offset-2">{{ t('ai.askConfigure') }}</router-link>
           </span>
         </div>

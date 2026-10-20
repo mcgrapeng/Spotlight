@@ -138,14 +138,16 @@ const isActive = (path: string) =>
       <!--
         ponytail: 偏好（主题 + 语言）挨着设置放在侧边栏底部。
         这两样一天用一次，顶栏最好的位置应该留给「范围」（集群 + 命名空间）。
-        折叠态 64px 塞不下「中文 | EN」（~76px），折叠时只留主题切换。
+        折叠态整行不渲染：侧边栏折叠后只剩 64px，内容盒 48px，而主题切换
+        本身就有 78px —— 塞进去会被 aside 的 overflow-hidden 切掉一截，
+        「跟随系统」那个按钮既看不全也点不到。折叠态去设置页改主题。
       -->
       <div
-        class="flex items-center gap-2 shrink-0"
-        :class="props.collapsed ? 'justify-center h-10' : 'px-3 h-9'"
+        v-if="!props.collapsed"
+        class="flex items-center gap-1 shrink-0 px-3 h-9"
       >
         <ThemeToggle />
-        <LocaleSwitcher v-if="!props.collapsed" class="ml-auto" />
+        <LocaleSwitcher class="ml-auto" />
       </div>
       <router-link
         to="/settings"

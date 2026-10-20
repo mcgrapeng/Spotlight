@@ -20,6 +20,7 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import { cn } from '@/lib/utils'
+import { restartSeverity } from '@/lib/restart'
 import dayjs from '@/utils/dayjs'
 import type { PodOut, LogLineOut, EventOut } from '@/api/types'
 
@@ -57,6 +58,14 @@ function containerPhase(c: { state: string; ready?: boolean; reason?: string | n
     return failed ? 'Failed' : 'Pending'
   }
   return 'Unknown'
+}
+
+/** The restart count's tone, from the shared ladder. */
+function restartTone(count: number): string {
+  const s = restartSeverity(count)
+  if (s === 'critical' || s === 'high') return 'text-error'
+  if (s === 'elevated') return 'text-warning'
+  return 'text-foreground'
 }
 
 const name = computed(() => String(route.params.name ?? ''))
@@ -165,7 +174,7 @@ function back() { router.push({ name: 'pods' }) }
         <span class="text-muted-foreground">{{ t('pod.metaRestarts') }}</span>
         <span
           class="font-medium tabular-nums"
-          :class="pod.restart_count > 100 ? 'text-error' : pod.restart_count > 5 ? 'text-warning' : 'text-foreground'"
+          :class="restartTone(pod.restart_count)"
         >{{ pod.restart_count.toLocaleString() }}</span>
       </div>
       <div class="flex items-baseline gap-1.5">

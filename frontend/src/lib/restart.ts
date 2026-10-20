@@ -19,8 +19,21 @@ export const RESTART_HIGH = 100
 export const RESTART_CRITICAL = 1000
 
 export function restartSeverity(count: number): RestartSeverity {
-  if (count > RESTART_CRITICAL) return 'critical'
-  if (count > RESTART_HIGH) return 'high'
-  if (count > RESTART_ELEVATED) return 'elevated'
+  // `>=` so each named constant is the FIRST value of its tier: 10 is
+  // elevated, 100 is high, 1000 is critical. The round numbers are exactly
+  // the ones someone checks this ladder against.
+  if (count >= RESTART_CRITICAL) return 'critical'
+  if (count >= RESTART_HIGH) return 'high'
+  if (count >= RESTART_ELEVATED) return 'elevated'
   return 'normal'
+}
+
+/**
+ * The predicate form: a view says "does this pod need attention", not
+ * what the thresholds are. Every surface that flags a restarting pod goes
+ * through this, so a pod with 7 restarts is not amber on one page and grey
+ * on another.
+ */
+export function isNoisyRestarts(count: number): boolean {
+  return restartSeverity(count) !== 'normal'
 }

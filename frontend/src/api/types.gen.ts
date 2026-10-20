@@ -562,10 +562,7 @@ export interface components {
             provider_id: number;
             /** Question */
             question: string;
-            /**
-             * Context
-             * @default
-             */
+            /** Context */
             context: string;
         };
         /** AIProviderIn */

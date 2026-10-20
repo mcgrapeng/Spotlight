@@ -157,12 +157,12 @@ export const aiApi = {
   ask: (providerId: number, question: string, context: string) =>
     http.post<AIAnalyzeOut>('/ai/ask', {
       provider_id: providerId, question, context,
-    }).then((r) => r.data),
+    }, { timeout: 60_000 }).then((r) => r.data),
   analyze: (cluster: string | null, namespace: string, name: string,
              providerId: number, logLines: string[], question: string) =>
     http.post<AIAnalyzeOut>(
       `/ai/analyze/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
       { provider_id: providerId, question, log_lines: logLines },
-      { params: { context: cluster || undefined } },
+      { params: { context: cluster || undefined }, timeout: 90_000 },
     ).then((r) => r.data),
 }

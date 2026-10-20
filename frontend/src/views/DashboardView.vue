@@ -9,6 +9,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, formatNumber } from '@/lib/utils'
+import { isNoisyRestarts } from '@/lib/restart'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import PhaseBar, { type PhaseSlice } from '@/components/common/PhaseBar.vue'
 import RestartBars from '@/components/common/RestartBars.vue'
@@ -159,7 +160,7 @@ const actionItems = computed<Array<{
   // 排序是稳定的，所以谁先入队谁排前面。「3 个 Pod 频繁重启（最高 21,320 次）」
   // 点名了要看的对象，「25 个 Warning 事件」只是一个计数 —— 而告警计数里
   // 往往就是同一个崩溃循环，换个单位说了一遍。
-  const noisy = (stats.value?.restart_top ?? []).filter(p => p.restarts > 10).slice(0, 3)
+  const noisy = (stats.value?.restart_top ?? []).filter(p => isNoisyRestarts(p.restarts)).slice(0, 3)
   if (noisy.length > 0) {
     const worst = Math.max(...noisy.map(p => p.restarts))
     items.push({

@@ -48,7 +48,10 @@ class AIAskIn(BaseModel):
     """
     provider_id: int
     question: str = Field(min_length=1, max_length=2000)
-    context: str = Field(default="", max_length=20000)
+    # Required and non-empty: the context is the snapshot the answer is
+    # grounded in. An empty one would fall through to the pod log-analysis
+    # prompt, and the model would answer a cluster question from zero logs.
+    context: str = Field(min_length=1, max_length=20000)
 
 
 class AIAnalyzeOut(BaseModel):

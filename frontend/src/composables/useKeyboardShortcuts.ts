@@ -50,6 +50,13 @@ export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
 
     // Two-key mode: if we have a pending prefix, try to match "prefix key"
     if (prefix) {
+      // A modifier chord is not a prefix continuation. `g` then ⌘J must
+      // still reach the ⌘J binding, so drop the prefix and fall through to
+      // the single-key match instead of returning.
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        prefix = null
+        if (prefixTimer) clearTimeout(prefixTimer)
+      } else {
       const combined = `${prefix} ${keyOnly}`
       const match = list.find((s) => s.combo.toLowerCase() === combined)
       if (match) {
@@ -60,6 +67,7 @@ export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
       prefix = null
       if (prefixTimer) clearTimeout(prefixTimer)
       return
+      }
     }
 
     // First char of a possible two-key sequence

@@ -126,7 +126,9 @@ async def ask(
     """
     try:
         return await uc.ask(payload.provider_id, payload.question, payload.context)
-    except (ValueError, LookupError) as e:
+    except ValueError as e:
+        # ValueError only: a KeyError inside the use case is a server bug
+        # and must stay a 5xx, not a 400.
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 

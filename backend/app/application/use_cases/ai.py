@@ -75,6 +75,8 @@ class AIUseCases:
         self, provider_id: int, question: str, context: str,
     ) -> AIAnalyzeOut:
         """Answer a cluster-level question against a context snapshot."""
+        if not context.strip():
+            raise ValueError("context is required to answer a cluster-level question")
         cfg = await self._repo.get_provider(provider_id)
         if cfg is None:
             raise ValueError(f"ai provider {provider_id} not found")

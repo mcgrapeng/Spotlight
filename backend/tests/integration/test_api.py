@@ -245,6 +245,45 @@ def test_ai_provider_create_and_analyze(client):
     assert out["model"] == "gpt-4o-mini"
 
 
+def test_ai_ask_answers_from_the_context(client):
+    """The cluster-level question carries its own snapshot."""
+    r = client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+    })
+    assert r.status_code == 201
+
+    r2 = client.post("/api/v1/ai/ask", json={
+        "provider_id": 1,
+        "question": "which pod is restarting?",
+        "context": "# Cluster: demo\ntotal=287 running=258",
+    })
+    assert r2.status_code == 200
+    out = r2.json()
+    assert "diagnostic" in out["answer"]
+    assert out["model"] == "gpt-4o-mini"
+
+
+def test_ai_ask_rejects_an_empty_context(client):
+    """An empty context must not reach the model.
+
+    The provider picks its prompt by whether a context is present, so an
+    empty one would fall through to the POD log-analysis prompt and the
+    model would answer a cluster question from zero log lines — a
+    confident, fabricated answer.
+    """
+    r = client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+    })
+    assert r.status_code == 201
+
+    r2 = client.post("/api/v1/ai/ask", json={
+        "provider_id": 1, "question": "which pod is restarting?", "context": "",
+    })
+    assert r2.status_code in (400, 422)
+
+
 def test_ai_single_active_enforced(client):
     r1 = client.post("/api/v1/ai/providers", json={
         "name": "A", "provider": "openai", "model": "m", "api_key": "k", "enabled": True,

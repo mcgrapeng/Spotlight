@@ -828,16 +828,11 @@ watch(displayedLines, (v) => {
   scheduleSettle(captureAnchor())
 }, { immediate: true })
 
-watch(() => props.lines.length, () => {
-  // New lines arrived. If the reader is following the tail, put them back on
-  // it. The settle/anchor pass handles the common case; this covers the
-  // frame where the count changed but the rendered list has not caught up.
-  const el = scrollEl.value
-  if (!el || !autoFollow.value) return
-  const distFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
-  if (distFromBottom > FOLLOW_BREAK) return
-  scrollToPosition(Math.max(0, el.scrollHeight - el.clientHeight), 'correction')
-})
+// New lines arriving re-pin a follower through the anchor path
+// (captureAnchor -> atBottom -> applyAnchor), which runs after the DOM has
+// settled and knows the real bottom. An earlier version of this file also
+// watched props.lines.length here, but the DOM had not re-rendered yet, so
+// it resolved to the reader's current position and did nothing.
 
 // === Live region ===
 // The virtualized region is aria-live="off" (a scroll re-renders a window
@@ -882,7 +877,11 @@ function onScroll() {
   // away from a reader who is standing still, and the anchor correction
   // carries them along — that is not them leaving.
   const movedUp = top < lastScrollTop - 1
-  const corrected = Math.abs(top - anchorAppliedAt) <= 1
+  // One-shot: the correction's own echo is consumed here, so a later
+  // genuine scroll that happens to pass the same pixel is not mistaken for
+  // one — and the reader is not yanked back to the tail.
+  const corrected = anchorAppliedAt >= 0 && Math.abs(top - anchorAppliedAt) <= 1
+  if (corrected) anchorAppliedAt = -1
   lastScrollTop = top
   if (distFromBottom <= FOLLOW_EPSILON) {
     // User is back at the tail — re-engage auto-follow and clear unread.
@@ -1128,7 +1127,9 @@ function severityBorderFor(s: string): string {
  * for.
  */
 function isNewestLineError(group: Group): boolean {
-  return isErrorLine(group.lines[group.lines.length - 1])
+  // Group.lines is newest-first, so lines[0] is the line that just arrived
+  // — the same line the collapsed row renders.
+  return isErrorLine(group.lines[0])
 }
 
 function isNewestLine(group: Group): boolean {
@@ -1413,7 +1414,9 @@ function toggleTraceFilter(tid: string | null) {
 
 // === Download .log (filtered or all) ===
 function downloadLogs() {
-  const source = props.downloadScope === 'all' ? props.lines : filtered.value
+  // Chronological, like the clipboard copy: the file you attach to an
+  // issue starts with the first line, not the last.
+  const source = (props.downloadScope === 'all' ? props.lines : filtered.value).slice().reverse()
   const text = source.map((l) => stripAnsi(l.content)).join('\n') + '\n'
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
