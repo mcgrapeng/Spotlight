@@ -1,4 +1,4 @@
-import { onMounted, ref, watch, type Ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 interface Options<T> {
@@ -31,21 +31,55 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // Orders concurrent loads, same contract as useCachedFetch.load() and
+  // usePodList.load(): a response (or a failure) from a superseded load must
+  // not write, and must not clear `loading` out from under a newer one. The
+  // watch source here is the cluster / route param, so two loads overlap
+  // whenever it changes twice before the first reply lands — fast cluster
+  // switching, or pod -> pod navigation where the first is still in the air.
+  let seq = 0
+  let alive = true
+
   async function load() {
-    if (opts.skip?.()) return
+    // Claim a generation BEFORE the skip check. Bailing out without claiming
+    // one left the in-flight load as the current generation, so navigating to
+    // a route where `skip()` is true (PodDetailView's `!name.value`) still
+    // let the previous pod's response write into the new view.
+    const mySeq = ++seq
+    if (opts.skip?.()) {
+      // Nothing to fetch. Still settle the flags: a caller that skipped must
+      // not leave `loading` true with nothing in flight to clear it.
+      if (mySeq === seq) {
+        loading.value = false
+        error.value = null
+      }
+      return
+    }
     loading.value = true
     error.value = null
     try {
-      data.value = await fetcher()
+      const value = await fetcher()
+      if (!alive || mySeq !== seq) return
+      data.value = value
     } catch (e: any) {
+      if (!alive || mySeq !== seq) return
       error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
     } finally {
-      loading.value = false
+      if (mySeq === seq) loading.value = false
     }
   }
 
-  onMounted(load)
+  // Exactly ONE initial load. These used to be `onMounted(load)` *and*
+  // `watch(opts.watch, load, { immediate: true })`, which is two: the
+  // immediate watcher fires during setup and onMounted fires again after
+  // mount. Every consumer paid it — two requests per view, and because the
+  // second one sets `loading = true` after the first already populated
+  // `data`, the panel flips to its skeleton and back. On a real cluster,
+  // where the request takes ~1s, that is a visible flash.
   if (opts.watch) watch(opts.watch, load, { immediate: true })
+  else onMounted(load)
+
+  onBeforeUnmount(() => { alive = false })
 
   return { data, loading, error, reload: load }
 }

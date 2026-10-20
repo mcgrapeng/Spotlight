@@ -69,6 +69,18 @@ export function usePodLogs(opts: UsePodLogsOptions) {
 
   let es: EventSource | null = null
   let alive = true
+  // Monotonic generation. `start()` is re-entered whenever the cluster,
+  // namespace or pod changes, and those changes arrive while a previous
+  // history request is still in flight. Without this, a slow response from
+  // the OLD selection lands after the new one and overwrites it — showing one
+  // cluster's logs under another's heading.
+  let gen = 0
+  // Identity of the target the current `lines` belong to. Keeps the panel
+  // populated across a re-trigger that does not change the target (tab back to
+  // Logs, reconnect) while still blanking it when the target genuinely changed
+  // — otherwise pod A's lines sit under pod B's heading, forever, if B's
+  // history fetch fails.
+  let lastTarget = ''
 
   function closeStream() {
     es?.close()
@@ -97,55 +109,123 @@ export function usePodLogs(opts: UsePodLogsOptions) {
 
   async function start() {
     if (!alive || !opts.name.value) return
+    // The cluster selection is resolved by App.vue on mount, which runs AFTER
+    // child setup. Starting before it lands opens a stream against whatever
+    // the kubeconfig's current-context happens to be and then immediately
+    // restarts when the real selection arrives — a flash, and briefly the
+    // wrong cluster's logs. The watcher below re-runs on change, so waiting
+    // here costs nothing.
+    if (!opts.cluster.activeCluster) {
+      // No cluster means nothing to stream to — but the PREVIOUS target's
+      // stream still has to be torn down. Bailing out here used to skip both
+      // `closeStream()` and `++gen`, so clearing the selection left the old
+      // EventSource open (holding a backend session slot) and left its
+      // handlers passing the `myGen === gen` guard, writing a dead cluster's
+      // lines into the panel forever. Reachable whenever the selection is
+      // cleared: `loadClusters()` nulls a restored cluster this login cannot
+      // see, and `reset()` nulls it on logout.
+      closeStream()
+      ++gen
+      lastTarget = ''
+      lines.value = []
+      deferred.length = 0
+      unreadCount.value = 0
+      error.value = null
+      return
+    }
+    const myGen = ++gen
+    const cluster0 = opts.cluster.activeCluster
+    const ns0 = opts.namespace.value
+    const name0 = opts.name.value
+    const target = JSON.stringify([cluster0, ns0, name0])
+    const sameTarget = target === lastTarget
+    lastTarget = target
     closeStream()
-    lines.value = []
-    deferred.length = 0
-    unreadCount.value = 0
+    // Blank only on a target change. A re-trigger that keeps the same target
+    // (tab back to Logs) used to blank the panel and wait for the refetch, so
+    // every tab switch flashed. A target change must blank: the lines on
+    // screen belong to a different cluster/namespace/pod, and a failed history
+    // fetch would otherwise leave them there permanently under the new
+    // heading — stale data presented as current.
+    if (!sameTarget) {
+      lines.value = []
+      deferred.length = 0
+    }
+    // The pill count IS the backlog length — keep the two in step. On a
+    // target change the backlog was just cleared, so this reads 0. On a
+    // re-open of the same target it preserves the count, which is what lets
+    // the user know unread lines are still waiting when they scroll back up.
+    unreadCount.value = deferred.length
     error.value = null
 
-    // Dedup the SSE backlog against the history backfill. The follow-stream
-    // replays `tail_lines` on connect — and on every EventSource
-    // auto-reconnect — which would otherwise double every line (500 → 1000).
-    // Declared before the history try-block so the SSE closure is safe even
-    // when the backfill fetch fails. ponytail: sigs are content strings,
-    // bounded by session length × maxBuffered (~2MB at 10k lines) — fine for
-    // an ops panel.
+    // Dedup the SSE backlog against what the panel already shows. The
+    // follow-stream replays `tail_lines` on connect — and on every
+    // EventSource auto-reconnect — which would otherwise double every line
+    // (500 → 1000).
+    //
+    // ponytail / KNOWN LIMITATION: this Set is append-only and never pruned,
+    // so it is bounded by the session's total line count, NOT by
+    // `maxBuffered` — that caps `lines`, a different array. A pod left
+    // streaming for a full shift grows it without limit (~288k entries at
+    // 10 lines/sec over 8h). Deliberately left unbounded: a ring buffer would
+    // need N larger than the largest replay window or a slow replay silently
+    // re-delivers pruned lines, trading an 8-hour-tab leak for a duplicate-
+    // lines bug that can fire in seconds. Tracked for removal with the SSE
+    // redesign, where a server-side cursor replaces this Set outright.
     const seen = new Set<string>()
     const sigOf = (t: string, c: string) => `${t}\u0000${c}`
-
-    try {
-      const { items } = await podsApi.historyLogs(
-        opts.cluster.activeCluster,
-        opts.namespace.value,
-        opts.name.value,
-        null, tail,
-      )
-      if (!alive) return
-      const flat: LogLineOut[] = []
-      for (const item of items.slice(-max)) {
-        for (const content of splitLogLines(item.content)) {
-          flat.push({
-            timestamp: item.timestamp,
-            content,
-            container: item.container || '—',
-            severity: item.severity || 'info',
-          })
-        }
-      }
-      flat.reverse()
-      lines.value = flat
-      for (const l of flat) seen.add(sigOf(l.timestamp, l.content))
-    } catch (e: any) {
-      if (!alive) return
-      error.value = e?.response?.data?.detail ?? e?.message ?? t('pod.logsLoadFailed')
+    if (sameTarget) {
+      // Seed from the panel itself, because the backfill below is skipped on
+      // this path and this is the only thing standing between the replay and
+      // a doubled panel. `deferred` has to be seeded too: a replayed line
+      // that is already waiting in the backlog would otherwise be queued in
+      // `pending` and committed a second time on top of it.
+      for (const l of lines.value) seen.add(sigOf(l.timestamp, l.content))
+      for (const l of deferred) seen.add(sigOf(l.timestamp, l.content))
     }
 
-    if (!alive) return
+    // Backfill only on a target change. Re-fetching a target already on
+    // screen is what duplicated lines: the response window overlaps both the
+    // rendered lines and the preserved `deferred` backlog, `lines.value =
+    // flat` re-added the overlap, and `commitDeferred()` then prepended the
+    // same content on top — every overlapping line twice, with the pill
+    // reading 0 so nothing warned the user first. Covered by the
+    // same-target re-open tests in usePodLogs.spec.ts.
+    if (!sameTarget) {
+      try {
+        const { items } = await podsApi.historyLogs(
+          cluster0,
+          ns0,
+          name0,
+          null, tail,
+        )
+        if (!alive || myGen !== gen) return
+        const flat: LogLineOut[] = []
+        for (const item of items.slice(-max)) {
+          for (const content of splitLogLines(item.content)) {
+            flat.push({
+              timestamp: item.timestamp,
+              content,
+              container: item.container || '—',
+              severity: item.severity || 'info',
+            })
+          }
+        }
+        flat.reverse()
+        lines.value = flat
+        for (const l of flat) seen.add(sigOf(l.timestamp, l.content))
+      } catch (e: any) {
+        if (!alive || myGen !== gen) return
+        error.value = e?.response?.data?.detail ?? e?.message ?? t('pod.logsLoadFailed')
+      }
+    }
+
+    if (!alive || myGen !== gen) return
 
     const url = logsApi.streamUrl(
-      opts.cluster.activeCluster,
-      opts.namespace.value,
-      opts.name.value,
+      cluster0,
+      ns0,
+      name0,
       null, tail,
     )
     es = new EventSource(url)
@@ -156,6 +236,15 @@ export function usePodLogs(opts: UsePodLogsOptions) {
 
     function flush() {
       flushTimer = null
+      // The `log` listener is generation-guarded, but a batch that arrived
+      // while this generation was still live has already armed this timer.
+      // closeStream() does not cancel it, so without the check here it fires
+      // after the stream was replaced and prepends the old target's tail into
+      // the new target's panel.
+      if (myGen !== gen) {
+        pending = []
+        return
+      }
       if (pending.length === 0) return
       // Backend yields lines in chronological order (oldest first within batch).
       const batch = pending.slice().reverse()
@@ -177,7 +266,11 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     }
 
     es.addEventListener('log', (e) => {
-      if (!alive) return
+      // A replaced stream must not write into the new session's buffer — the
+      // old EventSource's handlers close over their own `pending` but share
+      // `lines`, so without this a late batch from the previous cluster lands
+      // in the new one.
+      if (!alive || myGen !== gen) return
       try {
         // Data flowing = connection healthy. Clears any stale "连接中断"
         // banner left by a transient drop / auto-reconnect cycle.
@@ -200,7 +293,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       } catch (err) { console.error('parse log', err) }
     })
     es.addEventListener('error', () => {
-      if (!alive) return
+      if (!alive || myGen !== gen) return
       // EventSource fires 'error' both for transient reconnect cycles and for
       // a hard closure. readyState === CLOSED (2) means the browser has
       // given up and the server is unreachable; readyState === CONNECTING
