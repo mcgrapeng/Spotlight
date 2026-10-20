@@ -79,7 +79,7 @@ test('AppHeader renders cluster + namespace comboboxes and no AI button', async 
 // ─────────────────────────────────────────────────────────────────────────
 // 2. Dashboard metrics
 // ─────────────────────────────────────────────────────────────────────────
-test('Dashboard renders health score, pod counts, warnings, restart top', async ({ page }) => {
+test('Dashboard leads with the one thing to handle, then the counts', async ({ page }) => {
   const errors = attachErrorRecorder(page)
   await installApiMocks(page)
   await page.goto('/dashboard', { waitUntil: 'networkidle' })
@@ -107,7 +107,7 @@ test('Dashboard renders health score, pod counts, warnings, restart top', async 
   // 频繁重启 — fixture has 3 restart-heavy entries. The same pod name shows
   // in both the action-item callout and the noisy-restart list; .first()
   // to keep strict mode happy.
-  await expect(page.getByRole('heading', { name: '频繁重启' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '频繁重启', exact: true })).toBeVisible()
   await expect(page.getByText('tempo-distributed-query-658f6bc8b9-5jdr6').first()).toBeVisible()
 
   // Refresh button visible + clickable, doesn't crash.

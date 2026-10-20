@@ -141,7 +141,7 @@ const isActive = (path: string) =>
         折叠态 64px 塞不下「中文 | EN」（~76px），折叠时只留主题切换。
       -->
       <div
-        class="flex items-center gap-2"
+        class="flex items-center gap-2 shrink-0"
         :class="props.collapsed ? 'justify-center h-10' : 'px-3 h-9'"
       >
         <ThemeToggle />

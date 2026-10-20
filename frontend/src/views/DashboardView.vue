@@ -140,15 +140,6 @@ const actionItems = computed<Array<{
     })
   }
 
-  if (stats.value?.warning_events && stats.value.warning_events > 0) {
-    items.push({
-      severity: 'warning',
-      label: t('dashboard.actionWarningEvents', { count: stats.value.warning_events }),
-      detail: t('dashboard.actionWarningEventsDetail'),
-      link: { name: 'events', query: { type: 'Warning' } },
-    })
-  }
-
   if (stats.value?.nodes_ready !== undefined && stats.value.nodes_total > 0) {
     const notReady = stats.value.nodes_total - stats.value.nodes_ready
     if (notReady > 0) {
@@ -164,6 +155,10 @@ const actionItems = computed<Array<{
     }
   }
 
+  // ponytail: 频繁重启排在告警事件前面。两者严重级别相同（都是 warning），
+  // 排序是稳定的，所以谁先入队谁排前面。「3 个 Pod 频繁重启（最高 21,320 次）」
+  // 点名了要看的对象，「25 个 Warning 事件」只是一个计数 —— 而告警计数里
+  // 往往就是同一个崩溃循环，换个单位说了一遍。
   const noisy = (stats.value?.restart_top ?? []).filter(p => p.restarts > 10).slice(0, 3)
   if (noisy.length > 0) {
     const worst = Math.max(...noisy.map(p => p.restarts))
@@ -174,6 +169,15 @@ const actionItems = computed<Array<{
       // 详情说人话：最高多少次。具体的哪个 pod 交给下面的条形图。
       detail: t('dashboard.actionFrequentRestartsDetail', { count: formatNumber(worst) }),
       link: { name: 'pods' },
+    })
+  }
+
+  if (stats.value?.warning_events && stats.value.warning_events > 0) {
+    items.push({
+      severity: 'warning',
+      label: t('dashboard.actionWarningEvents', { count: stats.value.warning_events }),
+      detail: t('dashboard.actionWarningEventsDetail'),
+      link: { name: 'events', query: { type: 'Warning' } },
     })
   }
 

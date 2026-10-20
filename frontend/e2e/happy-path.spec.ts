@@ -12,7 +12,7 @@ test.describe('Happy path — login → dashboard → pods → log filter → AI
     await expect(page.locator('h1').first()).toContainText('总览')
   })
 
-  test('dashboard renders health hero + restart leaderboard', async ({ page }) => {
+  test('dashboard renders the action hero + restart leaderboard', async ({ page }) => {
     const statsResponse = page.waitForResponse(/api\/v1\/pods\/stats/, { timeout: 10_000 })
     await page.goto('/dashboard')
     const statsRes = await statsResponse
@@ -22,7 +22,7 @@ test.describe('Happy path — login → dashboard → pods → log filter → AI
     // returns total_pods=287, so 287 must appear after Vue's render cycle.
     await expect(page.getByText('287').first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
-    await expect(page.getByRole('heading', { name: '频繁重启' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '频繁重启', exact: true })).toBeVisible()
   })
 test('navigate to Pods → Pod detail → log history loads', async ({ page }) => {
     const podDetailReqs: string[] = []

@@ -31,7 +31,7 @@ async function pick(l: Locale) {
   <div
     role="group"
     :aria-label="'Language / 语言'"
-    :class="cn('inline-flex items-center rounded-md border border-border p-0.5', props.class)"
+    :class="cn('inline-flex items-center rounded-md border border-border p-0.5 shrink-0', props.class)"
   >
     <button
       v-for="l in LOCALES"
@@ -39,7 +39,7 @@ async function pick(l: Locale) {
       type="button"
       :aria-pressed="locale === l"
       :class="cn(
-        'px-2 h-6 text-2xs font-medium rounded transition-colors ease-app',
+        'px-2 h-6 text-2xs font-medium rounded whitespace-nowrap shrink-0 transition-colors ease-app',
         locale === l
           ? 'bg-foreground text-background'
           : 'text-muted-foreground hover:text-foreground',
