@@ -253,6 +253,8 @@ const LINE_HEIGHT = 22
 const BUFFER = 8
 
 const virtualRange = ref({ start: 0, end: 100 })
+// Pending scroll-position write, coalesced to one per animation frame.
+let scrollRaf = 0
 
 function recomputeVirtualRange() {
   const el = scrollEl.value
@@ -339,9 +341,18 @@ function onScroll() {
   // Restore-on-remount: switching tabs unmounts the LogViewer; persist the
   // reading position so coming back resumes where the user was (only worth
   // it when not auto-following — followers want the newest line at top).
-  try {
-    sessionStorage.setItem(`k8s-log-scroll:${props.namespace}:${props.podName}`, String(top))
-  } catch { /* quota / disabled */ }
+  // Coalesced to one write per frame. A wheel drag fires onScroll dozens of
+  // times a second and sessionStorage.setItem is synchronous main-thread work,
+  // so the persistence that was meant to be invisible was itself part of the
+  // stutter while scrolling.
+  if (scrollRaf === 0) {
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0
+      try {
+        sessionStorage.setItem(`k8s-log-scroll:${props.namespace}:${props.podName}`, String(top))
+      } catch { /* quota / disabled */ }
+    })
+  }
   // Newest-at-top: scrollTop=0 means we're at the newest line.
   if (top < 4) {
     // User is back at the top — re-engage auto-follow and clear unread.
@@ -352,7 +363,15 @@ function onScroll() {
     }
   } else if (top > 50 && autoFollow.value) {
     // User scrolled away from top — disable auto-follow, show unread pill.
+    // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
+    // mirror of the ref PodDetailView shares with usePodLogs, and flush()
+    // reads that shared one to decide prepend-vs-defer. Without this emit the
+    // shared ref stayed `true`, so every incoming batch was spliced into the
+    // top of `lines` while the user was reading history — the content moved
+    // under their cursor on every flush. `deferred` never filled, so the pill
+    // was dead too and returning to the top committed nothing.
     autoFollow.value = false
+    emit('update:autoFollow', false)
   }
 }
 
