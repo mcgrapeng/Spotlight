@@ -97,3 +97,28 @@ describe('AppSidebar event badge', () => {
     expect(wrapper.emitted('toggle-sidebar')).toHaveLength(1)
   })
 })
+
+describe('AppSidebar preferences', () => {
+  it('keeps the theme and language switches in the expanded sidebar', async () => {
+    vi.mocked(eventsApi.list).mockResolvedValue([])
+    const wrapper = mountSidebar()
+    await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
+    expect(wrapper.find('[role="group"][aria-label="主题"]').exists()).toBe(true)
+    expect(wrapper.find('[role="group"][aria-label="Language / 语言"]').exists()).toBe(true)
+  })
+
+  it('drops them when the sidebar is collapsed', async () => {
+    // The collapsed sidebar is 64px wide — a 48px content box — and the
+    // theme toggle alone is 78px. It was clipped by the aside's
+    // overflow-hidden, with the "follow system" button cut off and
+    // unclickable. The row is not rendered at all in this state.
+    vi.mocked(eventsApi.list).mockResolvedValue([])
+    const wrapper = mount(AppSidebar, {
+      props: { collapsed: true },
+      global: { plugins: [i18n] },
+    })
+    await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
+    expect(wrapper.find('[role="group"][aria-label="主题"]').exists()).toBe(false)
+    expect(wrapper.find('[role="group"][aria-label="Language / 语言"]').exists()).toBe(false)
+  })
+})
