@@ -67,11 +67,19 @@ const wrapMode = ref<'wrap' | 'nowrap'>(
 watch(wrapMode, (m) => {
   try { localStorage.setItem(STORAGE_KEYS.appLogWrap, m) } catch { /* quota / disabled */ }
   // Wrapped rows are a different height than unwrapped ones; every cached
-  // measurement is now wrong, so drop it and let the average re-seed.
-  rowHeights.clear()
-  avgHeight = LINE_HEIGHT
-  avgCalibrated = false
-  nextTick(() => { recomputeVirtualRange(); measureRendered() })
+  // measurement is now wrong, so drop it and let the averages re-seed.
+  groupHeights.clear()
+  estSingleSum = 0
+  estSingleCount = 0
+  estRunSum = 0
+  estRunCount = 0
+  estSingle = LINE_HEIGHT
+  estRun = LINE_HEIGHT
+  nextTick(() => {
+    rebuildOffsets()
+    recomputeVirtualRange()
+    scheduleSettle(captureAnchor())
+  })
 })
 function toggleWrap() {
   wrapMode.value = wrapMode.value === 'wrap' ? 'nowrap' : 'wrap'
@@ -86,8 +94,61 @@ const wrapClass = computed(() =>
 )
 const scrollEl = ref<HTMLElement | null>(null)
 const searchInput = ref<InstanceType<typeof HTMLInputElement> | null>(null)
-const lastInteraction = ref(Date.now())
-function markInteraction() { lastInteraction.value = Date.now() }
+// === Reading position memory ===
+//
+// The reading position is stored as an IDENTITY: which group was at the top
+// of the viewport, and how far into it. A pixel offset only means something
+// relative to the model that produced it, and the model moves every time
+// lines are prepended or trimmed, so a stored pixel drifts onto a different
+// line every time the tab is switched back.
+const scrollMemoryKey = computed(() => `k8s-log-scroll:${props.namespace}:${props.podName}`)
+
+interface ScrollMemory {
+  key: string
+  offset: number
+}
+
+function saveScrollMemory(): void {
+  const el = scrollEl.value
+  if (!el) return
+  try {
+    const top = el.scrollTop
+    // At the top there is nothing to come back to: the newest line is the
+    // position, and the follower owns it.
+    if (top <= FOLLOW_EPSILON) {
+      sessionStorage.removeItem(scrollMemoryKey.value)
+      return
+    }
+    const idx = indexAt(top)
+    const g = groups.value[idx]
+    if (!g) return
+    sessionStorage.setItem(
+      scrollMemoryKey.value,
+      JSON.stringify({ key: g.key, offset: top - (offsetsBuf[idx] ?? 0) }),
+    )
+  } catch { /* quota / disabled */ }
+}
+
+function readScrollMemory(): ScrollMemory | null {
+  try {
+    const raw = sessionStorage.getItem(scrollMemoryKey.value)
+    if (!raw) return null
+    const m = JSON.parse(raw) as ScrollMemory
+    if (typeof m?.key !== 'string' || typeof m?.offset !== 'number') return null
+    return m
+  } catch { /* quota / disabled */ }
+  return null
+}
+
+/** Put the reader back on the group they left, at the same distance into it. */
+function restoreScrollMemory(): void {
+  const mem = readScrollMemory()
+  if (!mem) return
+  const idx = groups.value.findIndex((g) => g.key === mem.key)
+  if (idx < 0) return
+  pendingRestore = { idx, offset: mem.offset }
+  applyAnchor({ idx, delta: mem.offset })
+}
 
 // === Filtering ===
 const minSeverity = ref(0)
@@ -203,30 +264,45 @@ const decorated = computed<DecoratedLine[]>(() =>
   })),
 )
 
-interface FoldGroup {
-  kind: 'single'
-  line: DecoratedLine
+interface Group {
+  kind: 'single' | 'run'
+  /**
+   * Stable identity of the group. It survives a prepend: a run's key is its
+   * OLDEST line, and prepending only ever extends a run at its front.
+   */
   key: string
-}
-interface FoldRun {
-  kind: 'run'
+  /** The group's lines, newest first. A 'single' group has exactly one. */
   lines: DecoratedLine[]
-  key: string
-  sig: string
   expanded: boolean
 }
-type Group = FoldGroup | FoldRun
 
 const expanded = ref(new Set<string>())
+
+/**
+ * Signature used to decide whether two neighbouring lines fold together.
+ *
+ * Two lines fold only when their normalized text matches AND neither of
+ * them is a JSON payload.
+ *
+ * `normalize()` maps every number to 'N', so
+ * `{"msg":"json payload 399","n":39}` and `{"msg":"json payload 398","n":38}`
+ * normalize to the same string. A busy structured log therefore folded into
+ * a single row that displayed one payload and hid the other 39 behind a
+ * JSON button whose state nothing rendered. A JSON line carries a unique
+ * signature, so every payload keeps its own row and its own expander.
+ */
+function foldSig(line: DecoratedLine): string {
+  return line.isJson ? '\u0000json\u0000' + lineId(line.raw) : cachedSig(line.raw)
+}
 
 const groups = computed<Group[]>(() => {
   const out: Group[] = []
   let i = 0
   const arr = displayedLines.value
   while (i < arr.length) {
-    const sig = cachedSig(arr[i].raw)
+    const sig = foldSig(arr[i])
     let j = i + 1
-    while (j < arr.length && cachedSig(arr[j].raw) === sig) j++
+    while (j < arr.length && foldSig(arr[j]) === sig) j++
     if (j - i >= 3) {
       // Run key = the OLDEST line of the run (slice tail). displayedLines is
       // newest-first and prepends only extend runs at their front, so the
@@ -234,15 +310,19 @@ const groups = computed<Group[]>(() => {
       const key = lineId(arr[j - 1].raw)
       out.push({
         kind: 'run',
-        lines: arr.slice(i, j),
         key,
-        sig,
+        lines: arr.slice(i, j),
         expanded: expanded.value.has(key),
       })
       i = j
     } else {
       for (let k = i; k < j; k++) {
-        out.push({ kind: 'single', line: arr[k], key: lineId(arr[k].raw) })
+        out.push({
+          kind: 'single',
+          key: lineId(arr[k].raw),
+          lines: [arr[k]],
+          expanded: false,
+        })
       }
       i = j
     }
@@ -251,164 +331,147 @@ const groups = computed<Group[]>(() => {
 })
 
 // === Virtual scroll (NEWEST AT TOP, scrollTop=0) ===
-// Rows are NOT a uniform height. Measured against a real pod they come out at
-// 22 / 23.5 / 24px depending on the content (`items-baseline` against a taller
-// inline box, wrapped text, expanded JSON). The old code assumed a flat 22px
-// for the padding spacers while the DOM rendered whatever the real height
-// was, so total scrollHeight was
-//     padTop + sum(actual rendered heights) + padBottom
-// and it CHANGED every time the virtual window moved: the spacers moved by a
-// flat 22px per row while the real content moved by 22-24px. That drifting
-// scrollHeight made the browser re-anchor on every scroll event, which is the
-// flicker when scrolling back through history. It could not be fixed by
-// tuning the constant — any constant is wrong for some row.
 //
-// So the spacers are derived from MEASURED heights: each group's height is
-// recorded once as it is rendered, and the pads come from a cumulative offset
-// table. Unmeasured rows fall back to a running average, which converges as
-// the user scrolls and is exact for everything already on screen — which is
-// what the scrollbar and the viewport care about.
+// Virtualizing with a spacer above and below the rendered window is a
+// promise: "the pixels outside the window are represented by that spacer".
+// The browser audits the promise through two channels, and it caught the
+// lie in both.
+//
+//   1. The total scroll height. When the model and the DOM disagree about
+//      how tall the content is, the total changes every time the window
+//      slides, and the scrollbar thumb breathes.
+//   2. Native scroll anchoring. When the content above the viewport
+//      resizes, the browser moves scrollTop to keep its anchor node in
+//      place, so scrollTop walks backwards while the reader scrolls
+//      forward. That is the flicker this panel was reported for.
+//
+// A flat LINE_HEIGHT could not hold that promise. Rows are 22px, 25.5px (a
+// row carrying the JSON chip), 44px and up (wrapped text), and an expanded
+// fold adds one row per folded line. So every group's height is measured
+// from the DOM, and the spacers come from a prefix sum of those
+// measurements. Groups that have never been rendered fall back to a per-kind
+// average, which is what the scrollbar is made of until the reader gets
+// there.
+//
+// The measurement reads ONE element per group. Every group renders inside a
+// wrapper that carries the group's key, so the wrapper's height IS the
+// group's height, and a sibling that forgets to be tagged cannot hide from
+// the measurement. The previous revision tagged individual rows and summed
+// them per key, and it left a 962px hole: folded runs and expanded JSON
+// panels carried no key at all.
 const LINE_HEIGHT = 22
 const BUFFER = 8
+// How close to the top still counts as "following the tail". Everything
+// below it is history.
+const FOLLOW_EPSILON = 4
+// How far down the reader has to go before the follow is broken. A small
+// band above this keeps a trackpad nudge from stopping the tail, and the
+// anchor correction means a reader inside the band is not dragged around
+// by the lines prepended above them.
+const FOLLOW_BREAK = 50
 
+// The window can only be computed once the scroller exists, because the
+// viewport is part of the computation. The initial range covers the first
+// screenful so the first paint is not an empty panel, and onMounted
+// narrows it to what actually fits.
 const virtualRange = ref({ start: 0, end: 100 })
-// Pending scroll-position write, coalesced to one per animation frame.
-let scrollRaf = 0
-
-// Measured row height per group key. Bounded like the line buffer: a tab
-// left streaming for a shift would otherwise accumulate an entry per line
-// for the life of the component.
-const rowHeights = new Map<string, number>()
-let avgHeight = LINE_HEIGHT
-let avgCalibrated = false
-// Bumped when a measurement lands, so the offset table recomputes.
-const measureTick = ref(0)
 const wrapEl = ref<HTMLElement | null>(null)
 
-/** Record the height of every row currently in the DOM. */
-function measureRendered() {
-  const wrap = wrapEl.value
-  if (!wrap) return
-  // Read the key off each node rather than trusting DOM order: an EXPANDED
-  // run group renders one row per line, so N consecutive nodes can belong to
-  // one group. Summing per key keeps a group's height right either way.
-  const byKey = new Map<string, number>()
-  for (const node of wrap.children) {
-    const key = (node as HTMLElement).dataset.gkey
-    if (key === undefined) continue
-    const h = (node as HTMLElement).getBoundingClientRect().height
-    if (h > 0) byKey.set(key, (byKey.get(key) ?? 0) + h)
-  }
-  let sum = 0
-  let n = 0
-  for (const [key, h] of byKey) {
-    rowHeights.set(key, h)
-    sum += h
-    n++
-  }
-  if (n > 0) {
-    // Calibrate early, then FREEZE. A running average keeps changing as the
-    // window slides over rows of different height, and every change moves the
-    // estimated height of all the unmeasured rows — which moves total
-    // scrollHeight, which is the flicker again. A slightly-off estimate for
-    // rows nobody has scrolled to is a marginally wrong scrollbar; a moving
-    // one is a visibly unstable one.
-    if (!avgCalibrated && n >= 6) {
-      avgHeight = sum / n
-      avgCalibrated = true
-    }
-    // Same bound as the composable's line buffer. Entries are keyed by group
-    // so a scrolling session re-measures rather than grows, but a tab left
-    // streaming for a shift would otherwise add one entry per new line for
-    // the life of the component. Dropping the cache costs one frame of
-    // average-based padding, never correctness.
-    if (rowHeights.size > groups.value.length * 2 + 512) {
-      rowHeights.clear()
-    }
-    measureTick.value++
-  }
+// Measured height per group key.
+const groupHeights = new Map<string, number>()
+// Per-kind estimate for groups that have never been rendered. A running
+// average over the groups measured so far: a frozen average carries a
+// systematic bias into every unrendered group, and the bias accumulates
+// over thousands of groups until the scrollbar no longer describes the
+// content. A running average converges instead, and once it has converged
+// its per-update step is small enough to be invisible in the thumb.
+//
+// The sample is kept per group, so a group that is measured on every frame
+// contributes once rather than once per frame.
+let estSingleSum = 0
+let estSingleCount = 0
+let estRunSum = 0
+let estRunCount = 0
+let estSingle = LINE_HEIGHT
+let estRun = LINE_HEIGHT
+const estSamples = new Map<string, { h: number; run: boolean }>()
+
+// Prefix sum of group heights. offsets[i] is the distance from the top of
+// the content to the top of group i; offsets[n] is the total height.
+//
+// A Float64Array OUTSIDE Vue's reactivity. Routing a ten-thousand entry
+// table through a computed made every scroll event allocate a reactive
+// array and re-render both spacers; the arithmetic itself is microseconds.
+let offsetsBuf = new Float64Array(1)
+
+// The two spacers. Plain refs, written imperatively by syncSpacers().
+const padTop = ref(0)
+const padBottom = ref(0)
+
+function heightOf(g: Group): number {
+  const h = groupHeights.get(g.key)
+  if (h !== undefined) return h
+  return g.kind === 'run' ? estRun : estSingle
 }
 
-/** offsets[i] = distance from the top to row i, using measured heights where known. */
-const offsets = computed<number[]>(() => {
-  measureTick.value // re-run when a measurement lands
+function rebuildOffsets(): void {
   const gs = groups.value
-  const out = new Array<number>(gs.length + 1)
-  out[0] = 0
-  for (let i = 0; i < gs.length; i++) {
-    out[i + 1] = out[i] + (rowHeights.get(gs[i].key) ?? avgHeight)
+  const n = gs.length
+  if (offsetsBuf.length < n + 1) {
+    offsetsBuf = new Float64Array(Math.max(n + 1, 64))
   }
-  return out
-})
-
-function recomputeVirtualRange() {
-  const el = scrollEl.value
-  if (!el) return
-  const total = groups.value.length
-  if (total === 0) {
-    virtualRange.value = { start: 0, end: 0 }
-    return
-  }
-  const top = el.scrollTop
-  const viewportH = el.clientHeight
-  // Estimate the row index from the running average, then correct: the offset
-  // table is a prefix sum, so the real boundary is a binary search away. Using
-  // it keeps `start` on an actual row boundary instead of drifting further off
-  // the more the average is wrong.
-  const off = offsets.value
-  let guess = Math.max(0, Math.min(total, Math.floor(top / Math.max(1, avgHeight)) - BUFFER))
-  while (guess > 0 && off[guess] > top) guess--
-  while (guess < total && off[guess + 1] <= top) guess++
-  let start = Math.max(0, guess - BUFFER)
-  let endGuess = Math.max(0, Math.min(total, Math.ceil((top + viewportH) / Math.max(1, avgHeight)) + BUFFER))
-  while (endGuess > start && off[endGuess] > top + viewportH) endGuess--
-  while (endGuess < total && off[endGuess + 1] <= top + viewportH) endGuess++
-  const end = Math.min(total, endGuess + BUFFER)
-  if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
-    virtualRange.value = { start, end }
+  let acc = 0
+  offsetsBuf[0] = 0
+  for (let i = 0; i < n; i++) {
+    acc += heightOf(gs[i])
+    offsetsBuf[i + 1] = acc
   }
 }
 
-/**
- * Pin the row the user is currently looking at.
- *
- * Measuring a row replaces an `avgHeight` guess with its real height, which
- * moves every offset after it. Without a correction the content slides under
- * the cursor — that is the flicker. The anchor is the first row whose bottom
- * is below the viewport top; after the measurements land we put it back at
- * the same distance from the top of the viewport, so the visible rows do not
- * move even though the rows below them just changed height.
- */
-function captureAnchor(): { idx: number; delta: number } | null {
-  const el = scrollEl.value
-  if (!el) return null
-  const top = el.scrollTop
-  // At the very top the follower owns the position (jumpToTop); anchoring
-  // there would fight it.
-  if (autoFollow.value && top < 4) return null
-  const off = offsets.value
+/** Largest group index whose top edge is at or above `px`. */
+function indexAt(px: number): number {
   const n = groups.value.length
   let lo = 0
   let hi = n
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    if (off[mid + 1] <= top) lo = mid + 1
+    if (offsetsBuf[mid + 1] <= px) lo = mid + 1
     else hi = mid
   }
-  return { idx: lo, delta: top - off[lo] }
+  return lo
 }
 
-function applyAnchor(a: { idx: number; delta: number } | null) {
+function recomputeVirtualRange(): void {
   const el = scrollEl.value
-  if (!el || !a) return
-  const next = (offsets.value[a.idx] ?? 0) + a.delta
-  // `behavior: 'instant'` is required, not cosmetic. The container carries
-  // `scroll-smooth`, which makes a plain `el.scrollTop = x` ANIMATE — so the
-  // anchor correction would lag behind the scroll it is correcting and read
-  // as the content sliding around under the cursor.
-  if (Math.abs(next - el.scrollTop) > 0.5) {
-    el.scrollTo({ top: next, behavior: 'instant' as ScrollBehavior })
+  if (!el) return
+  const n = groups.value.length
+  if (n === 0) {
+    if (virtualRange.value.start !== 0 || virtualRange.value.end !== 0) {
+      virtualRange.value = { start: 0, end: 0 }
+    }
+    syncSpacers()
+    return
   }
+  const top = el.scrollTop
+  const viewH = el.clientHeight
+  // The offset table is a prefix sum, so the boundary rows are a binary
+  // search away. Using it keeps the window on real group boundaries
+  // instead of drifting further off the more the estimate is wrong.
+  const first = indexAt(top)
+  const last = indexAt(top + viewH)
+  const start = Math.max(0, first - BUFFER)
+  const end = Math.min(n, last + BUFFER + 1)
+  if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
+    virtualRange.value = { start, end }
+  }
+  syncSpacers()
+}
+
+function syncSpacers(): void {
+  const { start, end } = virtualRange.value
+  padTop.value = offsetsBuf[start] ?? 0
+  const tail = offsetsBuf[groups.value.length] ?? 0
+  padBottom.value = Math.max(0, tail - (offsetsBuf[end] ?? 0))
 }
 
 const renderedGroups = computed(() => {
@@ -416,13 +479,224 @@ const renderedGroups = computed(() => {
   return groups.value.slice(start, end)
 })
 
-const padTop = computed(() => offsets.value[virtualRange.value.start] ?? 0)
-const padBottom = computed(() =>
-  Math.max(
-    0,
-    (offsets.value[groups.value.length] ?? 0) - (offsets.value[virtualRange.value.end] ?? 0),
-  ),
-)
+/**
+ * Measure every group currently in the DOM.
+ *
+ * Returns true when the model and the DOM had drifted apart, which means
+ * the spacers and the window have to be recomputed.
+ */
+function measureRendered(): boolean {
+  const wrap = wrapEl.value
+  if (!wrap) return false
+  const rendered = renderedGroups.value
+  let changed = false
+  let i = 0
+  for (const node of wrap.children) {
+    const key = (node as HTMLElement).dataset.gkey
+    if (key === undefined) continue
+    const g = rendered[i++]
+    if (!g) continue
+    const h = (node as HTMLElement).getBoundingClientRect().height
+    if (h <= 0) continue
+    const prev = groupHeights.get(key)
+    if (prev === undefined || Math.abs(prev - h) > 0.25) {
+      groupHeights.set(key, h)
+      changed = true
+    }
+    // Only a collapsed group is a fair sample of its kind: an expanded one
+    // carries a row per folded line and would poison the estimate.
+    if (!g.expanded) sampleForEstimate(key, h, g.kind === 'run')
+  }
+  const prevSingle = estSingle
+  const prevRun = estRun
+  if (estSingleCount > 0) estSingle = estSingleSum / estSingleCount
+  if (estRunCount > 0) estRun = estRunSum / estRunCount
+  if (Math.abs(estSingle - prevSingle) > 0.005 || Math.abs(estRun - prevRun) > 0.005) {
+    changed = true
+  }
+  pruneMeasurements()
+  return changed
+}
+
+/** Fold a group's height into the per-kind estimate, once per distinct height. */
+function sampleForEstimate(key: string, h: number, isRun: boolean): void {
+  const prev = estSamples.get(key)
+  if (prev === undefined) {
+    estSamples.set(key, { h, run: isRun })
+    if (isRun) {
+      estRunSum += h
+      estRunCount++
+    } else {
+      estSingleSum += h
+      estSingleCount++
+    }
+    return
+  }
+  if (Math.abs(prev.h - h) <= 0.25) return
+  estSamples.set(key, { h, run: isRun })
+  if (isRun) estRunSum += h - prev.h
+  else estSingleSum += h - prev.h
+}
+
+/**
+ * Drop the measurements of groups that are no longer in the buffer.
+ *
+ * The keys are per line object, and the buffer turns over, so without this
+ * the map would grow for the life of the tab. A group that leaves the
+ * buffer also leaves the estimate: its height would otherwise keep pulling
+ * the average towards whatever it used to be.
+ */
+function pruneMeasurements(): void {
+  if (groupHeights.size <= groups.value.length * 2 + 512) return
+  const live = new Set<string>()
+  for (const g of groups.value) live.add(g.key)
+  for (const key of [...groupHeights.keys()]) {
+    if (live.has(key)) continue
+    groupHeights.delete(key)
+    const sample = estSamples.get(key)
+    if (sample === undefined) continue
+    estSamples.delete(key)
+    if (sample.run) {
+      estRunSum -= sample.h
+      estRunCount--
+    } else {
+      estSingleSum -= sample.h
+      estSingleCount--
+    }
+  }
+}
+
+interface Anchor {
+  /** Index of the group at the top of the viewport. */
+  idx: number
+  /** Distance from that group's top edge to the top of the viewport. */
+  delta: number
+  /** The reader was at the end of the content, not in the middle of it. */
+  atBottom?: boolean
+}
+
+/**
+ * Pin the group the reader is looking at.
+ *
+ * Measuring a group replaces an estimate with its real height, which moves
+ * every offset after it. Without a correction the content slides under the
+ * cursor, which is the flicker. The anchor is the group whose box contains
+ * the top of the viewport; once the measurements land we put it back at the
+ * same distance from the top of the viewport, so the visible rows do not
+ * move even though the rows below them just changed height.
+ */
+function captureAnchor(): Anchor | null {
+  const el = scrollEl.value
+  if (!el) return null
+  const top = el.scrollTop
+  // At the very top the follower owns the position (jumpToTop); anchoring
+  // there would fight it.
+  if (autoFollow.value && top <= FOLLOW_EPSILON) return null
+  if (groups.value.length === 0) return null
+  // A reader who asked for the END of the log should still be at the end of
+  // it. The end moves whenever the last groups are measured and turn out to
+  // be taller than their estimate, and a plain anchor would leave the
+  // reader short of it by exactly that much.
+  if (top >= el.scrollHeight - el.clientHeight - 1) {
+    return { idx: groups.value.length - 1, delta: 0, atBottom: true }
+  }
+  const idx = indexAt(top)
+  return { idx, delta: top - (offsetsBuf[idx] ?? 0) }
+}
+
+function applyAnchor(a: Anchor | null): void {
+  const el = scrollEl.value
+  if (!el || !a) return
+  let next: number
+  if (a.atBottom) {
+    // The model's total IS the content height the DOM is about to take:
+    // the spacers are the model, and every rendered group is measured.
+    next = Math.max(0, (offsetsBuf[groups.value.length] ?? 0) - el.clientHeight)
+  } else {
+    next = (offsetsBuf[a.idx] ?? 0) + a.delta
+  }
+  // 'instant' is required, not cosmetic. A smooth scroll would animate
+  // towards the corrected position and read as the content sliding around
+  // under the cursor, which is the very thing being corrected.
+  if (Math.abs(next - el.scrollTop) > 0.5) {
+    el.scrollTo({ top: next, behavior: 'instant' as ScrollBehavior })
+  }
+}
+
+// One settle per animation frame: measure what the DOM now holds, fold it
+// into the model, and put the reader back where they were. The frame the
+// scroll happened in is the frame the correction happens in, so the reader
+// never sees the intermediate position.
+let settleRaf = 0
+let pendingAnchor: Anchor | null = null
+// Pending scroll-position write, coalesced to one per animation frame. A
+// wheel drag fires onScroll dozens of times a second and sessionStorage
+// writes are synchronous main-thread work, so the persistence that was
+// meant to be invisible was itself part of the stutter while scrolling.
+let scrollRaf = 0
+
+function scheduleSettle(anchor: Anchor | null): void {
+  if (anchor) pendingAnchor = anchor
+  if (settleRaf) return
+  settleRaf = requestAnimationFrame(() => {
+    settleRaf = 0
+    settle()
+  })
+}
+
+// A restore is expressed as a group's identity, not as a pixel offset: a
+// pixel only means something relative to the model that produced it, and
+// the model moves every time lines are prepended or trimmed. Once the
+// group has been measured the offset can be applied exactly, so the
+// restore is replayed after every model change until the reader takes
+// over.
+let pendingRestore: { idx: number; offset: number } | null = null
+// Where the restore last put the reader. A scroll that lands somewhere
+// else is the reader taking over, and the restore stops replaying.
+let restoreAppliedAt = -1
+
+function settle(): void {
+  const anchor = pendingAnchor
+  pendingAnchor = null
+  if (measureRendered()) {
+    rebuildOffsets()
+    recomputeVirtualRange()
+  }
+  if (pendingRestore) {
+    // The restore owns the position until the reader takes over: it is the
+    // group they left, and the model is still settling towards it.
+    const before = scrollEl.value?.scrollTop ?? 0
+    applyAnchor({ idx: pendingRestore.idx, delta: pendingRestore.offset })
+    restoreAppliedAt = scrollEl.value?.scrollTop ?? before
+    return
+  }
+  applyAnchor(anchor)
+}
+
+// A group can change height without the window moving: a fold opens, a
+// JSON panel expands, a web font swaps in. The observer catches those,
+// because a height the model has never seen is exactly the blind spot that
+// made the spacers lie about the content.
+let resizeObserver: ResizeObserver | null = null
+
+function onMotionPreferenceChange(e: MediaQueryListEvent): void {
+  prefersReducedMotion.value = e.matches
+}
+
+/** Point the observer at the groups currently in the DOM. */
+function observeRenderedGroups(): void {
+  const ro = resizeObserver
+  const wrap = wrapEl.value
+  if (!ro || !wrap) return
+  ro.disconnect()
+  for (const node of wrap.children) {
+    if ((node as HTMLElement).dataset.gkey !== undefined) ro.observe(node)
+  }
+}
+
+watch(virtualRange, () => {
+  nextTick(observeRenderedGroups)
+})
 
 function toggleExpand(key: string) {
   const s = new Set(expanded.value)
@@ -457,63 +731,117 @@ const displayedLines = computed(() => {
 })
 
 // === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
+//
+// The app owns scrollTop. The container carries no CSS scroll-behavior and
+// native scroll anchoring is off, so nothing moves the scroll position
+// behind the model's back.
+//
+//   - a reader command (jump to newest, jump to error, page) animates,
+//     unless the reader asked for reduced motion;
+//   - a correction (putting the reader back where the measurement moved
+//     them) is instant, because an animated correction reads as the very
+//     slide it is correcting.
+const prefersReducedMotion = ref(false)
+let motionQuery: MediaQueryList | null = null
+
+function commandBehavior(): ScrollBehavior {
+  return prefersReducedMotion.value ? 'instant' : 'smooth'
+}
+
+function scrollToPosition(top: number, kind: 'command' | 'correction' = 'command'): void {
+  const el = scrollEl.value
+  if (!el) return
+  el.scrollTo({
+    top,
+    behavior: kind === 'correction' ? ('instant' as ScrollBehavior) : commandBehavior(),
+  })
+}
+
 function jumpToTop() {
-  scrollEl.value?.scrollTo({ top: 0, behavior: 'smooth' })
+  scrollToPosition(0)
+}
+
+/**
+ * Re-pin the panel to the newest line when the reader is following.
+ *
+ * There is no interaction timer here any more. The old code also required
+ * "something happened in the last three seconds", which meant a reader who
+ * parked the mouse over the panel stopped receiving the tail exactly when
+ * they were watching it. What protects a reader is that they are no longer
+ * at the top, and the scroll position says exactly that.
+ */
+function followTopIfFollowing(): void {
+  const el = scrollEl.value
+  if (!el || !autoFollow.value) return
+  if (el.scrollTop > FOLLOW_EPSILON) return
+  if (el.scrollTop > 0) scrollToPosition(0)
 }
 
 watch(displayedLines, (v) => {
   emit('update:filtered', v.map(d => d.raw))
-  const recentlyWatched = Date.now() - lastInteraction.value < 3000
-  const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
-  if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
-  nextTick(() => {
-    const anchor = captureAnchor()
-    recomputeVirtualRange()
-    measureRendered()
-    applyAnchor(anchor)
-  })
+  // The group list changed, so every offset moved. The model is rebuilt
+  // before the window is recomputed, otherwise the window would be chosen
+  // from stale offsets.
+  rebuildOffsets()
+  recomputeVirtualRange()
+  followTopIfFollowing()
+  scheduleSettle(captureAnchor())
 }, { immediate: true })
 
 watch(() => props.lines.length, () => {
-  const recentlyWatched = Date.now() - lastInteraction.value < 3000
-  const wasNearTop = scrollEl.value ? scrollEl.value.scrollTop < 100 : true
-  if (autoFollow.value && recentlyWatched && wasNearTop) jumpToTop()
+  followTopIfFollowing()
+})
+
+// === Live region ===
+// The virtualized region is aria-live="off" (a scroll re-renders a window
+// of rows, and a polite region would read all of them out). This is the
+// half that matters: how many lines arrived.
+const liveMessage = ref('')
+let lastLineCount = 0
+watch(() => props.lines.length, (n) => {
+  const grew = n - lastLineCount
+  lastLineCount = n
+  if (grew > 0) liveMessage.value = t('log.newLines', { count: grew })
 })
 
 function onScroll() {
   const anchor = captureAnchor()
   recomputeVirtualRange()
-  // Rows that just scrolled in have never been measured; record them before
-  // the next scroll event reads the offset table, otherwise the pads still
-  // carry the average for exactly the rows the user is looking at.
-  measureRendered()
-  applyAnchor(anchor)
+  // The groups that just scrolled in have never been measured. Measure
+  // them once the DOM has settled, then put the reader back where the
+  // measurement moved them.
+  scheduleSettle(anchor)
   if (!scrollEl.value) return
   const top = scrollEl.value.scrollTop
+  // A pending restore is the position the reader was last at. As soon as
+  // they move away from it, they have taken over and the restore stops
+  // replaying.
+  if (pendingRestore) {
+    if (Math.abs(top - restoreAppliedAt) > 1) pendingRestore = null
+  }
   // Restore-on-remount: switching tabs unmounts the LogViewer; persist the
-  // reading position so coming back resumes where the user was (only worth
-  // it when not auto-following — followers want the newest line at top).
-  // Coalesced to one write per frame. A wheel drag fires onScroll dozens of
-  // times a second and sessionStorage.setItem is synchronous main-thread work,
-  // so the persistence that was meant to be invisible was itself part of the
-  // stutter while scrolling.
+  // reading position so coming back resumes where the user was. The
+  // position is stored as an IDENTITY (which group was at the top) rather
+  // than as a pixel offset, because a pixel only means something relative
+  // to the model that produced it, and the model moves every time lines
+  // are prepended or trimmed. Coalesced to one write per frame: a wheel
+  // drag fires onScroll dozens of times a second and sessionStorage.setItem
+  // is synchronous main-thread work.
   if (scrollRaf === 0) {
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = 0
-      try {
-        sessionStorage.setItem(`k8s-log-scroll:${props.namespace}:${props.podName}`, String(top))
-      } catch { /* quota / disabled */ }
+      saveScrollMemory()
     })
   }
   // Newest-at-top: scrollTop=0 means we're at the newest line.
-  if (top < 4) {
+  if (top <= FOLLOW_EPSILON) {
     // User is back at the top — re-engage auto-follow and clear unread.
     if (!autoFollow.value) {
       autoFollow.value = true
       emit('update:autoFollow', true)
       emit('consume-unread')
     }
-  } else if (top > 50 && autoFollow.value) {
+  } else if (top > FOLLOW_BREAK && autoFollow.value) {
     // User scrolled away from top — disable auto-follow, show unread pill.
     // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
     // mirror of the ref PodDetailView shares with usePodLogs, and flush()
@@ -548,37 +876,66 @@ function toggleErrorsOnly() {
   minSeverity.value = minSeverity.value === 3 ? 0 : 3
 }
 function jumpToError(dir: 1 | -1) {
-  // Find next/prev error-or-warn line in displayedLines (after container filter),
-  // and scroll to it. Reverse iteration for `dir = -1` (G).
-  const errs = displayedLines.value.filter((l) =>
-    SEV_ERROR_KEYS.has(l.raw.severity.toLowerCase())
-    || l.raw.severity.toLowerCase() === 'warn'
-    || l.raw.severity.toLowerCase() === 'warning',
-  )
-  if (errs.length === 0) return
-  // displayedLines is newest-first. `g` (dir=1) = newer, `G` (dir=-1) = older.
-  // Newer has smaller group.key (closer to 0). For "next" we want the line
-  // after the current top: pick the first err whose key > 0 if any.
-  const top = scrollEl.value?.scrollTop ?? 0
-  const currentKey = top <= 0 ? -1 : Math.floor(top / LINE_HEIGHT)
-  let target: DecoratedLine | null = null
+  const el = scrollEl.value
+  if (!el) return
+  const gs = groups.value
+  if (gs.length === 0) return
+  const cur = indexAt(el.scrollTop)
+  let target = -1
+  // displayedLines is newest-first, so "newer" is a SMALLER group index.
+  // The previous implementation compared a LINE index against a pixel
+  // offset computed from a flat 22px row, so it landed on an unrelated line
+  // whenever the rows were not uniform.
   if (dir === 1) {
-    target = errs.find((l) => displayedLines.value.indexOf(l) > currentKey) ?? errs[0]!
+    for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
+    if (target < 0) for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
   } else {
-    // find latest err before currentKey
-    for (const e of errs) {
-      const k = displayedLines.value.indexOf(e)
-      if (k < currentKey) { target = e; break }
-    }
-    if (!target) target = errs[errs.length - 1]!
+    for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
+    if (target < 0) for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
   }
-  const idx = displayedLines.value.indexOf(target)
-  scrollEl.value?.scrollTo({ top: idx * LINE_HEIGHT, behavior: 'smooth' })
+  if (target < 0) return
+  revealGroup(gs[target], target)
 }
+
+function isErrorLine(l: DecoratedLine): boolean {
+  const sev = l.raw.severity.toLowerCase()
+  return SEV_ERROR_KEYS.has(sev) || sev === 'warn' || sev === 'warning'
+}
+
+function groupHasError(g: Group): boolean {
+  return g.lines.some(isErrorLine)
+}
+
+/**
+ * Bring a group into view.
+ *
+ * A folded run shows only its first line, so a jump that lands on a fold
+ * has to open it. Otherwise the command moves the reader to a row that
+ * displays a count instead of the error they asked for.
+ */
+function revealGroup(g: Group, idx: number): void {
+  const lineIdx = g.lines.findIndex(isErrorLine)
+  const within = g.kind === 'run' && lineIdx > 0 ? lineIdx * estSingle : 0
+  if (g.kind === 'run' && !g.expanded) {
+    const s = new Set(expanded.value)
+    s.add(g.key)
+    expanded.value = s
+    // Opening the fold changes the group's height, so the target is only
+    // known once the extra rows have been laid out and measured.
+    nextTick(() => {
+      rebuildOffsets()
+      recomputeVirtualRange()
+      scrollToPosition((offsetsBuf[idx] ?? 0) + within)
+    })
+    return
+  }
+  scrollToPosition((offsetsBuf[idx] ?? 0) + within)
+}
+
 function jumpLine(dir: 1 | -1) {
   const el = scrollEl.value
   if (!el) return
-  el.scrollBy({ top: dir * LINE_HEIGHT * 5, behavior: 'smooth' })
+  el.scrollBy({ top: dir * estSingle * 5, behavior: commandBehavior() })
 }
 function clearAll() {
   emit('clear')
@@ -599,7 +956,6 @@ useLogKeyboardShortcuts(
 
 function onRegionEnter() {
   shortcutsActive.value = true
-  markInteraction()
 }
 function onRegionLeave() {
   shortcutsActive.value = false
@@ -618,26 +974,44 @@ onMounted(() => {
   // Mounting/unmounting of `document` listeners is handled by the composable's
   // watchEffect. We still need an initial focus state for SSR safety.
   shortcutsActive.value = false
+  // Reduced motion reaches scroll animations too. The global stylesheet
+  // shortens CSS animations and transitions, but a programmatic scroll is
+  // neither, so the preference is honoured here.
+  motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  prefersReducedMotion.value = motionQuery.matches
+  motionQuery.addEventListener('change', onMotionPreferenceChange)
+  // A group can change height without the window moving: a fold opens, a
+  // JSON panel expands, a web font swaps in. The observer catches those,
+  // because a height the model has never seen is exactly the blind spot
+  // that made the spacers lie.
+  resizeObserver = new ResizeObserver(() => {
+    scheduleSettle(captureAnchor())
+  })
+  // Now that the scroller exists, the window can be computed properly.
+  rebuildOffsets()
+  recomputeVirtualRange()
+  observeRenderedGroups()
   // Followers land on the newest line; readers resume their saved position
   // (tab switches remount this component and used to reset scrollTop to 0).
   if (autoFollow.value) {
     nextTick(jumpToTop)
   } else {
-    nextTick(() => {
-      try {
-        const saved = sessionStorage.getItem(`k8s-log-scroll:${props.namespace}:${props.podName}`)
-        // instant, for the same reason as applyAnchor: `scroll-smooth` would
-        // animate the restore, so every tab switch slid from the top down to
-        // the saved position instead of opening where the reader left off.
-        if (saved && scrollEl.value) {
-          scrollEl.value.scrollTo({ top: Number(saved), behavior: 'instant' as ScrollBehavior })
-        }
-      } catch { /* quota / disabled */ }
-    })
+    // The restore is replayed by settle() as the model is corrected, so it
+    // lands on the same GROUP the reader left rather than on the same
+    // pixel, which by then may mean a different line.
+    nextTick(restoreScrollMemory)
   }
 })
 
 onUnmounted(() => {
+  motionQuery?.removeEventListener('change', onMotionPreferenceChange)
+  motionQuery = null
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (settleRaf) {
+    cancelAnimationFrame(settleRaf)
+    settleRaf = 0
+  }
   // ponytail: 清理 search history debounce timer，避免 unmount 后还写 localStorage
   if (searchHistoryTimer) {
     clearTimeout(searchHistoryTimer)
@@ -1233,38 +1607,50 @@ const helpRows = computed(() => [
       </button>
     </div>
 
-    <!-- Log area (NEWEST AT TOP) - fold groups, no virtualization -->
+    <!-- ponytail: the error banner belongs to the PANEL, not to the log
+         stream. It used to sit inside the scrollable region, where it took
+         flow space the virtual model knew nothing about, so every offset
+         was shifted by the banner's height whenever an error was showing,
+         and the banner scrolled away from the thing it was reporting on. -->
+    <div
+      v-if="error"
+      class="flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-error shrink-0"
+      role="alert"
+    >
+      <AlertCircle :size="14" :stroke-width="2" />
+      <span class="flex-1 text-xs font-medium">{{ error }}</span>
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-6 px-2 text-2xs border-error/40 text-error hover:bg-error/15"
+        @click="emit('retry')"
+        :aria-label="t('state.retry')"
+      >
+        {{ t('state.retry') }}
+      </Button>
+    </div>
+
+    <!-- Log area (NEWEST AT TOP) - fold groups, virtualized -->
+    <!--
+      The scroll container owns no scroll behaviour of its own. A CSS
+      `scroll-behavior: smooth` turns every programmatic scroll into an
+      animation, and the animation is interrupted whenever the virtual
+      window changes the content height underneath it, so a jump to the end
+      of the log used to land hundreds of pixels short. Native scroll
+      anchoring is switched off for the same reason: the browser re-anchors
+      when the content above the viewport resizes, which moves scrollTop on
+      its own and fights the model's own correction.
+    -->
     <div
       ref="scrollEl"
-      class="flex-1 overflow-auto bg-background relative scroll-smooth"
+      class="log-scroll flex-1 overflow-auto bg-background relative"
       role="log"
-      aria-live="polite"
+      aria-live="off"
       :aria-label="t('log.outputLabel')"
       @mouseenter="onRegionEnter"
       @mouseleave="onRegionLeave"
-      @scroll="(e) => { onScroll(); markInteraction() }"
+      @scroll="onScroll"
     >
-      <!-- ponytail: error banner sits inside the scrollable region so the layout
-           above (toolbar + status bar) stays the same; it's the first thing the
-           user sees at the top of the buffer. -->
-      <div
-        v-if="error"
-        class="sticky top-0 z-20 flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-red-700"
-        role="alert"
-      >
-        <AlertCircle :size="14" :stroke-width="2" />
-        <span class="flex-1 text-xs font-medium">{{ error }}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-6 px-2 text-2xs border-error/40 text-red-700 hover:bg-error/15"
-          @click="emit('retry')"
-          :aria-label="t('state.retry')"
-        >
-          {{ t('state.retry') }}
-        </Button>
-      </div>
-
       <!-- "N new" pill when auto-follow is off and new lines arrived -->
       <button
         v-if="!autoFollow && (unreadCount ?? 0) > 0"
@@ -1309,25 +1695,29 @@ const helpRows = computed(() => [
       </div>
       <div v-else ref="wrapEl" class="relative">
         <div :style="{ height: padTop + 'px' }" aria-hidden="true" />
-<template v-for="(group, idx) in renderedGroups" :key="group.key">
+        <div
+          v-for="group in renderedGroups"
+          :key="group.key"
+          :data-gkey="group.key"
+          class="log-group"
+        >
           <template v-if="group.kind === 'single'">
             <div
-              :data-gkey="group.key"
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
                 'hover:bg-muted/40 transition-colors',
-                severityBorderFor(group.line.raw.severity),
+                severityBorderFor(group.lines[0].raw.severity),
               )"
-              v-memo="[group.line.raw.content, group.line.raw.severity, jsonExpanded.has(`${group.key}`), group.line.traceId, truncatedExpanded.has(group.line.raw.content), wrapMode, locale]"
+              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale]"
             >
               <button
-                v-if="group.line.traceId"
+                v-if="group.lines[0].traceId"
                 type="button"
-                @click.stop="toggleTraceFilter(group.line.traceId)"
+                @click.stop="toggleTraceFilter(group.lines[0].traceId)"
                 class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
-                :style="{ background: traceIdColor(group.line.traceId) }"
-                :title="t('log.filterTraceTitle', { traceId: group.line.traceId })"
-                :aria-label="t('log.filterTraceLabel', { traceId: group.line.traceId })"
+                :style="{ background: traceIdColor(group.lines[0].traceId) }"
+                :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
+                :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
               />
               <span
                 v-if="isNewestLine(group)"
@@ -1337,21 +1727,21 @@ const helpRows = computed(() => [
               <!-- Col 1: timestamp (sticky) -->
               <span
                 class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
-                :title="`${fmtUtcTime(group.line.raw.timestamp)} · ${tzOffset()}`"
+                :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
-                {{ fmtLocalTime(group.line.raw.timestamp) }}
+                {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
               <!-- Col 2: severity badge (sticky) -->
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.line.raw.severity))">{{ sevBadgeText(group.line.raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <!-- Col 3: content (inline-prefix chips + ANSI-colored text + truncate toggle) -->
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
-                  v-if="group.line.raw.container && group.line.raw.container !== '—'"
+                  v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
                   class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
-                  :title="group.line.raw.container"
-                >{{ group.line.raw.container }}</span>
+                  :title="group.lines[0].raw.container"
+                >{{ group.lines[0].raw.container }}</span>
                 <button
-                  v-if="group.line.isJson"
+                  v-if="group.lines[0].isJson"
                   type="button"
                   @click="toggleJson(`${group.key}`)"
                   class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
@@ -1363,28 +1753,28 @@ const helpRows = computed(() => [
                   <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
                   <ChevronUp v-else :size="9" :stroke-width="2.5" />
                 </button>
-                <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.line.raw.content : undefined" v-html="lineHtml(group.line.raw)" />
+                <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.lines[0].raw.content : undefined" v-html="lineHtml(group.lines[0].raw)" />
                 <button
-                  v-if="plainLength(group.line.raw) > TRUNCATE_LIMIT"
+                  v-if="plainLength(group.lines[0].raw) > TRUNCATE_LIMIT"
                   type="button"
                   class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
-                  :title="truncatedExpanded.has(group.line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
-                  @click.stop="toggleTruncate(group.line.raw.content)"
+                  :title="truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() })"
+                  @click.stop="toggleTruncate(group.lines[0].raw.content)"
                 >
-                  {{ truncatedExpanded.has(group.line.raw.content) ? t('log.collapse') : t('log.moreChars', { count: (plainLength(group.line.raw) - TRUNCATE_LIMIT).toLocaleString() }) }}
+                  {{ truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.moreChars', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() }) }}
                 </button>
               </div>
             </div>
             <div
-              v-if="group.line.isJson && jsonExpanded.has(`${group.key}`)"
-              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
+              v-if="group.lines[0].isJson && jsonExpanded.has(`${group.key}`)"
+              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-2xs overflow-x-auto font-mono"
             >
               <div
-                v-for="jl in formatJsonLines(group.line.raw)"
+                v-for="jl in formatJsonLines(group.lines[0].raw)"
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
-                    <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
+                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
                 <span
                   class="flex-1 min-w-0 whitespace-pre"
                   :style="JSON_GUIDE_STYLE"
@@ -1400,7 +1790,7 @@ const helpRows = computed(() => [
                 'hover:bg-muted/40 transition-colors',
                 severityBorderFor(group.lines[0].raw.severity),
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, wrapMode, locale]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"
@@ -1435,19 +1825,6 @@ const helpRows = computed(() => [
                   class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
-                <button
-                  v-if="group.lines[0].isJson"
-                  type="button"
-                  @click.stop="toggleJson(`${group.key}`)"
-                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                  :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
-                  :aria-expanded="jsonExpanded.has(`${group.key}`)"
-                  :aria-label="t('log.toggleJsonLabel')"
-                >
-                  JSON
-                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
-                  <ChevronUp v-else :size="9" :stroke-width="2.5" />
-                </button>
                 <span
                   v-if="!group.expanded"
                   class="group/fold relative flex-1 min-w-0 font-mono truncate"
@@ -1498,10 +1875,10 @@ const helpRows = computed(() => [
             </div>
             <Transition name="fade-fast">
               <div v-if="group.expanded" class="contents">
-                <template v-for="(line, idx) in group.lines.slice(1)" :key="`${group.key}:${line.raw.timestamp}`">
+                <template v-for="(line, li) in group.lines.slice(1)" :key="`${group.key}:${li}`">
                   <div
                     class="grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline pl-7 pr-3 leading-[22px] min-h-[22px] border-l-[3px] border-l-foreground/20 text-foreground relative"
-                    v-memo="[line.raw.content, line.raw.severity, jsonExpanded.has(`${group.key + idx + 1}`), line.traceId, truncatedExpanded.has(line.raw.content), wrapMode, locale]"
+                    v-memo="[line.raw.content, line.raw.severity, line.traceId, truncatedExpanded.has(line.raw.content), wrapMode, locale]"
                   >
                   <button
                     v-if="line.traceId"
@@ -1520,19 +1897,6 @@ const helpRows = computed(() => [
                   </span>
                   <span class="sticky left-[100px] bg-card z-10" />
                   <div class="flex items-baseline gap-2 min-w-0">
-                    <button
-                      v-if="line.isJson"
-                      type="button"
-                      @click="toggleJson(`${group.key + idx + 1}`)"
-                      class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
-                      :title="jsonExpanded.has(`${group.key + idx + 1}`) ? t('log.collapseJson') : t('log.expandJson')"
-                      :aria-expanded="jsonExpanded.has(`${group.key + idx + 1}`)"
-                      :aria-label="t('log.toggleJsonLabel')"
-                    >
-                      JSON
-                      <ChevronDown v-if="!jsonExpanded.has(`${group.key + idx + 1}`)" :size="9" :stroke-width="2.5" />
-                      <ChevronUp v-else :size="9" :stroke-width="2.5" />
-                    </button>
                     <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? line.raw.content : undefined" v-html="lineHtml(line.raw)" />
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
@@ -1544,32 +1908,23 @@ const helpRows = computed(() => [
                       {{ truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.moreChars', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() }) }}
                     </button>
                   </div>
-                </div>
-                <div
-                  v-if="line.isJson && jsonExpanded.has(`${group.key + idx + 1}`)"
-                  class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-[11px] overflow-x-auto font-mono"
-                >
-                  <div
-                    v-for="jl in formatJsonLines(line.raw)"
-                    :key="jl.num"
-                    class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
-                  >
-                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
-                    <span
-                      class="flex-1 min-w-0 whitespace-pre"
-                      :style="JSON_GUIDE_STYLE"
-                      v-html="jl.html"
-                    />
                   </div>
-                </div>
-              </template>
+                </template>
               </div>
             </Transition>
           </template>
-        </template>
+        </div>
         <div :style="{ height: padBottom + 'px' }" aria-hidden="true" />
       </div>
     </div>
+
+    <!--
+      The virtualized region is marked `aria-live="off"`: every scroll
+      re-renders a window of rows, and a polite region would read all of
+      them out. A separate, visually hidden region names what actually
+      changed, which is the useful half of the announcement.
+    -->
+    <div class="sr-only" aria-live="polite" aria-atomic="true">{{ liveMessage }}</div>
 
     <!-- Status bar -->
     <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
@@ -1593,6 +1948,23 @@ const helpRows = computed(() => [
 </template>
 
 <style scoped>
+/*
+  The scroll container owns its own scroll position.
+
+  `scroll-behavior: auto` because a CSS smooth scroll turns every
+  programmatic scroll into an animation, and that animation is interrupted
+  whenever the virtual window changes the content height underneath it, so
+  a jump to the end of the log landed hundreds of pixels short.
+
+  `overflow-anchor: none` because native scroll anchoring re-anchors when
+  the content above the viewport resizes, moving scrollTop on its own and
+  fighting the model's own correction. That fight is the flicker.
+*/
+.log-scroll {
+  scroll-behavior: auto;
+  overflow-anchor: none;
+}
+
 /* ponytail: scoped fade-fast for the fold-row <Transition>. Soft 150ms so the
    expand/collapse of duplicate-line groups doesn't flicker when the user clicks
    a 12-row fold open. */

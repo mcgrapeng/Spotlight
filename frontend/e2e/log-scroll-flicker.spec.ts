@@ -2,112 +2,233 @@ import { test, expect } from '@playwright/test'
 import { installApiMocks } from './_fixtures'
 
 /**
- * Regression: the log panel flickered while scrolling back through history.
+ * The log panel virtualizes its rows with a spacer above and below the
+ * rendered window. That only works if the model and the DOM agree on how
+ * tall every group is, and the browser audits the agreement through two
+ * channels: the total scroll height, and native scroll anchoring, which
+ * moves scrollTop on its own when the content above the viewport resizes.
  *
- * LogViewer virtualizes with padding spacers above and below the rendered
- * window, sized from a per-row height. Rows are NOT uniform — a row carrying
- * a severity badge or a container chip measures 24px, a plain one 22px. When
- * the spacers were computed from a flat 22px constant while the DOM rendered
- * real heights, total scrollHeight changed every time the window moved, the
- * browser re-anchored, and the content visibly jumped under the cursor.
+ * These specs assert the four behaviours that define "fixed":
  *
- * This asserts the thing the user actually sees: the scrollable height must
- * stay put while scrolling through history. It mocks the API so it runs
- * without a cluster, and drives the real wheel input path.
+ *   1. every rendered row belongs to a group whose height the model can
+ *      see, so no row is invisible to the measurement;
+ *   2. scrollTop never walks backwards while the reader scrolls forward;
+ *   3. the oldest line is reachable and fully visible at maximum scroll;
+ *   4. the content moves by exactly the distance the reader scrolled, so
+ *      nothing slides under the cursor.
  */
-test.describe('Pod logs — scrolling history does not flicker', () => {
-  test.use({ baseURL: process.env.VITE_PREVIEW_URL ?? 'http://127.0.0.1:4173' })
 
-  // Enough lines to overflow the viewport many times over. The content is
-  // padded so rows wrap to a DIFFERENT number of lines each — that variance is
-  // the whole point. Short synthetic lines all render at exactly 22px, the
-  // height the old code hard-coded, and the bug goes invisible. The assert
-  // below fails loudly if this ever stops being true rather than letting the
-  // test pass for the wrong reason.
-  const LINES = Array.from({ length: 400 }, (_, i) => ({
+// A log that contains every shape that breaks a flat-height model: plain
+// text, a folded run of identical lines, JSON payloads, and lines long
+// enough to wrap to a different number of lines each.
+const WORDS = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel']
+const LINES = Array.from({ length: 400 }, (_, i) => {
+  const base = {
     timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
-    content: `line ${i} ` + 'lorem ipsum dolor sit amet consectetur '.repeat(2 + (i % 3)),
     container: i % 3 === 0 ? 'app' : '',
     severity: i % 5 === 0 ? 'error' : 'info',
-  }))
+  }
+  // The buffer is newest-first, so the LAST indices are the oldest lines and
+  // the FIRST indices are the newest. The shapes that matter are put at the
+  // newest end so they are on screen when the panel opens.
+  if (i >= 360) {
+    // 40 identical lines: they fold into ONE group.
+    return { ...base, content: 'identical heartbeat line' }
+  }
+  if (i >= 320) {
+    // 40 JSON payloads in groups of five. The normalizer maps every number
+    // to 'N', so these would all fold together if JSON lines were foldable.
+    return {
+      ...base,
+      content: JSON.stringify({ level: 'info', tag: WORDS[i % WORDS.length], n: i }),
+    }
+  }
+  return {
+    ...base,
+    content: 'line ' + i + ' ' + 'lorem ipsum dolor sit amet consectetur '.repeat(2 + (i % 3)),
+  }
+})
 
-  test('scrollHeight stays constant while scrolling up through history', async ({ page }) => {
-    await installApiMocks(page)
-    // Enough lines to overflow the viewport several times over, with a mix of
-    // badge-bearing and plain rows so row heights genuinely differ.
-    // Registered after installApiMocks, so it wins the LIFO match. The regex
-    // anchors on `?` or end-of-path so it cannot swallow `/logs/stream`.
-    await page.route(/\/api\/v1\/pods\/default\/webapp-001\/logs(\?|$)/, (route) =>
-      route.fulfill({ json: { total: LINES.length, items: LINES } }),
-    )
+async function openLog(page) {
+  await installApiMocks(page)
+  await page.route(/\/api\/v1\/pods\/default\/webapp-001\/logs(\?|$)/, (route) =>
+    route.fulfill({ json: { total: LINES.length, items: LINES } }),
+  )
+  await page.goto('/pods/default/webapp-001')
+  const log = page.locator('[role="log"]')
+  await expect(log).toBeVisible()
+  await expect
+    .poll(async () => log.evaluate((el) => el.scrollHeight > el.clientHeight * 3), { timeout: 15_000 })
+    .toBe(true)
+  return log
+}
 
-    await page.goto('/pods/default/webapp-001')
-    // Wrapped rows are a deterministic way to get genuinely mixed heights.
-    await page.getByRole('button', { name: /切换换行/ }).click()
+/** Put the wheel over the middle of the log panel. */
+async function wheelOver(page, log, dy: number) {
+  const box = await log.boundingBox()
+  if (!box) throw new Error('the log panel has no box')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, dy)
+}
 
-    const log = page.locator('[role="log"]')
-    await expect(log).toBeVisible()
-    // Readiness by geometry, not by selector: wait until the region actually
-    // overflows. Deliberately independent of how rows are marked in the DOM,
-    // so this test measures the BEHAVIOUR and cannot pass or fail just because
-    // an implementation detail was added or removed.
-    await expect
-      .poll(async () => log.evaluate((el) => el.scrollHeight > el.clientHeight * 3), { timeout: 15_000 })
-      .toBe(true)
+test.describe('Pod logs — the virtual model matches the DOM', () => {
+  test('no rendered row escapes the measurement', async ({ page }) => {
+    const log = await openLog(page)
 
-    // Precondition: the fixture must actually produce rows of differing
-    // heights, otherwise the assertion below is vacuous.
-    const heightsSeen = await log.evaluate((el) => {
-      const rows = [...(el.querySelector('div.relative')?.children ?? [])]
-        .filter((c) => !c.hasAttribute('aria-hidden'))
-      return [...new Set(rows.map((r) => Math.round(r.getBoundingClientRect().height)))]
+    // Open a fold and a JSON panel: these are the two shapes that used to
+    // add DOM the model could not see. A folded run added one row per
+    // folded line inside a display:contents wrapper that carried no key,
+    // and a JSON panel was a sibling of the row rather than part of it.
+    const fold = log.locator('div[role="button"]').first()
+    await expect(fold).toHaveAttribute('aria-expanded', 'false')
+    await fold.click()
+    await page.waitForTimeout(400)
+    const jsonChip = log.getByRole('button', { name: /JSON/i }).first()
+    await jsonChip.click()
+    await page.waitForTimeout(400)
+
+    const report = await log.evaluate((el) => {
+      const ROW = 'div[class*="min-h-[22px]"]'
+      const wrap = el.querySelector('div.relative')!
+      const groups = [...wrap.querySelectorAll('[data-gkey]')]
+      const allRows = [...wrap.querySelectorAll(ROW)]
+      // Every rendered row must live inside a group wrapper, and the
+      // wrapper must be at least as tall as the rows it contains.
+      const orphans = allRows.filter((r) => !r.closest('[data-gkey]'))
+      const tooShort = groups
+        .map((g) => {
+          const inner = [...g.querySelectorAll(ROW)].reduce(
+            (a, r) => a + r.getBoundingClientRect().height,
+            0,
+          )
+          return {
+            key: (g as HTMLElement).dataset.gkey,
+            h: g.getBoundingClientRect().height,
+            inner,
+          }
+        })
+        .filter((g) => g.inner > g.h + 1)
+      return {
+        groupCount: groups.length,
+        rowCount: allRows.length,
+        orphanRows: orphans.length,
+        tooShort: tooShort.slice(0, 3),
+      }
     })
-    expect(
-      heightsSeen.length,
-      `fixture produced uniform row heights ${JSON.stringify(heightsSeen)}; the drift this test guards cannot occur`,
-    ).toBeGreaterThan(1)
+
+    expect(report.orphanRows, 'every rendered row must belong to a measured group').toBe(0)
+    expect(report.tooShort, 'a group wrapper must be as tall as the rows it holds').toEqual([])
+    // The fixture has to actually contain the shapes, or the assertion
+    // above is vacuous.
+    expect(report.rowCount, 'the fixture must render a folded run').toBeGreaterThan(40)
+  })
+
+  test('scrollTop never moves backwards while scrolling forward', async ({ page }) => {
+    const log = await openLog(page)
+    await page.getByRole('button', { name: /切换换行/ }).click()
+    await page.waitForTimeout(400)
 
     await log.evaluate((el) => {
-      const w = window as unknown as { __h: number[]; __t: number[] }
-      w.__h = []
+      const w = window as unknown as { __t: number[] }
       w.__t = []
-      el.addEventListener('scroll', () => {
-        w.__h.push(el.scrollHeight)
-        w.__t.push(Math.round(el.scrollTop))
-      }, { passive: true })
+      el.addEventListener('scroll', () => w.__t.push(Math.round(el.scrollTop)), { passive: true })
     })
-
     for (let i = 0; i < 25; i++) {
-      await page.mouse.move(700, 400)
-      await page.mouse.wheel(0, 120)
+      await wheelOver(page, log, 120)
       await page.waitForTimeout(30)
     }
     await page.waitForTimeout(800)
 
-    const { h: measured, t: tops } = await page.evaluate(() => {
-      const w = window as unknown as { __h: number[]; __t: number[] }
-      return { h: w.__h, t: w.__t }
-    })
+    const tops = await page.evaluate(() => (window as unknown as { __t: number[] }).__t)
     expect(tops.length).toBeGreaterThan(5)
-
-    // The assertion that matches what the user saw. Scrolling DOWN through
-    // history must move scrollTop forward only. The old spacer math made it
-    // oscillate — every window change resized the content and the browser
-    // re-anchored, bouncing the viewport back and forth, which is the
-    // flicker. Checking monotonicity rather than a total scrollHeight budget
-    // keeps the test honest: with very long wrapped logs the estimate for
-    // never-measured rows is still refined as you scroll, so total height can
-    // still settle by a few pixels — but the content under the cursor must
-    // never travel backwards.
     const regressions: string[] = []
     for (let i = 1; i < tops.length; i++) {
-      if (tops[i] < tops[i - 1]) {
-        regressions.push(`${tops[i - 1]} -> ${tops[i]}`)
+      if (tops[i] < tops[i - 1]) regressions.push(tops[i - 1] + ' -> ' + tops[i])
+    }
+    expect(regressions, 'scrollTop moved backwards ' + regressions.length + ' times').toEqual([])
+  })
+
+  test('the oldest line is reachable at maximum scroll', async ({ page }) => {
+    const log = await openLog(page)
+    for (const wrap of [false, true]) {
+      if (wrap) {
+        await page.getByRole('button', { name: /切换换行/ }).click()
+        await page.waitForTimeout(500)
+      }
+      await log.evaluate(
+        (el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior }),
+      )
+      await page.waitForTimeout(700)
+      const end = await log.evaluate((el) => {
+        const wrap = el.querySelector('div.relative')!
+        const rows = [...wrap.querySelectorAll('div[class*="min-h-[22px]"]')]
+        const last = rows[rows.length - 1]
+        const lb = last?.getBoundingClientRect()
+        const eb = el.getBoundingClientRect()
+        return {
+          scrollTop: Math.round(el.scrollTop),
+          maxScroll: Math.round(el.scrollHeight - el.clientHeight),
+          lastRowText: (last?.innerText || '').replace(/\s+/g, ' ').slice(0, 40),
+          visible: lb ? lb.bottom <= eb.bottom + 2 && lb.top >= eb.top - 2 : false,
+        }
+      })
+      expect(end.scrollTop, 'wrap=' + wrap + ': the reader must be able to reach the end').toBe(
+        end.maxScroll,
+      )
+      expect(end.visible, 'wrap=' + wrap + ': the oldest line must be fully visible').toBe(true)
+      expect(
+        end.lastRowText,
+        'wrap=' + wrap + ': the oldest line must be the one on screen',
+      ).toContain('line 0 ')
+    }
+  })
+
+  test('the content moves by exactly the distance the reader scrolled', async ({ page }) => {
+    const log = await openLog(page)
+    await page.getByRole('button', { name: /切换换行/ }).click()
+    await page.waitForTimeout(500)
+    await log.evaluate(
+      (el) => el.scrollTo({ top: 1200, behavior: 'instant' as ScrollBehavior }),
+    )
+    await page.waitForTimeout(600)
+
+    const before = await log.evaluate((el) => {
+      const wrap = el.querySelector('div.relative')!
+      const map: Record<string, number> = {}
+      for (const g of wrap.querySelectorAll('[data-gkey]')) {
+        map[(g as HTMLElement).dataset.gkey!] = g.getBoundingClientRect().top
+      }
+      return { top: Math.round(el.scrollTop), map }
+    })
+
+    await wheelOver(page, log, 120)
+    await page.waitForTimeout(500)
+
+    const after = await log.evaluate((el) => {
+      const wrap = el.querySelector('div.relative')!
+      const map: Record<string, number> = {}
+      for (const g of wrap.querySelectorAll('[data-gkey]')) {
+        map[(g as HTMLElement).dataset.gkey!] = g.getBoundingClientRect().top
+      }
+      return { top: Math.round(el.scrollTop), map }
+    })
+
+    const scrollDelta = after.top - before.top
+    expect(scrollDelta, 'the scroll must have moved forward').toBeGreaterThan(0)
+
+    // A row that is on screen in both snapshots must have moved by exactly
+    // the scroll delta, in the opposite direction: scrolling down moves the
+    // content up. Anything else means the model and the DOM disagreed about
+    // where the content is, which is the flicker.
+    const drift: string[] = []
+    for (const [key, topBefore] of Object.entries(before.map)) {
+      const topAfter = after.map[key]
+      if (topAfter === undefined) continue
+      const moved = topAfter - topBefore
+      if (Math.abs(moved + scrollDelta) > 1.5) {
+        drift.push(key + ': moved ' + moved.toFixed(1) + 'px, scrolled ' + scrollDelta + 'px')
       }
     }
-    expect(
-      regressions,
-      `scrollTop moved backwards ${regressions.length} times while scrolling forward`,
-    ).toEqual([])
+    expect(drift, 'content drifted under the cursor:\n' + drift.join('\n')).toEqual([])
   })
 })
