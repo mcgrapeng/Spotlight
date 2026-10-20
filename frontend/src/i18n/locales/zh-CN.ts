@@ -398,7 +398,7 @@ export default {
     },
     shortcuts: {
       openPalette: '打开命令面板',
-      quickNav: '快速跳转：先按 g，再按 d 总览 / p Pod / n 节点 / e 事件 / f 收藏夹 / a AI',
+      quickNav: '快速跳转：先按 g，再按 d 总览 / p Pod / n 节点 / e 事件 / f 收藏夹',
       showPanel: '显示快捷键面板',
       focusSearch: 'LogViewer 聚焦搜索',
       pauseStream: 'LogViewer 暂停/继续流',

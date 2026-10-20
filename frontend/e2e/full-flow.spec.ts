@@ -52,10 +52,10 @@ test('AppHeader renders cluster + namespace comboboxes and no AI button', async 
   await expect(clusterBtn).toBeVisible()
   await expect(clusterBtn).toContainText('demo-cluster')
 
-  // Namespace combobox — visible, labelled, defaults to "所有 namespace".
-  const nsBtn = page.getByRole('combobox', { name: '选择 namespace' })
+  // Namespace combobox — visible, labelled, defaults to "所有命名空间".
+  const nsBtn = page.getByRole('combobox', { name: '选择命名空间' })
   await expect(nsBtn).toBeVisible()
-  await expect(nsBtn).toContainText('所有 namespace')
+  await expect(nsBtn).toContainText('所有命名空间')
 
   // Open the cluster popover → clickable option → confirm selection updates.
   await clusterBtn.click()

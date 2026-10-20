@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineComponent, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useMagicKeys, whenever } from '@vueuse/core'
 import {
   CommandDialog, CommandInput, CommandList,
   CommandEmpty, CommandGroup, CommandItem, CommandSeparator,
+  useCommand, useCommandGroup,
 } from '@/components/ui/command'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -13,9 +14,13 @@ import {
   RefreshCw, Bot, Keyboard,
 } from '@lucide/vue'
 import { isTypingTarget } from '@/composables/useKeyboardShortcuts'
+import { podsApi } from '@/api/endpoints'
+import { useClusterStore } from '@/stores/cluster'
+import type { PodOut } from '@/api/types'
 
 const { t } = useI18n()
 const router = useRouter()
+const cluster = useClusterStore()
 const open = ref(false)
 const shortcutsOpen = ref(false)
 
@@ -39,7 +44,6 @@ const navItems = computed(() => [
   { path: '/nodes',      label: t('nav.nodes'),     icon: Server,          keywords: ['node', 'nodes', '节点', '机器', 'host'] },
   { path: '/events',     label: t('nav.events'),    icon: Activity,        keywords: ['event', 'events', '事件', '告警', 'warning'] },
   { path: '/favorites',  label: t('nav.favorites'), icon: Star,            keywords: ['favorite', 'favorites', '收藏', '书签', 'bookmark'] },
-  { path: '/ai',         label: t('nav.ai'),        icon: Sparkles,        keywords: ['ai', 'model', 'llm', 'openai', 'anthropic', '设置', 'provider'] },
   { path: '/settings',   label: t('nav.settings'),  icon: Settings,        keywords: ['setting', 'settings', '配置', 'preferences', 'preference'] },
 ])
 
@@ -69,7 +73,7 @@ const actions = computed(() => [
 
 const shortcuts = computed(() => [
   { combo: '⌘ K / Ctrl K', desc: t('palette.shortcuts.openPalette') },
-  { combo: 'g then d/p/n/e/f/a', desc: t('palette.shortcuts.quickNav') },
+  { combo: 'g then d/p/n/e/f', desc: t('palette.shortcuts.quickNav') },
   { combo: '? (Shift+/)', desc: t('palette.shortcuts.showPanel') },
   { combo: '/', desc: t('palette.shortcuts.focusSearch') },
   { combo: 'k / K', desc: t('palette.shortcuts.pauseStream') },
@@ -78,8 +82,84 @@ const shortcuts = computed(() => [
   { combo: '⌘ F', desc: t('palette.shortcuts.searchNative') },
 ])
 
+/* ------------------------------------------------------------------ *
+ * 资源：Pod 模糊搜索
+ * ------------------------------------------------------------------ */
+
+// ponytail: 过滤状态在 <Command> 的 provide 里（command/Command.vue 自己实现
+// 了一套 filter state machine）。命令面板只是它的插槽拥有者，拿不到那个
+// provide —— 但插槽内容在渲染树里的祖先就是 <Command>，所以塞一个什么都
+// 不渲染的小组件进去，就能把上下文和资源组的 id 递出来。
+const commandCtx = shallowRef<ReturnType<typeof useCommand> | null>(null)
+const resourcesGroupId = ref<string | undefined>(undefined)
+
+const CaptureResources = defineComponent({
+  setup() {
+    commandCtx.value = useCommand()
+    resourcesGroupId.value = useCommandGroup()?.id
+    return () => null
+  },
+})
+
+// 搜索词以组件库的 filterState 为准 —— 面板自己的输入框写的就是它，
+// 两边分家就会出现「框里是空的、结果还在筛」这种对不上的状态。
+const search = computed(() => commandCtx.value?.filterState.search ?? '')
+
+const pods = shallowRef<PodOut[]>([])
+const podsLoading = ref(false)
+const POD_MATCH_CAP = 20
+
+async function loadPods() {
+  podsLoading.value = true
+  try {
+    const res = await podsApi.list({
+      cluster: cluster.activeCluster,
+      namespace: cluster.activeNamespace,
+    })
+    pods.value = res.items
+  } catch {
+    // ponytail: 拉不到 Pod 不该让面板罢工 —— 资源区空着，其他分组照常用。
+    pods.value = []
+  } finally {
+    podsLoading.value = false
+  }
+}
+
+watch(open, (v) => {
+  if (!v) return
+  void loadPods()
+})
+
+const podMatches = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  const list = q
+    ? pods.value.filter(p =>
+        p.name.toLowerCase().includes(q) || p.namespace.toLowerCase().includes(q))
+    : pods.value
+  // ponytail: 大集群几千个 Pod，全塞进面板会卡 —— 只渲染前 N 个匹配项。
+  return list.slice(0, POD_MATCH_CAP)
+})
+
+// ponytail: 组件库只在「搜索词变了」的时候重算一次过滤表，而 Pod 是异步
+// 拉回来的：用户先打字、Pod 后到 → 这批条目从没被计过分，所在的 group 会
+// 一直停在 hidden，资源区看着是空的。这里在 Pod 到达后把 group 放回可见
+// 集合。只加 id、不改搜索词 —— 改搜索词会打断用户正在进行的输入法组合。
+watch(podMatches, async () => {
+  if (!podMatches.value.length) return
+  await nextTick()
+  const ctx = commandCtx.value
+  const id = resourcesGroupId.value
+  if (!ctx || !id) return
+  ctx.filterState.filtered.groups.add(id)
+})
+
 function go(path: string) {
   router.push(path)
+  open.value = false
+}
+
+function goPod(pod: PodOut) {
+  router.push({ name: 'pod-detail', params: { namespace: pod.namespace, name: pod.name } })
   open.value = false
 }
 
@@ -112,6 +192,39 @@ defineExpose({
           <span class="ml-auto text-2xs text-muted-foreground font-mono">{{ item.path }}</span>
         </CommandItem>
       </CommandGroup>
+
+      <CommandSeparator />
+
+      <!-- 资源：Pod 模糊搜索。标题放在组外 —— 组件库在「搜不到」时会把整组
+           隐藏掉，标题跟着一起消失的话，用户看不到这一区为什么是空的。
+           外层 p-1 + 组内 p-0 是为了跟「导航」「操作」两组的缩进和行距对齐。 -->
+      <div class="p-1">
+        <div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+          {{ t('palette.resourcesGroup') }}
+        </div>
+        <CommandGroup
+          class="p-0"
+          :aria-label="t('palette.actions.jumpToPod')"
+        >
+          <CaptureResources />
+          <CommandItem
+            v-for="pod in podMatches"
+            :key="`${pod.namespace}/${pod.name}`"
+            :value="`${pod.name} ${pod.namespace}`"
+            @select="goPod(pod)"
+          >
+            <Box :size="16" :stroke-width="1.75" class="mr-2" />
+            <span class="font-mono truncate">{{ pod.name }}</span>
+            <span class="ml-auto text-2xs text-muted-foreground font-mono shrink-0">{{ pod.namespace }}</span>
+          </CommandItem>
+        </CommandGroup>
+        <div
+          v-if="!podMatches.length && !podsLoading"
+          class="px-2 py-1.5 text-xs text-muted-foreground"
+        >
+          {{ t('palette.resourcesEmpty') }}
+        </div>
+      </div>
 
       <CommandSeparator />
 

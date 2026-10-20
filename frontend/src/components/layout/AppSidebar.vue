@@ -3,11 +3,13 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
-  LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
+  LayoutDashboard, Box, Server, Activity, Star, Settings,
   PanelLeftClose, PanelLeftOpen,
 } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { eventsApi } from '@/api/endpoints'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import { STORAGE_KEYS } from '@/storage-keys'
@@ -78,13 +80,14 @@ onUnmounted(() => {
 watch(() => cluster.activeCluster, refreshEventBadge)
 watch(() => cluster.activeNamespace, refreshEventBadge)
 
+// ponytail: 导航只放「工作面」。AI 模型是配置页，住在设置里（`/ai` 路径不动，
+// 书签不失效），不跟总览 / Pods 这类每天干活的面并排。
 const navItems = computed(() => [
   { path: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, badge: 0 },
   { path: '/pods',      label: t('nav.pods'),      icon: Box,        badge: 0 },
   { path: '/nodes',     label: t('nav.nodes'),     icon: Server,     badge: 0 },
   { path: '/events',    label: t('nav.events'),    icon: Activity,   badge: eventBadge.value },
   { path: '/favorites', label: t('nav.favorites'), icon: Star,       badge: 0 },
-  { path: '/ai',        label: t('nav.ai'),        icon: Sparkles,   badge: 0 },
 ])
 
 const isActive = (path: string) =>
@@ -132,6 +135,18 @@ const isActive = (path: string) =>
     </div>
 
     <div class="px-2 pt-2 border-t border-sidebar-border flex flex-col gap-0.5">
+      <!--
+        ponytail: 偏好（主题 + 语言）挨着设置放在侧边栏底部。
+        这两样一天用一次，顶栏最好的位置应该留给「范围」（集群 + 命名空间）。
+        折叠态 64px 塞不下「中文 | EN」（~76px），折叠时只留主题切换。
+      -->
+      <div
+        class="flex items-center gap-2"
+        :class="props.collapsed ? 'justify-center h-10' : 'px-3 h-9'"
+      >
+        <ThemeToggle />
+        <LocaleSwitcher v-if="!props.collapsed" class="ml-auto" />
+      </div>
       <router-link
         to="/settings"
         :class="cn(

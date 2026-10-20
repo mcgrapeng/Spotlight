@@ -395,7 +395,7 @@ export default {
     },
     shortcuts: {
       openPalette: 'Open the command palette',
-      quickNav: 'Quick jump — press g, then d overview / p pods / n nodes / e events / f favorites / a AI',
+      quickNav: 'Quick jump — press g, then d overview / p pods / n nodes / e events / f favorites',
       showPanel: 'Show the shortcuts panel',
       focusSearch: 'Focus log search',
       pauseStream: 'Pause / resume log stream',

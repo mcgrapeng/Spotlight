@@ -11,6 +11,7 @@ import { isAllNamespaces } from '@/utils/namespace'
 import { useClusterStore } from '@/stores/cluster'
 import { useAuthStore } from '@/stores/auth'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
@@ -53,7 +54,8 @@ function confirmLogout() {
       <p class="mt-1 text-sm text-muted-foreground">{{ t('settings.subtitle') }}</p>
     </header>
 
-    <!-- 配置项：当前只有 AI 模型，点击进入 AISettingsView -->
+    <!-- 配置项：AI 模型。AI 是配置页不是工作面，导航里已经没有它了，
+         这里就是它的正门（/ai 路径不动，老书签不失效）。 -->
     <section aria-labelledby="settings-config-heading">
       <h2 id="settings-config-heading" class="text-sm font-semibold text-muted-foreground tracking-wide mb-3">
         {{ t('settings.configHeading') }}
@@ -170,6 +172,9 @@ function confirmLogout() {
             <span class="text-muted-foreground w-16 shrink-0">{{ t('settings.aboutTheme') }}</span>
             <span class="text-foreground text-xs mr-2">{{ t(`theme.${themeMode}`) }}</span>
             <ThemeToggle />
+            <!-- ponytail: 语言切换器从顶栏搬到这里（顶栏只留「范围」）。
+                 切换器自带 aria-label（Language / 语言），不需要额外文案。 -->
+            <LocaleSwitcher class="ml-auto" />
           </div>
         </CardContent>
       </Card>

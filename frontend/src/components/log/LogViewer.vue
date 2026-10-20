@@ -464,6 +464,27 @@ function recomputeVirtualRange(): void {
   }
   const top = el.scrollTop
   const viewH = el.clientHeight
+  // While the reader is FOLLOWING the tail, the window MUST include the
+  // last group: the model cannot know how tall a group really is until it
+  // has been rendered, and the tail is exactly the part it has not seen.
+  // A window that stops short of the last group leaves the reader a
+  // screenful of the wrong thing — a folded run of forty identical lines
+  // is estimated at one row and is really forty, so the reader lands
+  // hundreds of pixels above the newest line.
+  //
+  // The test is the FOLLOW STATE, not the geometric position: a reader
+  // who is following sits at the model's end, but the model's end moves
+  // as the tail gets measured, so the geometric test would fail the
+  // moment the model corrects itself and the reader would be stranded.
+  if (autoFollow.value) {
+    const end = n
+    const start = Math.max(0, n - Math.max(1, Math.ceil(viewH / LINE_HEIGHT) + BUFFER * 2))
+    if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
+      virtualRange.value = { start, end }
+    }
+    syncSpacers()
+    return
+  }
   // The offset table is a prefix sum, so the boundary rows are a binary
   // search away. Using it keeps the window on real group boundaries
   // instead of drifting further off the more the estimate is wrong.
@@ -600,13 +621,13 @@ function captureAnchor(): Anchor | null {
   if (!el) return null
   const top = el.scrollTop
   if (groups.value.length === 0) return null
-  // A reader who asked for the END of the log should still be at the end of
-  // it. The end moves whenever the last groups are measured and turn out to
-  // be taller than their estimate, and a plain anchor would leave the
-  // reader short of it by exactly that much. The end IS the newest line
-  // now, so this is also the anchor that keeps a follower pinned to the
-  // tail while the content grows below them.
-  if (top >= el.scrollHeight - el.clientHeight - 1) {
+  // A follower is anchored to the tail BY DEFINITION. The geometric test
+  // cannot be used here: the model's end and the DOM's end disagree for a
+  // frame while the tail is being measured (the last group may be a folded
+  // run of forty identical lines, estimated at one row and really forty),
+  // so a follower would look like they had scrolled away and would be
+  // stranded above the newest line.
+  if (autoFollow.value) {
     return { idx: groups.value.length - 1, delta: 0, atBottom: true }
   }
   const idx = indexAt(top)
@@ -618,9 +639,12 @@ function applyAnchor(a: Anchor | null): void {
   if (!el || !a) return
   let next: number
   if (a.atBottom) {
-    // The model's total IS the content height the DOM is about to take:
-    // the spacers are the model, and every rendered group is measured.
-    next = Math.max(0, (offsetsBuf[groups.value.length] ?? 0) - el.clientHeight)
+    // The DOM's own bottom, not the model's. The spacers are the model,
+    // but the model and the DOM disagree for a frame while the tail is
+    // being measured, and a target past the DOM's scrollable height is
+    // silently clamped to it — which is how a follower ends up a screenful
+    // above the newest line.
+    next = Math.max(0, el.scrollHeight - el.clientHeight)
   } else {
     next = (offsetsBuf[a.idx] ?? 0) + a.delta
   }
@@ -628,6 +652,7 @@ function applyAnchor(a: Anchor | null): void {
   // towards the corrected position and read as the content sliding around
   // under the cursor, which is the very thing being corrected.
   if (Math.abs(next - el.scrollTop) > 0.5) {
+    anchorAppliedAt = next
     el.scrollTo({ top: next, behavior: 'instant' as ScrollBehavior })
   }
 }
@@ -660,6 +685,13 @@ function scheduleSettle(anchor: Anchor | null): void {
 // restore is replayed after every model change until the reader takes
 // over.
 let pendingRestore: { idx: number; offset: number } | null = null
+// Where the reader was, last time the scroller reported a position. A
+// scroll event fires for two reasons: the reader moved, or the content
+// changed size under them. Only the first ends the follow.
+let lastScrollTop = 0
+// Where the anchor correction last put the reader. A scroll event at that
+// exact position is the correction's own echo, not the reader.
+let anchorAppliedAt = -1
 // Where the restore last put the reader. A scroll that lands somewhere
 // else is the reader taking over, and the restore stops replaying.
 let restoreAppliedAt = -1
@@ -768,10 +800,20 @@ function scrollToPosition(top: number, kind: 'command' | 'correction' = 'command
   })
 }
 
-function jumpToBottom() {
+function jumpToBottom(instant = false) {
   const el = scrollEl.value
   if (!el) return
-  scrollToPosition(Math.max(0, el.scrollHeight - el.clientHeight))
+  scrollToPosition(
+    Math.max(0, el.scrollHeight - el.clientHeight),
+    instant ? 'correction' : 'command',
+  )
+  if (instant) {
+    // The virtual window is chosen from the scroll position, so it has to
+    // be recomputed after the jump. Without this the reader lands on the
+    // spacer below the last rendered group instead of on the tail — the
+    // panel would be at the bottom and still showing the oldest lines.
+    recomputeVirtualRange()
+  }
 }
 
 watch(displayedLines, (v) => {
@@ -808,12 +850,6 @@ watch(() => props.lines.length, (n) => {
 })
 
 function onScroll() {
-  const anchor = captureAnchor()
-  recomputeVirtualRange()
-  // The groups that just scrolled in have never been measured. Measure
-  // them once the DOM has settled, then put the reader back where the
-  // measurement moved them.
-  scheduleSettle(anchor)
   if (!scrollEl.value) return
   const top = scrollEl.value.scrollTop
   // A pending restore is the position the reader was last at. As soon as
@@ -839,6 +875,13 @@ function onScroll() {
   // Newest-at-bottom: the tail is the bottom of the scroller, so "how far
   // from the newest line am I" is the distance from the bottom.
   const distFromBottom = scrollEl.value.scrollHeight - scrollEl.value.clientHeight - top
+  // Did the READER move, or did the content change size under them? The
+  // tail growing (a new log line, a fold they opened) moves the bottom
+  // away from a reader who is standing still, and the anchor correction
+  // carries them along — that is not them leaving.
+  const movedUp = top < lastScrollTop - 1
+  const corrected = Math.abs(top - anchorAppliedAt) <= 1
+  lastScrollTop = top
   if (distFromBottom <= FOLLOW_EPSILON) {
     // User is back at the tail — re-engage auto-follow and clear unread.
     if (!autoFollow.value) {
@@ -846,7 +889,7 @@ function onScroll() {
       emit('update:autoFollow', true)
       emit('consume-unread')
     }
-  } else if (distFromBottom > FOLLOW_BREAK && autoFollow.value) {
+  } else if (movedUp && !corrected && distFromBottom > FOLLOW_BREAK && autoFollow.value) {
     // User scrolled away from top — disable auto-follow, show unread pill.
     // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
     // mirror of the ref PodDetailView shares with usePodLogs, and flush()
@@ -858,6 +901,14 @@ function onScroll() {
     autoFollow.value = false
     emit('update:autoFollow', false)
   }
+  // The anchor's shape depends on the follow state, and the window is
+  // chosen from it, so both come after the detection above.
+  const anchor = captureAnchor()
+  recomputeVirtualRange()
+  // The groups that just scrolled in have never been measured. Measure
+  // them once the DOM has settled, then put the reader back where the
+  // measurement moved them.
+  scheduleSettle(anchor)
 }
 
 function toggleAutoFollow() {
@@ -1010,7 +1061,7 @@ onMounted(() => {
   // Followers land on the newest line; readers resume their saved position
   // (tab switches remount this component and used to reset scrollTop to 0).
   if (autoFollow.value) {
-    nextTick(jumpToBottom)
+    nextTick(() => jumpToBottom(true))
   } else {
     // The restore is replayed by settle() as the model is corrected, so it
     // lands on the same GROUP the reader left rather than on the same

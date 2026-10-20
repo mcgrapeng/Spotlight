@@ -39,7 +39,8 @@ useKeyboardShortcuts(() => [
   { combo: 'g n', handler: () => router.push({ name: 'nodes' }) },
   { combo: 'g e', handler: () => router.push({ name: 'events' }) },
   { combo: 'g f', handler: () => router.push({ name: 'favorites' }) },
-  { combo: 'g a', handler: () => router.push({ name: 'ai' }) },
+  // ponytail: 原来的 `g a` → /ai 去掉了 —— AI 模型是配置页，住在设置里，
+  // 不再是导航目的地。/ai 路径没动，老书签照样能打开。
 ])
 </script>
 

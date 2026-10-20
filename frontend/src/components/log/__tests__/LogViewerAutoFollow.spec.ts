@@ -31,7 +31,7 @@ function scrollTo(w: ReturnType<typeof mountViewer>, top: number) {
 }
 
 describe('LogViewer auto-follow transitions', () => {
-  it('emits false when the user scrolls away from the tail', async () => {
+  it('emits false when the user scrolls up into the history', async () => {
     // autoFollow here is a LOCAL mirror of the ref PodDetailView shares with
     // usePodLogs. The re-engage branch emitted; the scroll-away branch only
     // set the local copy. The shared ref therefore stayed true and flush()
@@ -39,14 +39,18 @@ describe('LogViewer auto-follow transitions', () => {
     // history. The unread pill was dead for the same reason: deferred never
     // received anything.
     const w = mountViewer()
-    scrollTo(w, 400)
+    scrollTo(w, TAIL)
+    await w.vm.$nextTick()
+    scrollTo(w, TAIL - 400)
     await w.vm.$nextTick()
     expect(w.emitted('update:autoFollow')).toEqual([[false]])
   })
 
   it('emits true when the user returns to the tail', async () => {
     const w = mountViewer()
-    scrollTo(w, 400)
+    scrollTo(w, TAIL)
+    await w.vm.$nextTick()
+    scrollTo(w, TAIL - 400)
     await w.vm.$nextTick()
     scrollTo(w, TAIL)
     await w.vm.$nextTick()
@@ -57,15 +61,17 @@ describe('LogViewer auto-follow transitions', () => {
     // onScroll fires dozens of times per wheel drag; every extra emit pushes a
     // value through the shared ref and retriggers the composable's watcher.
     const w = mountViewer()
-    for (const top of [400, 500, 600, 700, 800]) scrollTo(w, top)
+    scrollTo(w, TAIL)
+    await w.vm.$nextTick()
+    for (const top of [TAIL - 100, TAIL - 200, TAIL - 300]) scrollTo(w, top)
     await w.vm.$nextTick()
     expect(w.emitted('update:autoFollow')).toEqual([[false]])
   })
 
-  it('keeps the reader on the tail when the tail grows', async () => {
-    // The content grows below the reader, so the tail moves down. A reader
-    // who was on it has to be carried down with it — that is the whole
-    // point of rendering newest-last.
+  it('keeps the follow when the content grows below the reader', async () => {
+    // The tail moves when a fold is opened or a new line arrives. That is
+    // the content changing size under the reader, not the reader leaving:
+    // the anchor correction carries them along.
     const w = mountViewer()
     scrollTo(w, TAIL)
     await w.vm.$nextTick()

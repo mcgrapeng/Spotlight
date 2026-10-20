@@ -2,11 +2,9 @@
 import { Menu } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/utils'
-import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import LogoMark from '@/components/common/LogoMark.vue'
 import ClusterCombobox from '@/components/common/ClusterCombobox.vue'
 import NamespaceCombobox from '@/components/common/NamespaceCombobox.vue'
-import ThemeToggle from '@/components/common/ThemeToggle.vue'
 
 const { t } = useI18n()
 
@@ -25,10 +23,11 @@ defineEmits<{
       390px 视口下这三个控件加起来 464px，实测 documentElement.scrollWidth = 433，
       语言切换器直接印在 namespace 选择器上 —— 用户看不到自己正在看哪个 namespace，
       而那是这个应用最核心的上下文信息。
-      现在移动端用 grid 显式定位：第 1 行 = 菜单/logo/语言，第 2 行 = 集群+namespace。
-      md 以上切回 flex，md:contents 让 combobox 回到自然文档序（logo 之后、语言之前）。
+      现在移动端用 grid 显式定位：第 1 行 = 菜单/logo，第 2 行 = 集群+namespace。
+      md 以上切回 flex，md:contents 让 combobox 回到自然文档序（logo 之后）。
+      主题 + 语言是「偏好」，已经移去侧边栏底部挨着设置，顶栏只留「范围」。
     -->
-    <div class="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-2 px-3 py-2 md:flex md:h-14 md:gap-3 md:px-5 md:py-0">
+    <div class="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-2 px-3 py-2 md:flex md:h-14 md:gap-3 md:px-5 md:py-0">
       <!-- mobile only: hamburger 触发 drawer；desktop 下让出最左给 logo -->
       <button
         type="button"
@@ -56,14 +55,9 @@ defineEmits<{
         </span>
       </router-link>
 
-      <div class="col-start-1 col-end-4 row-start-2 flex items-center gap-2 md:contents">
+      <div class="col-start-1 col-end-3 row-start-2 flex items-center gap-2 md:contents">
         <ClusterCombobox class="min-w-0 flex-1 md:flex-none" />
         <NamespaceCombobox class="min-w-0 flex-1 md:flex-none" />
-      </div>
-
-      <div class="col-start-3 row-start-1 flex items-center gap-1.5 justify-self-end">
-        <ThemeToggle />
-        <LocaleSwitcher />
       </div>
     </div>
   </div>
