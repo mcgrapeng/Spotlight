@@ -2,7 +2,7 @@
 import pytest
 
 from app.domain.services.duration import format_age
-from app.domain.services.log_parser import parse_log_line
+from app.domain.services.log_parser import normalize_timestamp, parse_log_line
 from app.domain.value_objects.enums import PodPhase
 from app.domain.value_objects.primitives import LabelSelector, LogFilter
 
@@ -74,6 +74,27 @@ def test_parse_without_timestamp():
 def test_parse_empty():
     ts, content = parse_log_line("", "app")
     assert content == ""
+
+
+def test_nanosecond_stamps_are_normalised_to_milliseconds():
+    # The apiserver stamps nine fractional digits. The ECMAScript date-time
+    # format allows three, so a nine-digit stamp is not portable — a browser
+    # that rejects it renders the raw UTC string in the time column instead
+    # of a local time.
+    ts, content = parse_log_line(
+        "2026-10-20T10:29:42.050646139Z hello world", "app"
+    )
+    assert ts == "2026-10-20T10:29:42.050Z"
+    assert content == "hello world"
+
+
+def test_normalize_timestamp_handles_offsets_and_keeps_one_shape():
+    assert normalize_timestamp("2026-10-20T10:29:42Z") == "2026-10-20T10:29:42.000Z"
+    assert normalize_timestamp("2026-10-20T10:29:42+00:00") == "2026-10-20T10:29:42.000Z"
+    # An offset is converted, not dropped: 18:29+08:00 is 10:29 UTC.
+    assert normalize_timestamp("2026-10-20T18:29:42+08:00") == "2026-10-20T10:29:42.000Z"
+    # Unparseable input is left alone rather than mangled.
+    assert normalize_timestamp("not a time") == "not a time"
 
 
 # ── format_age ──────────────────────────────────────────────────────────────

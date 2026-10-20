@@ -86,6 +86,20 @@ VITE_API_PROXY=http://127.0.0.1:8002
 **Frontend port:** leave `VITE_PORT` unset and Vite picks a free one, walking up if the default is
 busy. It prints the URL it actually bound — open that, don't assume a fixed port.
 
+**On macOS, set `no_proxy` before you start the backend.** The Kubernetes Python SDK seeds its
+HTTP client from the *system* proxy settings, so a request to a local cluster at `127.0.0.1`
+goes through your proxy and comes back as a 500 with an SSL EOF on every call. A local apiserver
+address is not in the system's exception list (and k3d writes `0.0.0.0` as the server, which is
+not in it either), so the proxy has to be told to skip it:
+
+```bash
+# backend
+no_proxy=127.0.0.1,localhost,0.0.0.0 python -m app.server --reload --port 8002
+```
+
+The symptom is a 500 on `/api/v1/pods` while `/api/v1/clusters` still answers 200 — the cluster
+list comes from the kubeconfig on disk, and everything else goes over the network.
+
 <details>
 <summary>Auth: Teleport, shared token, or direct kubeconfig</summary>
 

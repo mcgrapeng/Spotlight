@@ -86,6 +86,18 @@ VITE_API_PROXY=http://127.0.0.1:8002
 **前端端口：** `VITE_PORT` 留空即可，Vite 会自己找空闲端口，默认端口被占就往上顺延。它会打印
 实际绑定的 URL —— 打开那个，不要假定固定端口。
 
+**macOS 上启动后端前要设 `no_proxy`。** Kubernetes Python SDK 的 HTTP 客户端是从*系统*代理设置里
+读配置的，所以发往本地集群（`127.0.0.1`）的请求会走代理，回来是一个 500，TLS 报 EOF。系统代理的
+例外列表里没有本地 apiserver 的地址（k3d 写的 `0.0.0.0` 也不在里面），所以必须显式告诉它跳过：
+
+```bash
+# backend
+no_proxy=127.0.0.1,localhost,0.0.0.0 python -m app.server --reload --port 8002
+```
+
+症状是 `/api/v1/pods` 报 500，而 `/api/v1/clusters` 还是 200 —— 集群列表是直接从磁盘上的
+kubeconfig 读的，其他请求都要走网络。
+
 <details>
 <summary>鉴权：Teleport、共享令牌，或直连 kubeconfig</summary>
 

@@ -383,6 +383,8 @@ export default {
     foldMore: '… 共 {count} 条',
     foldTitle: '本组 {count} 条相同的日志 · 点击展开',
     linesUnit: '行',
+    localTime: '本地时间 {tz}',
+    localTimeHint: '时间列显示的是本机时区的时间',
     live: '实时',
     paused: '已暂停',
     scrollHint: '滚动到底部查看最新',

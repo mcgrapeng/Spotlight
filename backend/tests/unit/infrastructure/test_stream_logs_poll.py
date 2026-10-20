@@ -79,7 +79,9 @@ def test_consecutive_polls_do_not_resend_overlapping_lines(monkeypatch):
 
     got = _drive(_repo(api), threading.Event(), want=2)
 
-    assert got == ["2026-01-01T00:00:00Z line-a", "2026-01-01T00:00:01Z line-b"]
+    # The content carries the LINE, not the apiserver's timestamp prefix —
+    # the history path strips it, so the follow-stream has to as well.
+    assert got == ["line-a", "line-b"]
 
 
 def test_a_quiet_pod_backs_off_instead_of_polling_every_two_seconds(monkeypatch):
@@ -160,7 +162,7 @@ def test_a_transient_error_does_not_end_the_stream(monkeypatch):
 
     got = _drive(_repo(api), threading.Event(), want=1)
 
-    assert got == ["2026-01-01T00:00:00Z recovered"]
+    assert got == ["recovered"]
 
 
 def test_stop_event_set_upfront_means_no_poll_at_all():

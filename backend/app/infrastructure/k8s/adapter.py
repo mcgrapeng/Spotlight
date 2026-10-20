@@ -323,14 +323,20 @@ class KubernetesAdapter(K8sRepositoryPort):
                 for line in _decode_sdk_log_content(raw).splitlines():
                     if not line.strip():
                         continue
-                    ts, _ = parse_log_line(line, container or "")
+                    # Split the apiserver's stamp off the line, exactly as
+                    # the history path does, so the use case sees the same
+                    # shape from both: the line's real time, and the line's
+                    # text. The raw line is still what the dedup key uses —
+                    # it is the identity of the line, and the prefix is part
+                    # of it.
+                    ts, rest = parse_log_line(line, container or "")
                     sig = (ts, line)
                     if sig in recent:
                         continue
                     recent.append(sig)
                     emitted += 1
                     yield LogEntry(
-                        timestamp=ts, content=line, container=container or ""
+                        timestamp=ts, content=rest, container=container or ""
                     )
 
                 # Poll-boundary marker: this poll is complete, flush whatever

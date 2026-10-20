@@ -380,6 +380,8 @@ export default {
     foldMore: '… {count} total',
     foldTitle: '{count} identical lines in this group · click to expand',
     linesUnit: 'lines',
+    localTime: 'Local time {tz}',
+    localTimeHint: 'The time column shows this machine\u2019s time zone',
     live: 'Live',
     paused: 'Paused',
     scrollHint: 'Scroll down for the latest',

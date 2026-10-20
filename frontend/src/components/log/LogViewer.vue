@@ -1180,11 +1180,23 @@ const localTimeFmt = new Intl.DateTimeFormat(undefined, {
 const utcTimeFmt = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
 })
+/**
+ * The apiserver stamps nanoseconds ("…42.005646139Z"). The ECMAScript
+ * date-time format allows three fractional digits, so a nine-digit stamp is
+ * not portable — a browser that rejects it renders the raw UTC string in
+ * the time column instead of a local time. Trim to milliseconds.
+ */
+function toDate(ts: string): Date | null {
+  const d = new Date(ts.replace(/(\.\d{3})\d+/, '$1'))
+  return Number.isNaN(d.getTime()) ? null : d
+}
 function fmtLocalTime(ts: string): string {
-  try { return localTimeFmt.format(new Date(ts)) } catch { return ts }
+  const d = toDate(ts)
+  return d ? localTimeFmt.format(d) : ts
 }
 function fmtUtcTime(ts: string): string {
-  try { return utcTimeFmt.format(new Date(ts)) + 'Z' } catch { return ts }
+  const d = toDate(ts)
+  return d ? utcTimeFmt.format(d) + 'Z' : ts
 }
 function tzOffset(): string {
   const off = -new Date().getTimezoneOffset()
@@ -1192,6 +1204,14 @@ function tzOffset(): string {
   const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
   const m = String(Math.abs(off) % 60).padStart(2, '0')
   return `UTC${sign}${h}:${m}`
+}
+/** The same offset, short enough for a chip: "UTC+8", "UTC+5:30", "UTC". */
+function tzShort(): string {
+  const off = -new Date().getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const h = Math.floor(Math.abs(off) / 60)
+  const m = Math.abs(off) % 60
+  return `UTC${sign}${h}${m ? ':' + String(m).padStart(2, '0') : ''}`
 }
 
 function escapeHtml(s: string): string {
@@ -2051,11 +2071,27 @@ const helpRows = computed(() => [
 
     <!-- Status bar -->
     <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
-      <span class="tabular-nums">
-        <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
-        <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
-        {{ t('log.linesUnit') }}
-      </span>
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="tabular-nums">
+          <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
+          <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
+          {{ t('log.linesUnit') }}
+        </span>
+        <!--
+          The time column is local time, and nothing on screen said so. A
+          reader comparing a log line against a chart, an alert, or another
+          machine had to hover the cell to find out which zone they were
+          looking at. The zone is now stated once, in the panel's own status
+          bar.
+        -->
+        <!-- Inherits the status bar's own colour: at 80% opacity the chip
+             measured 4.17:1 on the dark bar's surface, under the 4.5 AA
+             floor. -->
+        <span aria-hidden="true">·</span>
+        <span class="shrink-0" :title="t('log.localTimeHint')">
+          {{ t('log.localTime', { tz: tzShort() }) }}
+        </span>
+      </div>
       <div class="flex items-center gap-3">
         <span v-if="streaming" class="flex items-center gap-1 text-success">
           <span class="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
