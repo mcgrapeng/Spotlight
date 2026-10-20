@@ -133,21 +133,25 @@ describe('LogViewer', () => {
     // Rows use the responsive grid (sm:+ keeps the 72px badge column).
     // The per-row 5% severity background tint was removed as vestigial —
     // the 3px left bar is the scan signal.
+    //
+    // The DOM is oldest-first now (the tail is at the bottom), and the
+    // `lines` prop is newest-first, so the rendered order is the REVERSE of
+    // the prop: row 0 is the debug line, row 4 is the critical one.
     const rows = wrapper.findAll('div.grid[class*="sm:grid-cols"]')
     expect(rows.length).toBeGreaterThanOrEqual(5)
     const classOf = (i: number) => rows[i]!.attributes('class') ?? ''
-    // critical: full-opacity red 3px bar
-    expect(classOf(0)).toContain('border-l-[3px]')
-    expect(classOf(0)).toContain('border-l-error')
-    // error: 70% red bar
-    expect(classOf(1)).toContain('border-l-[3px]')
-    expect(classOf(1)).toContain('border-l-error/70')
+    // debug: transparent bar (badge carries the signal)
+    expect(classOf(0)).toContain('border-l-transparent')
+    // info: faint blue 30% bar
+    expect(classOf(1)).toContain('border-l-info/30')
     // warn: 60% amber bar
     expect(classOf(2)).toContain('border-l-warning/60')
-    // info: faint blue 30% bar
-    expect(classOf(3)).toContain('border-l-info/30')
-    // debug: transparent bar (badge carries the signal)
-    expect(classOf(4)).toContain('border-l-transparent')
+    // error: 70% red bar
+    expect(classOf(3)).toContain('border-l-[3px]')
+    expect(classOf(3)).toContain('border-l-error/70')
+    // critical: full-opacity red 3px bar
+    expect(classOf(4)).toContain('border-l-[3px]')
+    expect(classOf(4)).toContain('border-l-error')
   })
 
   it('clicking the trace-id bar sets search to trace:<uuid>', async () => {

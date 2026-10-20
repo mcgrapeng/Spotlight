@@ -21,7 +21,7 @@ test.describe('Happy path — login → dashboard → pods → log filter → AI
     // Wait for the stats response body to be parsed and rendered. The mock
     // returns total_pods=287, so 287 must appear after Vue's render cycle.
     await expect(page.getByText('287').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText('集群健康度', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
     await expect(page.getByRole('heading', { name: '频繁重启' })).toBeVisible()
   })
 test('navigate to Pods → Pod detail → log history loads', async ({ page }) => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { cn } from '@/lib/utils'
+import { cn, formatNumber } from '@/lib/utils'
+import { restartSeverity } from '@/lib/restart'
 
 /**
  * Ranked restart counts as a bar chart.
@@ -26,12 +27,18 @@ function namespaceOf(pod: string): string {
   return parts.length > 1 ? parts[0]! : ''
 }
 
-/** Past 1000 restarts the bar saturates and the number carries the detail. */
+/**
+ * Tone follows the shared restart ladder (@/lib/restart), so a pod reads the
+ * same in the table and in this chart. Amber stays the "worth a look" tier:
+ * it is the same amber the action card uses, not a third meaning.
+ */
 function tone(count: number): string {
-  if (count > 1000) return 'bg-error'
-  if (count > 100) return 'bg-error/70'
-  if (count > 10) return 'bg-warning'
-  return 'bg-muted-foreground/50'
+  switch (restartSeverity(count)) {
+    case 'critical': return 'bg-error'
+    case 'high': return 'bg-error/70'
+    case 'elevated': return 'bg-warning'
+    default: return 'bg-muted-foreground/50'
+  }
 }
 </script>
 
@@ -50,10 +57,10 @@ function tone(count: number): string {
           {{ namespaceOf(item.pod) }}
         </span>
         <span
-          class="ml-auto shrink-0 font-mono tabular-nums font-medium"
-          :class="item.restarts > 100 ? 'text-error' : 'text-foreground'"
+          class="ml-auto shrink-0 font-mono tabular-nums font-semibold text-base"
+          :class="restartSeverity(item.restarts) === 'normal' ? 'text-foreground' : 'text-error'"
         >
-          ×{{ item.restarts.toLocaleString() }}
+          {{ formatNumber(item.restarts) }}
         </span>
       </div>
       <div class="h-1.5 rounded-full bg-muted overflow-hidden">

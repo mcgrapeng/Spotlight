@@ -9,8 +9,11 @@ const props = withDefaults(defineProps<{
   hint?: string
   /** 'plain' = 不格式化 (默认千分位); 'percent' = 拼 %; 'raw' = 原样输出 */
   format?: 'plain' | 'percent' | 'raw'
+  /** 'md' = 34px (默认); 'sm' = 26px，给有更大主位的页面用 */
+  size?: 'md' | 'sm'
 }>(), {
   format: 'plain',
+  size: 'md',
 })
 
 // ponytail: 数字自动千分位，避免 1,234,567 这种大数字撑破布局 (Audit §12.6)
@@ -28,7 +31,10 @@ const displayValue = computed(() => {
   <Card :class="cn('p-0', $attrs.class as string)">
     <CardContent class="p-4">
       <div class="text-xs text-muted-foreground mb-2 tracking-wide">{{ label }}</div>
-      <div class="text-3xl font-bold text-foreground tracking-tight tabular-nums">
+      <!-- ponytail: 数字不写死 text-foreground —— 继承卡片自己的文字色，
+           调用方传 text-warning 之类才真的落得到数字上（--card-foreground
+           和 --foreground 同值，默认观感不变）。 -->
+      <div :class="cn('font-bold tracking-tight tabular-nums', size === 'sm' ? 'text-2xl' : 'text-3xl')">
         {{ displayValue }}<span v-if="format === 'percent'" class="text-base text-muted-foreground ml-0.5">%</span>
       </div>
       <div v-if="hint" class="text-xs text-muted-foreground mt-2">{{ hint }}</div>

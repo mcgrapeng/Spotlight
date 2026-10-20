@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
+import { restartSeverity as restartLevel } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
 import { usePagination } from '@/composables/usePagination'
@@ -61,12 +62,15 @@ const LARGE_LIST_THRESHOLD = 500
 
 const pageSizeOptions = [10, 20, 50, 100].map((n) => ({ value: n, label: String(n) }))
 
+// ponytail: phase 名并列一次中文和英文。phase 是 K8s API 的字段值，kubectl
+// 打印的就是 Running / Pending / Failed / Succeeded，值班的人同时盯着两个
+// 面板，术语对不上是真实的认知成本；但全中文又让他在 kubectl 里找不到词。
 const statusOptions = computed(() => [
   { value: 'all', label: t('pods.filterAll') },
-  { value: 'Running',   label: 'Running' },
-  { value: 'Pending',   label: 'Pending' },
-  { value: 'Failed',    label: 'Failed' },
-  { value: 'Succeeded', label: 'Succeeded' },
+  { value: 'Running',   label: t('phase.Running') },
+  { value: 'Pending',   label: t('phase.Pending') },
+  { value: 'Failed',    label: t('phase.Failed') },
+  { value: 'Succeeded', label: t('phase.Succeeded') },
 ])
 
 const subtitle = computed(() => {
@@ -81,10 +85,13 @@ const subtitle = computed(() => {
 // times per row inside the template — for 100 rows × 4 = 400 calls/render.
 // Now: 2 calls per row in computed, 0 in template.
 function readyOf(p: PodOut) { return p.containers.filter(c => c.ready).length }
+// ponytail: the ladder lives in @/lib/restart so the table and the
+// dashboard's restart bars agree. They used different thresholds (5/100
+// versus 10/100/1000), so the same pod read as amber in one place and grey
+// in the other.
 function restartSeverity(p: PodOut) {
-  if (p.restart_count > 100) return 'critical'
-  if (p.restart_count > 5)   return 'warn'
-  return 'normal'
+  const s = restartLevel(p.restart_count)
+  return s === 'critical' || s === 'high' ? 'critical' : s === 'elevated' ? 'warn' : 'normal'
 }
 function nodeShort(p: PodOut) { return p.node ? p.node.split('.')[0] : null }
 
@@ -170,7 +177,14 @@ const emptyDescription = computed(() => {
 </script>
 
 <template>
-  <div class="space-y-5">
+  <!--
+    ponytail: 表格占满视口。
+    之前表格卡在 40% 高度处就结束，下面 60% 是空灰底 —— 集群越空，这个
+    空洞越明显，而那正是最需要「看起来正常」的场景。现在页面本身是视口
+    高度的一列，表格吃掉剩余空间，滚动发生在表格内部，分页条常驻底部。
+    移动端保持原来的整页滚动（md 以下不锁高度）。
+  -->
+  <div class="flex flex-col gap-5 md:h-[calc(100vh-var(--app-chrome-h))]">
     <PageHeader :title="t('route.pods')" :subtitle="subtitle">
       <template #actions>
         <Button variant="outline" size="sm" :disabled="loading" @click="reload" :aria-label="t('pods.refresh')">
@@ -234,9 +248,12 @@ const emptyDescription = computed(() => {
 
     <ErrorState v-if="error" :message="error" @retry="reload" />
 
-    <Card v-else class="p-0 overflow-hidden">
-      <EmptyState
+    <Card v-else class="p-0 overflow-hidden flex flex-col flex-1 min-h-0">
+      <div
         v-if="!loading && data.items.length === 0"
+        class="flex-1 flex items-center justify-center"
+      >
+      <EmptyState
         :title="emptyTitle"
         :description="emptyDescription"
       >
@@ -246,8 +263,9 @@ const emptyDescription = computed(() => {
           </Button>
         </template>
       </EmptyState>
+      </div>
       <!-- 桌面 / 大屏: 表格 -->
-      <div v-else class="overflow-auto max-h-[70vh] hidden md:block">
+      <div v-else class="overflow-auto flex-1 min-h-0 hidden md:block">
         <table
           class="w-full"
           :class="cn(densityClass.text, loading && data.items.length > 0 && 'opacity-60 transition-opacity ease-app')"
@@ -429,7 +447,7 @@ const emptyDescription = computed(() => {
       <!-- Pagination footer -->
       <div
         v-if="data.items.length > 0"
-        class="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-muted/20 text-xs text-muted-foreground"
+        class="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-muted/20 text-xs text-muted-foreground shrink-0"
       >
         <div class="tabular-nums">
           {{ t('pods.pageRange', {

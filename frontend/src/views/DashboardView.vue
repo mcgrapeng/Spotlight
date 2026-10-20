@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight } from '@lucide/vue'
+import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight, Inbox } from '@lucide/vue'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
@@ -80,18 +80,6 @@ onMounted(load)
 watch(() => cluster.activeCluster, () => load())
 watch(() => cluster.activeNamespace, () => load(true))
 
-// ponytail: 健康度只统计"长生命周期" Pod 阶段（Succeeded 是 Job 完成态，不算健康也不算故障）。
-const healthScore = computed(() => {
-  if (!stats.value) return 0
-  const s = stats.value
-  const longLived = s.running + s.pending + s.failed
-  if (longLived === 0) return 100
-  return Math.round((s.running / longLived) * 100)
-})
-const healthIsCritical = computed(() =>
-  !!stats.value && (stats.value.failed > 0 || healthScore.value < 70),
-)
-
 const phaseCounts = computed(() => {
   const s = stats.value
   if (!s) return { running: 0, pending: 0, failed: 0, succeeded: 0 }
@@ -106,23 +94,19 @@ const phaseCounts = computed(() => {
 const phaseSlices = computed<PhaseSlice[]>(() => {
   const c = phaseCounts.value
   return [
-    { key: 'running', label: 'Running', value: c.running, color: 'hsl(var(--success))' },
-    { key: 'pending', label: 'Pending', value: c.pending, color: 'hsl(var(--warning))' },
-    { key: 'failed', label: 'Failed', value: c.failed, color: 'hsl(var(--error))' },
-    { key: 'succeeded', label: 'Succeeded', value: c.succeeded, color: 'hsl(var(--muted-foreground))' },
+    { key: 'running', label: t('phase.Running'), value: c.running, color: 'hsl(var(--success))' },
+    // ponytail: 琥珀色只留给「需要处理」。Pending 是「在等调度」，集群的正常
+    // 状态 —— 把它染成琥珀等于把「没出故障」说成「需要注意」。
+    { key: 'pending', label: t('phase.Pending'), value: c.pending, color: 'hsl(var(--muted-foreground))' },
+    { key: 'failed', label: t('phase.Failed'), value: c.failed, color: 'hsl(var(--error))' },
+    // Succeeded 比 Pending 更淡一级：两级灰在同一根条上要分得开。
+    { key: 'succeeded', label: t('phase.Succeeded'), value: c.succeeded, color: 'hsl(var(--muted-foreground) / 0.45)' },
   ]
 })
 
 const podTotal = computed(() =>
   phaseSlices.value.reduce((acc, s) => acc + s.value, 0),
 )
-
-const healthVerdict = computed(() => {
-  if (!stats.value) return { key: 'ok', label: t('dashboard.heroVerdictOk'), tone: 'text-success' }
-  if (healthIsCritical.value) return { key: 'bad', label: t('dashboard.heroVerdictBad'), tone: 'text-error' }
-  if (healthScore.value < 90) return { key: 'warn', label: t('dashboard.heroVerdictWarn'), tone: 'text-warning' }
-  return { key: 'ok', label: t('dashboard.heroVerdictOk'), tone: 'text-success' }
-})
 
 // ponytail: noisyRestarts hoisted out of template. Previous version ran
 // `stats.restart_top.filter(p => p.restarts > 5).slice(0, 5)` twice per render
@@ -199,6 +183,23 @@ const actionItems = computed<Array<{
   })
 })
 
+// ponytail: 首屏主位是「最该管的一件事」，不是一个永远不会变红的健康分。
+// 重启 21,320 次的 Pod phase 仍然是 Running，健康分照旧是 94% —— 一个说不了
+// 「坏」的数字会持续把注意力从故障上拿走。所以健康分降级成阶段条下面一行
+// 事实说明，判定句（「一切正常」这类）整段删掉。
+const heroAction = computed(() => actionItems.value[0] ?? null)
+const heroTitle = computed(() => heroAction.value?.label ?? t('dashboard.heroAllClear'))
+const heroDetail = computed(() => heroAction.value?.detail ?? t('dashboard.heroAllClearHint'))
+const heroTone = computed(() => {
+  if (!heroAction.value) return 'text-success'
+  return heroAction.value.severity === 'critical' ? 'text-error' : 'text-warning'
+})
+
+// 行动卡边框跟着最严重那条走：之前恒为 amber，卡里装的是 critical 也不变。
+const actionCardBorder = computed(() =>
+  actionItems.value[0]?.severity === 'critical' ? 'border-error-border' : 'border-warning-border',
+)
+
 const compactStats = computed(() => {
   const s = stats.value
   if (!s) return ''
@@ -251,34 +252,41 @@ const recentActivity = computed(() => {
 
     <!--
       Hero：整个首屏只回答一个问题 —— 现在最该管的是什么。
-      之前是四张等大的白卡片（26px 数字）+ 一块琥珀色行动卡：视觉重量被平均
-      分配到每一处，于是没有一处读起来重要，最该被看见的「3 个 Pod 重启了
-      21,320 次」只是第三张卡里一行 12px 灰字。
-      现在健康度是一个 48px 的主数字 + 一条阶段分布堆叠条，
-      关键事实自己占第一屏，第二屏才是行动清单。
+      之前主位是 48px 的健康度 + 一句判定「一切正常」：一个变不了红的数字
+      （重启 21,320 次的 Pod phase 还是 Running）持续把注意力从故障上拿走，
+      往下两行就是「3 个 Pod 频繁重启 / 最高 21,320 次重启」。
+      现在主位是 actionItems[0]（已按 critical 优先排序），健康度降级成阶段
+      条下面一行事实说明，判定句不再出现。
     -->
     <Card class="p-0 mb-4">
       <CardContent class="p-5">
         <div class="flex flex-col lg:flex-row lg:items-center gap-6">
-          <div class="shrink-0 lg:w-[200px]">
-            <div class="text-xs text-muted-foreground tracking-wide mb-1">{{ t('dashboard.heroHealth') }}</div>
-            <div class="flex items-baseline gap-1">
-              <span
-                class="text-5xl font-bold tabular-nums tracking-tight leading-none"
-                :class="healthIsCritical ? 'text-error' : 'text-foreground'"
-              >{{ healthScore }}</span>
-              <span class="text-lg text-muted-foreground font-medium">%</span>
-            </div>
-            <div class="mt-2 text-xs font-medium" :class="healthVerdict.tone">{{ healthVerdict.label }}</div>
+          <div class="lg:flex-1 min-w-0">
+            <div class="text-xs text-muted-foreground tracking-wide mb-2">{{ t('dashboard.heroEyebrow') }}</div>
+            <h2 class="text-5xl font-bold tracking-tight leading-[1.1] break-words" :class="heroTone">
+              {{ heroTitle }}
+            </h2>
+            <p class="mt-2 text-sm text-muted-foreground">{{ heroDetail }}</p>
+            <router-link
+              v-if="heroAction"
+              :to="heroAction.link"
+              class="mt-3 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-foreground transition-colors ease-app hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {{ t('dashboard.heroOpen') }}
+              <ChevronRight :size="14" :stroke-width="2" aria-hidden="true" />
+            </router-link>
           </div>
 
-          <div class="flex-1 min-w-0">
+          <div class="lg:w-[420px] lg:shrink-0">
             <div class="flex items-baseline justify-between gap-3 mb-2">
               <span class="text-xs text-muted-foreground tracking-wide">{{ t('dashboard.phaseDistribution') }}</span>
               <span class="text-xs text-muted-foreground tabular-nums">{{ formatNumber(podTotal) }} Pod</span>
             </div>
             <PhaseBar :slices="phaseSlices" height="12px" />
-            <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
+            <p class="mt-2 text-xs text-muted-foreground">
+              {{ t('dashboard.heroRunningFact', { running: formatNumber(phaseCounts.running), total: formatNumber(podTotal) }) }}
+            </p>
+            <div class="mt-2.5 flex flex-wrap gap-x-5 gap-y-1.5">
               <div v-for="s in phaseSlices" :key="s.key" class="flex items-center gap-1.5 text-xs">
                 <span class="size-2 rounded-full shrink-0" :style="{ background: s.color }" aria-hidden="true" />
                 <span class="text-muted-foreground">{{ s.label }}</span>
@@ -291,7 +299,7 @@ const recentActivity = computed(() => {
     </Card>
 
     <!-- Section 1: Action Required (only if there ARE actions) -->
-    <Card v-if="actionItems.length > 0" class="p-0 mb-4 border-warning">
+    <Card v-if="actionItems.length > 0" :class="['p-0 mb-4', actionCardBorder]">
       <CardContent class="p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold flex items-center gap-2">
@@ -327,23 +335,25 @@ const recentActivity = computed(() => {
 
     <!-- Section 2: 次级指标。改用通用 StatCard —— 之前 Dashboard 手搓了四个
          样式不同的卡片（text-2xs uppercase 标签 + 26px 数字），Nodes 页却用
-         StatCard（12px 标签 + 34px 数字）：同一个概念两套视觉语言，差两级字号。 -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+         StatCard（12px 标签 + 34px 数字）：同一个概念两套视觉语言，差两级字号。
+         数字再从 34px 收到 26px（size="sm"）：首屏 48px 的主位之外，剩下的
+         数字都不该跟它抢注意力。「命名空间 44」整张删掉 —— 44 个命名空间
+         不是运行信号。Nodes 页保持默认尺寸，那边的 StatCard 就是那一页的
+         全部层级，收小会把它掏空。 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
       <StatCard
+        size="sm"
         :label="t('dashboard.statAlerts')"
         :value="stats.warning_events"
         :hint="t('dashboard.statAlertsHint')"
         :class="stats.warning_events > 0 ? 'text-warning' : ''"
       />
       <StatCard
+        size="sm"
         :label="t('dashboard.statNodes')"
         :value="`${stats.nodes_ready}/${stats.nodes_total}`"
         format="raw"
         :hint="t('dashboard.nodesReady')"
-      />
-      <StatCard
-        :label="t('dashboard.statNamespaces')"
-        :value="stats.namespaces_count"
       />
     </div>
 
@@ -357,10 +367,16 @@ const recentActivity = computed(() => {
             {{ t('dashboard.recentActivity') }}
             <span class="text-2xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
           </h3>
-          <EmptyState
+          <!-- ponytail: 空态收成一行。共享的 EmptyState 是 40px 图标 + py-16 的
+               居中大块，在「没有事件」时占了整个下半屏的四成面积，说的却只是
+               没有事件。真正的信号（重启次数）在右边的条形图里。 -->
+          <div
             v-if="recentActivity.length === 0"
-            :title="t('dashboard.recentActivityEmpty')"
-          />
+            class="flex items-center gap-2 py-3 text-sm text-muted-foreground"
+          >
+            <Inbox :size="15" :stroke-width="1.75" aria-hidden="true" />
+            {{ t('dashboard.recentActivityEmpty') }}
+          </div>
           <ol v-else class="space-y-1.5">
             <li
               v-for="(item, i) in recentActivity"

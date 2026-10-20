@@ -329,10 +329,18 @@ const groups = computed<Group[]>(() => {
       i = j
     }
   }
-  return out
+  // ponytail: 日志按时间正序渲染，最新的在最后。
+  // props.lines 是最新在前（SSE 层把新批次 prepend 到数组头），而渲染按
+  // `kubectl logs -f` 的约定来：新的在底部。这样新行追加在视口下方，
+  // 你正在读的那一行不会因为每来一条日志就整体下移一行 —— 追一个
+  // stack trace 时这是持续的干扰。
+  //
+  // 组内的行保持最新在前：折叠行显示的是这一组里最新一条的时间戳，
+  // 那是「它还在发生吗」的信号。
+  return out.reverse()
 })
 
-// === Virtual scroll (NEWEST AT TOP, scrollTop=0) ===
+// === Virtual scroll (NEWEST AT BOTTOM, the tail is the bottom) ===
 //
 // Virtualizing with a spacer above and below the rendered window is a
 // promise: "the pixels outside the window are represented by that spacer".
@@ -591,14 +599,13 @@ function captureAnchor(): Anchor | null {
   const el = scrollEl.value
   if (!el) return null
   const top = el.scrollTop
-  // At the very top the follower owns the position (jumpToTop); anchoring
-  // there would fight it.
-  if (autoFollow.value && top <= FOLLOW_EPSILON) return null
   if (groups.value.length === 0) return null
   // A reader who asked for the END of the log should still be at the end of
   // it. The end moves whenever the last groups are measured and turn out to
   // be taller than their estimate, and a plain anchor would leave the
-  // reader short of it by exactly that much.
+  // reader short of it by exactly that much. The end IS the newest line
+  // now, so this is also the anchor that keeps a follower pinned to the
+  // tail while the content grows below them.
   if (top >= el.scrollHeight - el.clientHeight - 1) {
     return { idx: groups.value.length - 1, delta: 0, atBottom: true }
   }
@@ -734,7 +741,7 @@ const displayedLines = computed(() => {
   return lines
 })
 
-// === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
+// === Auto-scroll (NEWEST AT BOTTOM → the tail is the bottom) ===
 //
 // The app owns scrollTop. The container carries no CSS scroll-behavior and
 // native scroll anchoring is off, so nothing moves the scroll position
@@ -761,24 +768,10 @@ function scrollToPosition(top: number, kind: 'command' | 'correction' = 'command
   })
 }
 
-function jumpToTop() {
-  scrollToPosition(0)
-}
-
-/**
- * Re-pin the panel to the newest line when the reader is following.
- *
- * There is no interaction timer here any more. The old code also required
- * "something happened in the last three seconds", which meant a reader who
- * parked the mouse over the panel stopped receiving the tail exactly when
- * they were watching it. What protects a reader is that they are no longer
- * at the top, and the scroll position says exactly that.
- */
-function followTopIfFollowing(): void {
+function jumpToBottom() {
   const el = scrollEl.value
-  if (!el || !autoFollow.value) return
-  if (el.scrollTop > FOLLOW_EPSILON) return
-  if (el.scrollTop > 0) scrollToPosition(0)
+  if (!el) return
+  scrollToPosition(Math.max(0, el.scrollHeight - el.clientHeight))
 }
 
 watch(displayedLines, (v) => {
@@ -788,12 +781,18 @@ watch(displayedLines, (v) => {
   // from stale offsets.
   rebuildOffsets()
   recomputeVirtualRange()
-  followTopIfFollowing()
   scheduleSettle(captureAnchor())
 }, { immediate: true })
 
 watch(() => props.lines.length, () => {
-  followTopIfFollowing()
+  // New lines arrived. If the reader is following the tail, put them back on
+  // it. The settle/anchor pass handles the common case; this covers the
+  // frame where the count changed but the rendered list has not caught up.
+  const el = scrollEl.value
+  if (!el || !autoFollow.value) return
+  const distFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
+  if (distFromBottom > FOLLOW_BREAK) return
+  scrollToPosition(Math.max(0, el.scrollHeight - el.clientHeight), 'correction')
 })
 
 // === Live region ===
@@ -837,15 +836,17 @@ function onScroll() {
       saveScrollMemory()
     })
   }
-  // Newest-at-top: scrollTop=0 means we're at the newest line.
-  if (top <= FOLLOW_EPSILON) {
-    // User is back at the top — re-engage auto-follow and clear unread.
+  // Newest-at-bottom: the tail is the bottom of the scroller, so "how far
+  // from the newest line am I" is the distance from the bottom.
+  const distFromBottom = scrollEl.value.scrollHeight - scrollEl.value.clientHeight - top
+  if (distFromBottom <= FOLLOW_EPSILON) {
+    // User is back at the tail — re-engage auto-follow and clear unread.
     if (!autoFollow.value) {
       autoFollow.value = true
       emit('update:autoFollow', true)
       emit('consume-unread')
     }
-  } else if (top > FOLLOW_BREAK && autoFollow.value) {
+  } else if (distFromBottom > FOLLOW_BREAK && autoFollow.value) {
     // User scrolled away from top — disable auto-follow, show unread pill.
     // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
     // mirror of the ref PodDetailView shares with usePodLogs, and flush()
@@ -864,7 +865,7 @@ function toggleAutoFollow() {
   emit('update:autoFollow', autoFollow.value)
   if (autoFollow.value) {
     emit('consume-unread')
-    jumpToTop()
+    jumpToBottom()
   }
 }
 
@@ -886,16 +887,16 @@ function jumpToError(dir: 1 | -1) {
   if (gs.length === 0) return
   const cur = indexAt(el.scrollTop)
   let target = -1
-  // displayedLines is newest-first, so "newer" is a SMALLER group index.
+  // The groups are oldest-first, so "newer" is a LARGER group index.
   // The previous implementation compared a LINE index against a pixel
   // offset computed from a flat 22px row, so it landed on an unrelated line
   // whenever the rows were not uniform.
   if (dir === 1) {
-    for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
-    if (target < 0) for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
-  } else {
     for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
     if (target < 0) for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
+  } else {
+    for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
+    if (target < 0) for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
   }
   if (target < 0) return
   revealGroup(gs[target], target)
@@ -966,7 +967,10 @@ function onRegionLeave() {
 }
 
 async function copyAll() {
-  const text = displayedLines.value
+  // ponytail: 复制出来的是时间正序 —— 粘进 issue 的时候，第一行就该是
+  // 最早的那条。displayedLines 是最新在前，所以这里反过来。
+  const text = [...displayedLines.value]
+    .reverse()
     .map(l => `${l.raw.timestamp} [${l.raw.severity.toUpperCase()}] [${l.raw.container}] ${l.raw.content}`)
     .join('\n')
   try {
@@ -1006,7 +1010,7 @@ onMounted(() => {
   // Followers land on the newest line; readers resume their saved position
   // (tab switches remount this component and used to reset scrollTop to 0).
   if (autoFollow.value) {
-    nextTick(jumpToTop)
+    nextTick(jumpToBottom)
   } else {
     // The restore is replayed by settle() as the model is corrected, so it
     // lands on the same GROUP the reader left rather than on the same
@@ -1068,7 +1072,7 @@ function isNewestLine(group: Group): boolean {
   // ponytail: under virtualization, v-for idx is local to the rendered slice —
   // compare against the head of the FULL group list so the pulse follows the
   // actual newest line, not "first row currently in viewport".
-  return props.streaming && groups.value[0]?.key === group.key
+  return props.streaming && groups.value[groups.value.length - 1]?.key === group.key
 }
 
 // === Severity badge (per-row label, replaces single-char icon) ===
@@ -1536,8 +1540,8 @@ const helpRows = computed(() => [
         :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
         :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
       >
-        <ChevronUp v-if="autoFollow" :size="13" :stroke-width="1.75" />
-        <ChevronDown v-else :size="13" :stroke-width="1.75" />
+        <ChevronDown v-if="autoFollow" :size="13" :stroke-width="1.75" />
+        <ChevronUp v-else :size="13" :stroke-width="1.75" />
       </Button>
       <Button
         variant="outline" size="xs"
@@ -1638,7 +1642,7 @@ const helpRows = computed(() => [
       </Button>
     </div>
 
-    <!-- Log area (NEWEST AT TOP) - fold groups, virtualized -->
+    <!-- Log area (NEWEST AT BOTTOM) - fold groups, virtualized -->
     <!--
       The scroll container owns no scroll behaviour of its own. A CSS
       `scroll-behavior: smooth` turns every programmatic scroll into an
@@ -1649,9 +1653,18 @@ const helpRows = computed(() => [
       when the content above the viewport resizes, which moves scrollTop on
       its own and fights the model's own correction.
     -->
+    <!--
+      The "N new" pill lives OUTSIDE the scroll container, pinned to the
+      bottom of the log area. It used to be absolutely positioned inside the
+      scroller, which meant it sat at the top of the scrollable content and
+      scrolled out of view the moment the reader moved down — the one
+      affordance that tells them how much they missed was the one they
+      could not see.
+    -->
+    <div class="relative flex-1 min-h-0">
     <div
       ref="scrollEl"
-      class="log-scroll flex-1 overflow-auto bg-background relative"
+      class="log-scroll h-full overflow-auto bg-background"
       role="log"
       aria-live="off"
       :aria-label="t('log.outputLabel')"
@@ -1659,17 +1672,6 @@ const helpRows = computed(() => [
       @mouseleave="onRegionLeave"
       @scroll="onScroll"
     >
-      <!-- "N new" pill when auto-follow is off and new lines arrived -->
-      <button
-        v-if="!autoFollow && (unreadCount ?? 0) > 0"
-        type="button"
-        class="absolute top-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app"
-        @click="toggleAutoFollow"
-      >
-        <ChevronUp :size="12" :stroke-width="2" />
-        {{ t('log.newLines', { count: unreadCount }) }}
-      </button>
-
       <div
         v-if="displayedLines.length === 0"
         class="flex flex-col items-center justify-center h-full px-4 text-center text-muted-foreground font-sans"
@@ -1924,6 +1926,17 @@ const helpRows = computed(() => [
         </div>
         <div :style="{ height: padBottom + 'px' }" aria-hidden="true" />
       </div>
+    </div>
+      <!-- "N new" pill when auto-follow is off and new lines arrived -->
+      <button
+        v-if="!autoFollow && (unreadCount ?? 0) > 0"
+        type="button"
+        class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app"
+        @click="toggleAutoFollow"
+      >
+        <ChevronDown :size="12" :stroke-width="2" />
+        {{ t('log.newLines', { count: unreadCount }) }}
+      </button>
     </div>
 
     <!--

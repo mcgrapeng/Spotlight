@@ -87,18 +87,19 @@ test('Dashboard renders health score, pod counts, warnings, restart top', async 
   // Page title reflects the active cluster (mocked: demo-cluster).
   await expect(pageTitle(page)).toContainText(/demo-cluster|总览/)
 
-  // Health score: running / (running+pending+failed) = 258/275 → 94.
-  // The dashboard leads with a hero row (48px health number + phase
-  // distribution) instead of four equal stat cards, so the label is
-  // 「集群健康度」rather than 「健康」.
-  await expect(page.getByText('集群健康度', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('94', { exact: true }).first()).toBeVisible()
+  // The hero answers "what is the one thing to handle", not "what is the
+  // health score". The health percentage is gone: it could not go red,
+  // because a pod that has crash-looped 21,320 times is still phase=Running,
+  // so the number kept saying everything was fine while the screen beneath
+  // it listed three pods restarting in a loop.
+  await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('258 / 287 个 Pod 处于 Running', { exact: true }).first()).toBeVisible()
 
   // Phase distribution — the 287 pods are now a stacked bar with a legend
   // (Running 258 / Pending 17 / Failed 0 / Succeeded 12) instead of a number
   // in its own card.
   await expect(page.getByText('Pod 阶段分布', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('Running', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('运行中 Running', { exact: true }).first()).toBeVisible()
 
   // Warning events card (25 from fixture)
   await expect(page.getByText('告警', { exact: true }).first()).toBeVisible()
@@ -111,7 +112,7 @@ test('Dashboard renders health score, pod counts, warnings, restart top', async 
 
   // Refresh button visible + clickable, doesn't crash.
   await page.getByRole('button', { name: '刷新' }).first().click()
-  await expect(page.getByText('集群健康度', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
 
   expect(filterCritical(errors)).toHaveLength(0)
 })
@@ -136,7 +137,7 @@ test('Pods table renders rows and pagination controls respond', async ({ page })
 
   // Status filter (AppSelect popover) accepts a value without crashing.
   await page.getByRole('combobox', { name: '按状态筛选' }).click()
-  await page.getByRole('option', { name: 'Running' }).click()
+  await page.getByRole('option', { name: '运行中 Running' }).click()
   // Both mocked pods are Running → both still visible.
   await expect(page.getByText('webapp-001').first()).toBeVisible()
 
