@@ -175,17 +175,29 @@ async def stream(
                     "data": json.dumps(batch, ensure_ascii=False),
                 }
                 # Burst drain to keep latency low under load.
+                drained_end = False
                 while not queue.empty():
                     try:
                         next_batch = queue.get_nowait()
                     except asyncio.QueueEmpty:
                         break
                     if next_batch is None:
+                        # The sentinel means "producer finished", exactly as it
+                        # does above — so it has to end the OUTER loop too.
+                        # Breaking only the inner one fell back to queue.get()
+                        # on a queue nothing will ever fill again: the stream
+                        # sat there emitting keepalive pings, holding its
+                        # session slot and its executor thread, and never sent
+                        # `end`. Reachable whenever the producer finishes while
+                        # the consumer is still draining, i.e. any burst.
+                        drained_end = True
                         break
                     yield {
                         "event": "log",
                         "data": json.dumps(next_batch, ensure_ascii=False),
                     }
+                if drained_end:
+                    break
             yield {"event": "end", "data": "[DONE]"}
         finally:
             # Client gone / stream over: stop the blocking watch drain and
