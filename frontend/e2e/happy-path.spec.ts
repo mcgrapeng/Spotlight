@@ -93,6 +93,23 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
     await expect(page.getByText('检测到 3 次连接重试')).toBeVisible({ timeout: 10_000 })
   })
 
+  test('the global AI panel answers a cluster question', async ({ page }) => {
+    await page.goto('/dashboard')
+    // ⌘J opens the panel from any page: the AI is something you call up,
+    // not a page you go to.
+    await page.keyboard.press('Meta+j')
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(page.getByText('问 Spotlight')).toBeVisible()
+
+    // The context is a live snapshot of the cluster, not a static blurb.
+    await expect(page.getByText(/total=\d+ running=/)).toBeVisible({ timeout: 10_000 })
+
+    await page.getByLabel('问题').fill('哪个 Pod 在反复重启？')
+    await page.getByRole('button', { name: '提问' }).click()
+    await expect(page.getByText('集群级回答')).toBeVisible({ timeout: 10_000 })
+  })
+
   test('AI Settings page surfaces the single-active constraint', async ({ page }) => {
     await page.goto('/ai')
     await expect(page.locator('h1').first()).toContainText('AI 模型')

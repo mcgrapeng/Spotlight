@@ -212,6 +212,18 @@ export async function installApiMocks(page: Page) {
     })
   })
 
+  // ── AI ask (cluster-level question) ──────────────────────────────────────
+  await page.route(/\/api\/v1\/ai\/ask(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        answer: '集群级回答：monitoring 命名空间的 tempo-distributed-query 重启了 21320 次。',
+        model: 'gpt-4o-mini', latency_ms: 512,
+        input_tokens: 420, output_tokens: 96,
+      }),
+    }),
+  )
+
   // ── AI analyze ──────────────────────────────────────────────────────────
   await page.route(/\/api\/v1\/ai\/analyze\/.*/, (route) =>
     route.fulfill({

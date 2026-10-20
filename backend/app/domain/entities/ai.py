@@ -64,6 +64,10 @@ class AIAnalysisRequest:
     log_lines: list[str]
     question: str = "请分析这些日志的根因、异常点和建议"
     max_lines: int = 200
+    # Set for a cluster-level question rather than a log excerpt. The
+    # provider picks a different prompt for it: the pod prompt asks for a
+    # root cause, the cluster prompt asks a question about the context.
+    context: str = ""
 
 
 @dataclass(frozen=True, slots=True)

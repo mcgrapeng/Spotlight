@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.application.dto import (
     AIAnalyzeIn,
     AIAnalyzeOut,
+    AIAskIn,
     AIProviderIn,
     AIProviderOut,
 )
@@ -103,6 +104,30 @@ async def delete_provider(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
 )
 async def set_default(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
     return _to_out(await uc.set_default(provider_id))
+
+
+@router.post(
+    "/ai/ask",
+    response_model=AIAnalyzeOut,
+    summary="Answer a cluster-level question with the configured LLM",
+    dependencies=[Depends(require_permission("ai.use"))],
+)
+async def ask(
+    payload: AIAskIn,
+    uc: AIUseCases = Depends(ai_uc),
+):
+    """Answer a question about the cluster from a context snapshot.
+
+    The pod route below answers "why is this pod broken" from its logs. This
+    one answers "which pod is broken" and "what should I look at first" —
+    the questions a reader has before they know which pod to open. The
+    response shape is the same on purpose, so the UI renders both with one
+    component.
+    """
+    try:
+        return await uc.ask(payload.provider_id, payload.question, payload.context)
+    except (ValueError, LookupError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post(

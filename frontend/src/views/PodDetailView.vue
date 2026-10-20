@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, RefreshCw, Bot, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
-import { podsApi, eventsApi, aiApi } from '@/api/endpoints'
+import { podsApi, eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useRelativeTime } from '@/composables/useRelativeTime'
 import { usePodLogs } from '@/composables/usePodLogs'
@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import LogViewer from '@/components/log/LogViewer.vue'
-import LogAnalyzerDrawer from '@/components/ai/LogAnalyzerDrawer.vue'
+import { useAiStore } from '@/stores/ai'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -31,7 +31,6 @@ const cluster = useClusterStore()
 const { t } = useI18n()
 const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
-const analyzerOpen = ref(false)
 /** 容器就绪数 —— 事实条上那个 n/n。 */
 const readyContainers = computed(
   () => pod.value?.containers.filter((c) => c.ready).length ?? 0,
@@ -66,33 +65,17 @@ const namespace = computed(() => String(route.params.namespace ?? cluster.active
 const logStreaming = ref(true)
 const logUnread = ref(0)
 
-// AI 分析（LogAnalyzerDrawer 的 analyze/loading/result 三件套）
-const aiLoading = ref(false)
-const aiResult = ref('')
-const aiError = ref('')
+// AI 分析：打开全局共享的面板（同一个组件，命令行面板和 Pod 详情页都用它）。
+// 之前这里是独立的一套 analyze/loading/result 三件套加一个自己的抽屉，
+// 于是「AI 会思考」这件事在两个地方各长了一套实现，而全局入口根本不存在。
+const ai = useAiStore()
 
-async function runAI(content: string) {
-  aiError.value = ''
-  aiResult.value = ''
-  aiLoading.value = true
-  try {
-    const providers = await aiApi.listProviders()
-    const provider = providers.find(p => p.enabled) ?? providers.find(p => p.is_default)
-    if (!provider?.id) {
-      aiError.value = t('pod.aiNoProvider')
-      return
-    }
-    const out = await aiApi.analyze(
-      cluster.activeCluster, namespace.value, name.value,
-      provider.id, content.split('\n'),
-      t('pod.aiPrompt'),
-    )
-    aiResult.value = out.answer
-  } catch (e: any) {
-    aiError.value = e?.response?.data?.detail ?? e?.message ?? t('pod.aiFailed')
-  } finally {
-    aiLoading.value = false
-  }
+function openAIAnalyzer() {
+  ai.openAnalyze({
+    namespace: namespace.value,
+    name: name.value,
+    logContent: filteredLogsForAI.value.map((l) => l.content).join('\n'),
+  })
 }
 
 // Shared auto-follow ref: usePodLogs reads it to decide whether new SSE
@@ -227,7 +210,7 @@ function back() { router.push({ name: 'pods' }) }
           <TabsContent value="logs" class="mt-2 flex-1 min-h-0 flex flex-col">
             <div class="flex items-center justify-between mb-2 shrink-0">
               <h3 class="text-sm font-semibold">{{ t('pod.containerLogs') }}</h3>
-              <Button variant="outline" size="sm" @click="analyzerOpen = true">
+              <Button variant="outline" size="sm" @click="openAIAnalyzer">
                 <Bot :size="14" :stroke-width="1.75" class="mr-1" />
                 {{ t('pod.aiAnalyze') }}
               </Button>
@@ -339,13 +322,5 @@ function back() { router.push({ name: 'pods' }) }
         </Tabs>
     </div>
 
-    <LogAnalyzerDrawer
-      v-model:open="analyzerOpen"
-      :log-content="filteredLogsForAI.map(l => l.content).join('\n')"
-      :loading="aiLoading"
-      :result="aiResult"
-      :error="aiError"
-      @analyze="runAI"
-    />
   </div>
 </template>

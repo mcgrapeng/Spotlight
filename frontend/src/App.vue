@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { Toaster } from '@/components/ui/sonner'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import CommandPalette from '@/components/ui/CommandPalette.vue'
+import AIPanel from '@/components/ai/AIPanel.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { useTheme } from '@/composables/useTheme'
 
@@ -34,6 +35,7 @@ onMounted(async () => {
   </AppLayout>
 
   <CommandPalette v-if="!isBareRoute" />
+  <AIPanel v-if="!isBareRoute" />
 
   <Toaster position="bottom-right" :theme="theme" />
 </template>

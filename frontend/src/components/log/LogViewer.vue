@@ -4,11 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
-  Copy, X, Terminal, Filter, Clock, WrapText, Download, AlertCircle, HelpCircle,
+  Copy, X, Terminal, Filter, WrapText, Download, AlertCircle, HelpCircle,
+  MoreHorizontal, Trash2,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { chipClasses } from '@/lib/chip'
 import { useLogFilters } from '@/composables/useLogFilters'
@@ -1119,6 +1121,16 @@ function severityBorderFor(s: string): string {
 // to 30% opacity made history look like a veil. The timestamp column already
 // communicates recency.
 
+/**
+ * The newest line is the one that just arrived, so its pulse is the
+ * product's only "something just happened" signal. Red when the line that
+ * arrived is an error: at 3am that is the one thing worth interrupting
+ * for.
+ */
+function isNewestLineError(group: Group): boolean {
+  return isErrorLine(group.lines[group.lines.length - 1])
+}
+
 function isNewestLine(group: Group): boolean {
   // ponytail: under virtualization, v-for idx is local to the rendered slice —
   // compare against the head of the FULL group list so the pulse follows the
@@ -1208,7 +1220,11 @@ const RECENT_KEY = STORAGE_KEYS.appLogSearchHistory
 const MAX_RECENT = 10
 
 const recentSearches = ref<string[]>(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'))
-const searchHistoryOpen = ref(false)
+// The overflow menu and the clear confirmation. Both live here because
+// "clear the screen" destroys what the reader is looking at, and the
+// overflow menu is where the action moved to.
+const moreOpen = ref(false)
+const clearConfirmOpen = ref(false)
 let searchHistoryTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(search, (v, old) => {
@@ -1222,9 +1238,19 @@ watch(search, (v, old) => {
   }, 1500)
 })
 
+function requestClear() {
+  moreOpen.value = false
+  clearConfirmOpen.value = true
+}
+
+function confirmClear() {
+  clearConfirmOpen.value = false
+  clearAll()
+}
+
 function applyRecent(q: string) {
   search.value = q
-  searchHistoryOpen.value = false
+  moreOpen.value = false
 }
 
 function clearRecent() {
@@ -1466,7 +1492,7 @@ const helpRows = computed(() => [
         :title="t('log.severityLines', { bucket: chip.bucket, count: chipCounts[chip.bucket].toLocaleString() })"
       >
         <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[chip.bucket] }}</span>
-        <span class="uppercase tracking-wider">&ge; {{ chip.bucket }}</span>
+        <span class="uppercase tracking-wider">{{ chip.bucket }}+</span>
         <span class="tabular-nums">{{ chipCounts[chip.bucket].toLocaleString() }}</span>
       </button>
     </div>
@@ -1535,47 +1561,6 @@ const helpRows = computed(() => [
           <X :size="13" :stroke-width="1.75" />
         </button>
       </div>
-      <Popover v-model:open="searchHistoryOpen">
-        <PopoverTrigger as-child>
-          <Button
-            variant="ghost"
-            size="xs"
-            :aria-label="t('log.searchHistoryLabel')"
-          >
-            <Clock :size="13" :stroke-width="1.75" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent class="w-[260px] p-0" align="start">
-          <div v-if="recentSearches.length === 0" class="p-4 text-center text-2xs text-muted-foreground">
-            {{ t('log.searchHistoryEmpty') }}
-          </div>
-          <div v-else class="py-1">
-            <button
-              v-for="q in recentSearches"
-              :key="q"
-              type="button"
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
-              @click="applyRecent(q)"
-            >
-              <span class="flex-1 truncate">{{ q }}</span>
-            </button>
-            <div class="border-t border-border p-1">
-              <Button variant="ghost" size="sm" class="w-full" @click="clearRecent">
-                {{ t('log.searchHistoryClearAll') }}
-              </Button>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
-      <Button
-        variant="outline" size="xs"
-        :title="wrapMode === 'wrap' ? t('log.wrapOn') : t('log.wrapOff')"
-        @click="toggleWrap"
-        :aria-label="t('log.toggleWrapLabel')"
-      >
-        <WrapText v-if="wrapMode === 'wrap'" :size="13" :stroke-width="1.75" />
-        <ChevronsRight v-else :size="13" :stroke-width="1.75" />
-      </Button>
       <Button
         variant="outline" size="xs"
         @click="togglePause"
@@ -1596,14 +1581,6 @@ const helpRows = computed(() => [
       </Button>
       <Button
         variant="outline" size="xs"
-        :disabled="!lines.length"
-        @click="emit('clear')"
-        :aria-label="t('log.clearLabel')"
-      >
-        <X :size="13" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="xs"
         :disabled="!displayedLines.length"
         @click="copyAll"
         :aria-label="t('log.copyAllLabel')"
@@ -1619,6 +1596,71 @@ const helpRows = computed(() => [
       >
         <Download :size="13" :stroke-width="1.75" />
       </Button>
+      <!--
+        ponytail: 工具栏收成「三个动作 + 一个溢出菜单」。
+        之前是九个同权重的图标按钮：凌晨三点没人记得住 ChevronUp 是「跟随」，
+        而清空屏幕的 X 和搜索框里的清除 X 是同一个字形。两个意思不同的 X
+        并排放在一排图标里，是这个面板最难读的地方。
+        现在常驻的是值班时真的会按的四个（暂停、跟随、复制、下载），
+        加上一个 ? 帮助；搜索历史、换行、清屏进「⋯」菜单，每一项都带文字。
+      -->
+      <Popover v-model:open="moreOpen">
+        <PopoverTrigger as-child>
+          <Button
+            variant="ghost"
+            size="xs"
+            :aria-label="t('log.moreActions')"
+            :title="t('log.moreActions')"
+          >
+            <MoreHorizontal :size="13" :stroke-width="1.75" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-[260px] p-0" align="end">
+          <div v-if="recentSearches.length > 0" class="py-1">
+            <div class="px-3 py-1 text-2xs uppercase tracking-wider text-muted-foreground">
+              {{ t('log.searchHistoryLabel') }}
+            </div>
+            <button
+              v-for="q in recentSearches"
+              :key="q"
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              @click="applyRecent(q)"
+            >
+              <span class="flex-1 truncate">{{ q }}</span>
+            </button>
+            <div class="border-t border-border p-1">
+              <Button variant="ghost" size="sm" class="w-full" @click="clearRecent">
+                {{ t('log.searchHistoryClearAll') }}
+              </Button>
+            </div>
+          </div>
+          <div class="border-t border-border p-1">
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              @click="toggleWrap"
+            >
+              <WrapText v-if="wrapMode === 'wrap'" :size="13" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+              <ChevronsRight v-else :size="13" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+              <span class="flex-1">{{ t('log.menuToggleWrap') }}</span>
+              <span class="text-2xs text-muted-foreground">
+                {{ wrapMode === 'wrap' ? t('log.wrapStateOn') : t('log.wrapStateOff') }}
+              </span>
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-error hover:bg-error/10 focus-visible:bg-error/10 focus-visible:outline-none"
+              :disabled="!lines.length"
+              :aria-label="t('log.clearLabel')"
+              @click="requestClear"
+            >
+              <Trash2 :size="13" :stroke-width="1.75" class="shrink-0" />
+              <span class="flex-1">{{ t('log.menuClear') }}</span>
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
       <Popover v-model:open="helpOpen">
         <PopoverTrigger as-child>
           <Button
@@ -1782,7 +1824,10 @@ const helpRows = computed(() => [
               />
               <span
                 v-if="isNewestLine(group)"
-                class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
+                :class="cn(
+                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full animate-pulse',
+                  isNewestLineError(group) ? 'bg-error' : 'bg-success',
+                )"
                 aria-hidden="true"
               />
               <!-- Col 1: timestamp (sticky) -->
@@ -1870,7 +1915,10 @@ const helpRows = computed(() => [
               />
               <span
                 v-if="isNewestLine(group)"
-                class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
+                :class="cn(
+                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full animate-pulse',
+                  isNewestLineError(group) ? 'bg-error' : 'bg-success',
+                )"
                 aria-hidden="true"
               />
               <span
@@ -2016,6 +2064,26 @@ const helpRows = computed(() => [
         <span v-else>{{ t('log.autoFollow') }} <ChevronDown :size="11" :stroke-width="2" class="inline -mb-px" /></span>
       </div>
     </div>
+
+    <!--
+      Clearing the screen destroys what the reader is looking at, and it sits
+      next to "copy all" — two different risk levels side by side. It asks
+      first.
+    -->
+    <Dialog :open="clearConfirmOpen" @update:open="(v) => (clearConfirmOpen = v)">
+      <DialogContent class="sm:max-w-sm font-sans">
+        <DialogTitle>{{ t('log.clearConfirmTitle') }}</DialogTitle>
+        <p class="text-sm text-muted-foreground">{{ t('log.clearConfirmBody') }}</p>
+        <div class="mt-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" @click="clearConfirmOpen = false">
+            {{ t('log.clearConfirmCancel') }}
+          </Button>
+          <Button variant="destructive" size="sm" @click="confirmClear">
+            {{ t('log.clearConfirmOk') }}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 

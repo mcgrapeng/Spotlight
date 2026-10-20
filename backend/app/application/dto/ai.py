@@ -39,6 +39,18 @@ class AIAnalyzeIn(BaseModel):
     log_lines: list[str] = Field(default_factory=list, max_length=2000)
 
 
+class AIAskIn(BaseModel):
+    """A cluster-level question.
+
+    `context` is a compact snapshot the UI assembled — phase counts, the
+    noisiest pods, node readiness. The model is told to say what is missing
+    rather than to guess.
+    """
+    provider_id: int
+    question: str = Field(min_length=1, max_length=2000)
+    context: str = Field(default="", max_length=20000)
+
+
 class AIAnalyzeOut(BaseModel):
     answer: str
     model: str

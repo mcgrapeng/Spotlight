@@ -7,11 +7,13 @@ import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
 import MobileDrawer from './MobileDrawer.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
+import { useAiStore } from '@/stores/ai'
 import { STORAGE_KEYS } from '@/storage-keys'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const ai = useAiStore()
 // ponytail: key on path (not fullPath) — query changes (e.g. ?search=foo → ?search=bar)
 // would force a full RouterView remount, destroying Pinia-less state and
 // re-fetching everything. Path-only key preserves child state across
@@ -34,6 +36,9 @@ function toggleCollapsed() {
 }
 
 useKeyboardShortcuts(() => [
+  // ⌘J: 问 Spotlight。AI 不是一个要你「先找到再打开」的页面，
+  // 它是随时能叫出来的一个面板 —— 凌晨三点你在任何页面上都能问。
+  { combo: 'mod+j', handler: () => ai.openAsk() },
   { combo: 'g d', handler: () => router.push({ name: 'dashboard' }) },
   { combo: 'g p', handler: () => router.push({ name: 'pods' }) },
   { combo: 'g n', handler: () => router.push({ name: 'nodes' }) },

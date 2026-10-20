@@ -67,6 +67,18 @@ async function openLog(page) {
   return log
 }
 
+/**
+ * Toggle line wrapping.
+ *
+ * The toggle lives in the toolbar's overflow menu now: the toolbar was nine
+ * same-weight icon buttons, and the ones a reader does not press every
+ * minute went into a menu where each entry has a word on it.
+ */
+async function toggleWrap(page) {
+  await page.getByRole('button', { name: '更多' }).click()
+  await page.getByRole('button', { name: /切换自动换行/ }).click()
+}
+
 /** Put the wheel over the middle of the log panel. */
 async function wheelOver(page, log, dy: number) {
   const box = await log.boundingBox()
@@ -142,7 +154,7 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
 
   test('scrollTop never moves backwards while scrolling forward', async ({ page }) => {
     const log = await openLog(page)
-    await page.getByRole('button', { name: /切换换行/ }).click()
+    await toggleWrap(page)
     await page.waitForTimeout(400)
     // The panel opens at the tail, so scroll forward means scrolling DOWN
     // from here — which is a no-op at the bottom. Start at the top of the
@@ -176,7 +188,7 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
     const log = await openLog(page)
     for (const wrap of [false, true]) {
       if (wrap) {
-        await page.getByRole('button', { name: /切换换行/ }).click()
+        await toggleWrap(page)
         await page.waitForTimeout(500)
       }
       // The bottom is the tail now: the newest line has to be on screen.
@@ -234,7 +246,7 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
 
   test('the content moves by exactly the distance the reader scrolled', async ({ page }) => {
     const log = await openLog(page)
-    await page.getByRole('button', { name: /切换换行/ }).click()
+    await toggleWrap(page)
     await page.waitForTimeout(500)
     await log.evaluate(
       (el) => el.scrollTo({ top: 1200, behavior: 'instant' as ScrollBehavior }),

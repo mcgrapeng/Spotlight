@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING
 
 from app.application.ports.outbound import AIRepositoryPort
 from app.domain.entities.ai import AIAnalysisRequest, AIAnalysisResult, AIProviderConfig
-from app.infrastructure.ai.prompts.templates import SYSTEM_PROMPT, build_user_prompt
+from app.infrastructure.ai.prompts.templates import (
+    ASK_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    build_ask_prompt,
+    build_user_prompt,
+)
 from app.infrastructure.ai.providers.sql_provider import SQLAIProviderRepository
 from app.infrastructure.logging import get_logger
 
@@ -47,10 +52,18 @@ class LiteLLMAIRepository(AIRepositoryPort):
         # Lazy import — litellm module surface is heavy and not pydantic-v2-clean.
         import litellm  # type: ignore
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(req.question, req.pod_ref, req.log_lines)},
-        ]
+        if req.context:
+            # A cluster-level question: different system rules, and the
+            # context replaces the log excerpt.
+            messages = [
+                {"role": "system", "content": ASK_SYSTEM_PROMPT},
+                {"role": "user", "content": build_ask_prompt(req.question, req.context)},
+            ]
+        else:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": build_user_prompt(req.question, req.pod_ref, req.log_lines)},
+            ]
         kwargs = self._build_call_kwargs(cfg, messages)
         started = time.perf_counter()
         try:

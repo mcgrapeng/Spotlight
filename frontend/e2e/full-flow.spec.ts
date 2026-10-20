@@ -174,7 +174,7 @@ test('PodDetail Logs tab renders LogViewer and survives tab switching', async ({
   // "继续 (K)" (paused) — accept either to avoid racing the SSE EventSource
   // open. Either label proves LogViewer mounted and bound its props.
   await expect(page.getByLabel('过滤日志')).toBeVisible()
-  await expect(page.getByLabel('清空')).toBeVisible()
+  await expect(page.getByRole('button', { name: '更多' })).toBeVisible()
   await expect(page.getByRole('button', { name: /^(暂停|继续)/ })).toBeVisible()
 
   // History backfill renders the mocked lines.

@@ -356,6 +356,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a cluster-level question with the configured LLM
+         * @description Answer a question about the cluster from a context snapshot.
+         *
+         *     The pod route below answers "why is this pod broken" from its logs. This
+         *     one answers "which pod is broken" and "what should I look at first" —
+         *     the questions a reader has before they know which pod to open. The
+         *     response shape is the same on purpose, so the UI renders both with one
+         *     component.
+         */
+        post: operations["ask_api_v1_ai_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/analyze/{namespace}/{name}": {
         parameters: {
             query?: never;
@@ -522,6 +548,25 @@ export interface components {
             input_tokens?: number | null;
             /** Output Tokens */
             output_tokens?: number | null;
+        };
+        /**
+         * AIAskIn
+         * @description A cluster-level question.
+         *
+         *     `context` is a compact snapshot the UI assembled — phase counts, the
+         *     noisiest pods, node readiness. The model is told to say what is missing
+         *     rather than to guess.
+         */
+        AIAskIn: {
+            /** Provider Id */
+            provider_id: number;
+            /** Question */
+            question: string;
+            /**
+             * Context
+             * @default
+             */
+            context: string;
         };
         /** AIProviderIn */
         AIProviderIn: {
@@ -1713,6 +1758,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AIProviderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_api_v1_ai_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIAskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAnalyzeOut"];
                 };
             };
             /** @description Validation Error */

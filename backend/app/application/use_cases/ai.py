@@ -71,6 +71,31 @@ class AIUseCases:
             output_tokens=result.output_tokens,
         )
 
+    async def ask(
+        self, provider_id: int, question: str, context: str,
+    ) -> AIAnalyzeOut:
+        """Answer a cluster-level question against a context snapshot."""
+        cfg = await self._repo.get_provider(provider_id)
+        if cfg is None:
+            raise ValueError(f"ai provider {provider_id} not found")
+        if not cfg.enabled:
+            raise ValueError(f"ai provider {cfg.name} is disabled")
+        req = AIAnalysisRequest(
+            provider_id=provider_id,
+            pod_ref=ResourceRef(cluster="", namespace="", kind="Cluster", name=""),
+            log_lines=[],
+            question=question,
+            context=context,
+        )
+        result = await self._repo.analyze(cfg, req)
+        return AIAnalyzeOut(
+            answer=result.answer,
+            model=result.model,
+            latency_ms=result.latency_ms or 0,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+        )
+
     async def _can_enable(self, exclude_id: int | None) -> bool:
         """True if enabling `exclude_id` (None for a new row) keeps active count ≤1."""
         for p in await self._repo.list_providers():

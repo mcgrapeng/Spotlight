@@ -124,3 +124,74 @@ async def test_analyze_bounds_input(uc):
     )
     _, req = uc._repo.analysis_calls[-1]
     assert len(req.log_lines) == 200
+
+
+async def test_ask_unknown_provider(uc):
+    with pytest.raises(ValueError):
+        await uc.ask(provider_id=99, question="which pod?", context="total=1 running=1")
+
+
+async def test_ask_disabled_provider(uc):
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="x", provider="openai", model="m", api_key="k", enabled=False,
+    ))
+    with pytest.raises(ValueError):
+        await uc.ask(saved.id, "which pod?", "total=1 running=1")
+
+
+async def test_ask_carries_the_context_and_the_question(uc):
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="OpenAI", provider="openai", model="gpt-4o-mini", api_key="k",
+    ))
+    result = await uc.ask(saved.id, "which pod is restarting?", "total=287 running=258")
+    assert "mock answer" in result.answer
+    _, req = uc._repo.analysis_calls[-1]
+    # The context replaces the log excerpt: there is no pod here.
+    assert req.context == "total=287 running=258"
+    assert req.question == "which pod is restarting?"
+    assert req.log_lines == []
+
+
+def test_ask_prompt_carries_the_question_and_the_context():
+    from app.infrastructure.ai.prompts.templates import build_ask_prompt
+
+    prompt = build_ask_prompt("which pod?", "total=287 running=258")
+    assert "which pod?" in prompt
+    assert "total=287 running=258" in prompt
+
+
+async def test_ask_uses_the_cluster_prompt():
+    """A context switches the adapter to the cluster prompt, not the log one."""
+    from app.infrastructure.ai.prompts.templates import ASK_SYSTEM_PROMPT, SYSTEM_PROMPT
+    from app.infrastructure.ai.providers.litellm_provider import LiteLLMAIRepository
+
+    repo = FakeAIRepo()
+    saved = await repo.add_provider(AIProviderConfig(
+        id=None, name="OpenAI", provider="openai", model="gpt-4o-mini", api_key="k",
+    ))
+    captured: list = []
+
+    class _Resp:
+        model = "gpt-4o-mini"
+        id = "x"
+        choices = [type("C", (), {"message": type("M", (), {"content": "hi"})()})()]
+        usage = type("U", (), {"prompt_tokens": 1, "completion_tokens": 1})()
+
+    async def fake_acompletion(**kwargs):
+        captured.append(kwargs)
+        return _Resp()
+
+    with patch("litellm.acompletion", new=fake_acompletion):
+        adapter = LiteLLMAIRepository(repo)
+        await adapter.analyze(saved, type("R", (), {
+            "question": "which pod?", "context": "total=1", "pod_ref": None, "log_lines": [],
+        })())
+        await adapter.analyze(saved, type("R", (), {
+            "question": "why?", "context": "",
+            "pod_ref": ResourceRef(cluster="", namespace="ns", kind="Pod", name="p"),
+            "log_lines": ["x"],
+        })())
+
+    assert captured[0]["messages"][0]["content"] == ASK_SYSTEM_PROMPT
+    assert "total=1" in captured[0]["messages"][1]["content"]
+    assert captured[1]["messages"][0]["content"] == SYSTEM_PROMPT

@@ -154,6 +154,10 @@ export const aiApi = {
   deleteProvider: (id: number) => http.delete(`/ai/providers/${id}`),
   setDefault: (id: number) =>
     http.post<AIProviderOut>(`/ai/providers/${id}/default`).then((r) => r.data),
+  ask: (providerId: number, question: string, context: string) =>
+    http.post<AIAnalyzeOut>('/ai/ask', {
+      provider_id: providerId, question, context,
+    }).then((r) => r.data),
   analyze: (cluster: string | null, namespace: string, name: string,
              providerId: number, logLines: string[], question: string) =>
     http.post<AIAnalyzeOut>(

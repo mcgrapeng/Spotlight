@@ -16,11 +16,13 @@ import {
 import { isTypingTarget } from '@/composables/useKeyboardShortcuts'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
+import { useAiStore } from '@/stores/ai'
 import type { PodOut } from '@/api/types'
 
 const { t } = useI18n()
 const router = useRouter()
 const cluster = useClusterStore()
+const aiStore = useAiStore()
 const open = ref(false)
 const shortcutsOpen = ref(false)
 
@@ -59,8 +61,8 @@ const actions = computed(() => [
     id: 'ai',
     label: t('palette.actions.ai'),
     icon: Bot,
-    action: () => router.push('/ai'),
-    keywords: ['ai', 'assistant', '助手', '分析'],
+    action: () => { aiStore.openAsk(); open.value = false },
+    keywords: ['ai', 'assistant', '助手', '分析', 'ask', '问'],
   },
   {
     id: 'shortcuts',
