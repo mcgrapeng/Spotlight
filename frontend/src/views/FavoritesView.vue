@@ -40,7 +40,9 @@ function open(f: FavoriteOut) {
 <template>
   <PageHeader :title="t('route.favorites')" :subtitle="t('favorites.subtitle', { count: favorites.length })" />
 
-  <LoadingState v-if="loading" />
+  <!-- Guarded like every other view: a manual reload (after a delete) should
+       not collapse the whole page to a spinner and back. -->
+  <LoadingState v-if="loading && favorites.length === 0" />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="favorites.length === 0"

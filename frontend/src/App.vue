@@ -8,7 +8,8 @@ import { useClusterStore } from '@/stores/cluster'
 const cluster = useClusterStore()
 
 onMounted(async () => {
-  cluster.restore()
+  // restore() now runs in the store body, so a consumer reading activeCluster
+  // during its own setup already sees the restored value.
   await cluster.loadClusters()
   await cluster.loadNamespaces()
 })

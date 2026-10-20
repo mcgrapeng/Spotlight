@@ -33,6 +33,15 @@ export const useClusterStore = defineStore('cluster', () => {
     } catch { /* ignore */ }
   }
 
+  // Restore at store-construction time, not from a parent's onMounted. Vue
+  // mounts children before the parent's mounted hook, so App.vue's
+  // `onMounted(() => cluster.restore())` ran AFTER every view's setup had
+  // already read activeCluster. The first render of every view therefore saw
+  // null, and when the real value landed a tick later every watcher keyed on
+  // the cluster refired - that is the flash on the pod page. Reading storage
+  // here makes the value correct for the very first read, by anyone.
+  restore()
+
   // ponytail: useCachedFetch wraps the fetchers with a 5-min localStorage
   // hydrate path. App.vue mounts the store on every page load; without
   // caching, each mount re-fetches the cluster list even when nothing

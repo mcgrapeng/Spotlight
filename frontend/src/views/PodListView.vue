@@ -203,7 +203,7 @@ const emptyDescription = computed(() => {
       </EmptyState>
       <!-- 桌面 / 大屏: 表格 -->
       <div v-else class="overflow-auto max-h-[70vh] hidden md:block">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm" :class="loading && data.items.length > 0 && 'opacity-60 transition-opacity'">
           <thead class="sticky top-0 z-10 bg-muted/60 border-b border-border text-xs uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
             <tr>
               <th scope="col" class="text-left font-medium px-4 py-2.5 min-w-[240px]">Pod</th>
@@ -327,7 +327,9 @@ const emptyDescription = computed(() => {
       </div>
 
       <!-- 平板 / 手机: 卡片列表 (Audit §14.1) -->
-      <div v-if="!loading && data.items.length > 0" class="md:hidden divide-y divide-border">
+      <!-- Was `!loading && ...`: every filter change hid the entire card list
+           on mobile while the refetch was in flight. Same flash as the table. -->
+      <div v-if="data.items.length > 0" class="md:hidden divide-y divide-border" :class="loading && 'opacity-60 transition-opacity'">
         <button
           v-for="row in pagedPods"
           :key="`${row.namespace}/${row.name}`"

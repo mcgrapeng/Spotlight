@@ -137,7 +137,10 @@ function podOverloaded(n: NodeOut): boolean {
       </template>
     </PageHeader>
 
-    <div v-if="!loading && nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <!-- Gated on the data, not on `loading`: `!loading &&` made the whole
+         stat row vanish on every cluster / namespace refetch and pop back.
+         Same flash as the pods table and the log panel. -->
+    <div v-if="nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <StatCard :label="t('nodes.statTotal')" :value="nodes.length" />
       <StatCard label="Ready" :value="ready" :hint="t('nodes.statReadyHint', { count: notReady })" />
       <StatCard label="NotReady" :value="notReady" />
@@ -147,7 +150,7 @@ function podOverloaded(n: NodeOut): boolean {
     <ErrorState v-if="error" :message="error" @retry="load" />
 
     <div
-      v-else-if="!loading && nodeDisplays.length"
+      v-else-if="nodeDisplays.length"
       class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
     >
       <Card
