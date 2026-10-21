@@ -3,6 +3,7 @@
 Override DI with fake repositories — no K8s SDK, no DB, no network.
 """
 from dataclasses import replace
+from datetime import datetime, timezone
 from typing import Iterator
 
 import pytest
@@ -37,7 +38,11 @@ class FakeK8s:
         self.events = [
             K8sEvent(name="e1", namespace="default", type="Warning", reason="BackOff",
                      message="oops", involved_kind="Pod", involved_name="p1",
-                     count=2, first_seen="2024-01-01T00:00:00Z", last_seen="2024-01-01T00:00:00Z"),
+                     count=2, first_seen="2024-01-01T00:00:00Z",
+                     # Recent: the dashboard's alert counter is windowed
+                     # (5 minutes) so its number matches the label beside
+                     # it. A pinned date would fall outside the window.
+                     last_seen=datetime.now(timezone.utc).isoformat()),
         ]
         self.log_lines = ["INFO x", "ERROR y", "DEBUG z"]
 
