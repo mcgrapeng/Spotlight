@@ -143,10 +143,13 @@ function podOverloaded(n: NodeOut): boolean {
     <!-- Gated on the data, not on `loading`: `!loading &&` made the whole
          stat row vanish on every cluster / namespace refetch and pop back.
          Same flash as the pods table and the log panel. -->
-    <div v-if="nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <!-- ponytail: 四张卡变三张。NotReady = total - Ready，从 Ready 就能推
+         出来，而它自己那张卡又把同一个数写了一遍（Ready 卡的 hint 里也是
+         这个数）。剩下的「Pod 总数」是数字聚合，说明不了分布，但那是
+         这一页唯一的整体量，留着。 -->
+    <div v-if="nodes.length" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <StatCard :label="t('nodes.statTotal')" :value="nodes.length" />
-      <StatCard label="Ready" :value="ready" :hint="t('nodes.statReadyHint', { count: notReady })" />
-      <StatCard label="NotReady" :value="notReady" />
+      <StatCard :label="t('nodes.statReady')" :value="ready" :hint="t('nodes.statReadyHint', { count: notReady })" />
       <StatCard :label="t('nodes.statPods')" :value="totalPods" />
     </div>
 

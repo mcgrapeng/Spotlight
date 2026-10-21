@@ -98,10 +98,16 @@ const phaseSlices = computed<PhaseSlice[]>(() => {
     { key: 'running', label: t('phase.Running'), value: c.running, color: 'hsl(var(--success))' },
     // ponytail: 琥珀色只留给「需要处理」。Pending 是「在等调度」，集群的正常
     // 状态 —— 把它染成琥珀等于把「没出故障」说成「需要注意」。
-    { key: 'pending', label: t('phase.Pending'), value: c.pending, color: 'hsl(var(--muted-foreground))' },
+    //
+    // 颜色也从「文本色」改成「表面色」：之前用 --muted-foreground（#52525B），
+    // 那是给字用的深灰，铺在 12px 高的条上是一块接近黑的实心板，比 258 个
+    // Running 的绿块还重。17 个待调度的 Pod 是集群的正常状态，不该是全条
+    // 第二抢眼的东西。Pending 和 Succeeded 走两级表面灰，条上只留绿和红
+    // 两个有含义的颜色。
+    { key: 'pending', label: t('phase.Pending'), value: c.pending, color: 'hsl(var(--border))' },
     { key: 'failed', label: t('phase.Failed'), value: c.failed, color: 'hsl(var(--error))' },
     // Succeeded 比 Pending 更淡一级：两级灰在同一根条上要分得开。
-    { key: 'succeeded', label: t('phase.Succeeded'), value: c.succeeded, color: 'hsl(var(--muted-foreground) / 0.45)' },
+    { key: 'succeeded', label: t('phase.Succeeded'), value: c.succeeded, color: 'hsl(var(--muted))' },
   ]
 })
 
@@ -127,9 +133,12 @@ const actionItems = computed<Array<{
   label: string
   detail: string
   link: ActionLink
+  /** The number that earns the 48px slot on the first screen. */
+  metric: { value: string; unit: string }
 }>>(() => {
   const items: Array<{
     severity: 'critical' | 'warning'; label: string; detail: string; link: ActionLink
+    metric: { value: string; unit: string }
   }> = []
 
   if (phaseCounts.value.failed > 0) {
@@ -138,6 +147,10 @@ const actionItems = computed<Array<{
       label: t('dashboard.actionFailedPods', { count: phaseCounts.value.failed }),
       detail: t('dashboard.actionFailedPodsDetail'),
       link: { name: 'pods', query: { status: 'Failed' } },
+      metric: {
+        value: formatNumber(phaseCounts.value.failed),
+        unit: t('dashboard.unitFailedPods'),
+      },
     })
   }
 
@@ -152,6 +165,7 @@ const actionItems = computed<Array<{
           total: stats.value.nodes_total,
         }),
         link: { name: 'nodes' },
+        metric: { value: formatNumber(notReady), unit: t('dashboard.unitNotReadyNodes') },
       })
     }
   }
@@ -166,10 +180,12 @@ const actionItems = computed<Array<{
     items.push({
       severity: 'warning',
       label: t('dashboard.actionFrequentRestarts', { count: noisy.length }),
-      // 之前这里塞的是一串 pod 名 + 次数的逗号连缀，在卡片里糊成一片。
-      // 详情说人话：最高多少次。具体的哪个 pod 交给下面的条形图。
-      detail: t('dashboard.actionFrequentRestartsDetail', { count: formatNumber(worst) }),
+      // 详情说人话：具体是哪几个 Pod 交给「频繁重启」那张表。
+      detail: t('dashboard.actionFrequentRestartsDetail'),
       link: { name: 'pods' },
+      // 21,320 是这一屏里最刺眼的数字，之前它躺在右下角 16px 的表里。
+      // 48px 的主位应该放数字，不是放一句短语。
+      metric: { value: formatNumber(worst), unit: t('dashboard.unitRestarts') },
     })
   }
 
@@ -179,6 +195,10 @@ const actionItems = computed<Array<{
       label: t('dashboard.actionWarningEvents', { count: stats.value.warning_events }),
       detail: t('dashboard.actionWarningEventsDetail'),
       link: { name: 'events', query: { type: 'Warning' } },
+      metric: {
+        value: formatNumber(stats.value.warning_events),
+        unit: t('dashboard.unitWarningEvents'),
+      },
     })
   }
 
@@ -192,18 +212,21 @@ const actionItems = computed<Array<{
 // 重启 21,320 次的 Pod phase 仍然是 Running，健康分照旧是 94% —— 一个说不了
 // 「坏」的数字会持续把注意力从故障上拿走。所以健康分降级成阶段条下面一行
 // 事实说明，判定句（「一切正常」这类）整段删掉。
+//
+// 主位放的是这一项的数字，48px 配数字，配短语太浪费 —— 「3 个 Pod 频繁
+// 重启」七个中文字在手机上折两行，把整屏往下推。
 const heroAction = computed(() => actionItems.value[0] ?? null)
 const heroTitle = computed(() => heroAction.value?.label ?? t('dashboard.heroAllClear'))
 const heroDetail = computed(() => heroAction.value?.detail ?? t('dashboard.heroAllClearHint'))
+const heroMetric = computed(() => heroAction.value?.metric ?? null)
 const heroTone = computed(() => {
   if (!heroAction.value) return 'text-success'
   return heroAction.value.severity === 'critical' ? 'text-error' : 'text-warning'
 })
 
-// 行动卡边框跟着最严重那条走：之前恒为 amber，卡里装的是 critical 也不变。
-const actionCardBorder = computed(() =>
-  actionItems.value[0]?.severity === 'critical' ? 'border-error-border' : 'border-warning-border',
-)
+// ponytail: 主位讲第一件事，下面这张卡讲剩下的。以前两张卡讲的是同一句
+// 话（actionItems[0]），中间只隔 60px —— 看的人会当成渲染 bug。
+const restItems = computed(() => actionItems.value.slice(1))
 
 const compactStats = computed(() => {
   const s = stats.value
@@ -262,18 +285,34 @@ const recentActivity = computed(() => {
       之前主位是 48px 的健康度 + 一句判定「一切正常」：一个变不了红的数字
       （重启 21,320 次的 Pod phase 还是 Running）持续把注意力从故障上拿走，
       往下两行就是「3 个 Pod 频繁重启 / 最高 21,320 次重启」。
-      现在主位是 actionItems[0]（已按 critical 优先排序），健康度降级成阶段
-      条下面一行事实说明，判定句不再出现。
+      现在主位是 actionItems[0] 的数字，48px 配数字不配短语。
     -->
     <Card class="p-0 mb-4">
       <CardContent class="p-5">
         <div class="flex flex-col lg:flex-row lg:items-center gap-6">
           <div class="lg:flex-1 min-w-0">
             <div class="text-xs text-muted-foreground tracking-wide mb-2">{{ t('dashboard.heroEyebrow') }}</div>
-            <h2 class="text-5xl font-bold tracking-tight leading-[1.1] break-words" :class="heroTone">
+            <!-- ponytail: 没有 action item 时用 34px 而不是 48px ——
+                 「一切正常」是这一屏里唯一不需要抢注意力的信息。 -->
+            <div
+              v-if="heroMetric"
+              class="flex items-baseline gap-2"
+            >
+              <span
+                class="text-4xl md:text-5xl font-bold tabular-nums tracking-tight leading-[1.05] break-words"
+                :class="heroTone"
+              >{{ heroMetric.value }}</span>
+              <span class="text-xl font-semibold" :class="heroTone">{{ heroMetric.unit }}</span>
+            </div>
+            <h2
+              v-else
+              class="text-3xl font-bold tracking-tight leading-[1.15]"
+              :class="heroTone"
+            >{{ heroTitle }}</h2>
+            <div v-if="heroAction" class="mt-1.5 text-base font-semibold text-foreground">
               {{ heroTitle }}
-            </h2>
-            <p class="mt-2 text-sm text-muted-foreground">{{ heroDetail }}</p>
+            </div>
+            <p class="mt-1 text-sm text-muted-foreground">{{ heroDetail }}</p>
             <router-link
               v-if="heroAction"
               :to="heroAction.link"
@@ -305,23 +344,23 @@ const recentActivity = computed(() => {
       </CardContent>
     </Card>
 
-    <!-- Section 1: Action Required (only if there ARE actions) -->
-    <Card v-if="actionItems.length > 0" :class="['p-0 mb-4', actionCardBorder]">
+    <!-- Section 1: Action Required (only if there ARE actions left after the hero) -->
+    <Card v-if="restItems.length > 0" class="p-0 mb-4">
       <CardContent class="p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold flex items-center gap-2">
             <AlertCircle :size="16" class="text-warning" :stroke-width="2" />
-            {{ t('dashboard.actionRequired', { count: actionItems.length }) }}
+            {{ t('dashboard.actionRequired', { count: restItems.length }) }}
           </h3>
           <span class="text-xs text-muted-foreground">{{ t('dashboard.actionHint') }}</span>
         </div>
         <div class="space-y-2">
           <router-link
-            v-for="(item, i) in actionItems"
+            v-for="(item, i) in restItems"
             :key="i"
             :to="item.link"
-            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors ease-app dur-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            :class="item.severity === 'critical' ? 'border-error-border bg-error/5' : 'border-warning-border bg-warning/5'"
+            class="flex items-start gap-3 p-2.5 rounded-md border border-border transition-colors ease-app dur-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            :class="item.severity === 'critical' ? 'bg-error/5' : 'bg-warning/5'"
           >
             <span
               :class="cn(

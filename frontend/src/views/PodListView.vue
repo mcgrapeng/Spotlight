@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
+import { containerDotClass } from '@/lib/container'
 import { restartSeverity as restartLevel } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
@@ -97,7 +98,10 @@ function nodeShort(p: PodOut) { return p.node ? p.node.split('.')[0] : null }
 
 const PHASE_TONE: Record<string, string> = {
   Running:   'hover:bg-success/5',
-  Pending:   'hover:bg-warning/5',
+  // ponytail: 琥珀色专供「需要处理」。Pending 是「在等调度」，集群的正常
+  // 状态 —— 把它染成琥珀等于把「没出故障」说成「需要注意」。这一行以前
+  // 是 hover:bg-warning/5。
+  Pending:   'hover:bg-muted/40',
   Failed:    'bg-error/5 hover:bg-error/10',
   Succeeded: 'hover:bg-muted/40',
   Unknown:   'hover:bg-muted/40',
@@ -349,17 +353,15 @@ const emptyDescription = computed(() => {
                       :title="`${c.name}: ${c.ready ? t('pods.containerReady') : c.state}${c.reason ? ' (' + c.reason + ')' : ''}`"
                       :class="cn(
                         'inline-block w-2 h-2 rounded-full',
-                        c.ready
-                          ? 'bg-success'
-                          : c.state === 'waiting' && c.reason === 'CrashLoopBackOff'
-                            ? 'bg-error'
-                            : 'bg-warning',
+                        containerDotClass(c),
                       )"
                     />
                   </div>
                   <span :class="cn(
                     'tabular-nums text-2xs',
-                    readyOf(row) === row.containers.length ? 'text-success' : 'text-warning',
+                    // ponytail: 一个还没起来的容器不是「需要注意」，是「还没
+                    // 到」。数字用中性灰，绿只留给全部就绪。
+                    readyOf(row) === row.containers.length ? 'text-success' : 'text-muted-foreground',
                   )">{{ readyOf(row) }}/{{ row.containers.length }}</span>
                 </div>
               </td>

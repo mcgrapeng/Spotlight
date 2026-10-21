@@ -24,7 +24,7 @@ export default {
     updatedAt: '更新于 {time}',
     compactStats: '{total} 个 Pod · {running} 运行中 · {failed} 失败 · {nodesReady}/{nodesTotal} 节点 · {warnings} 警告',
     refresh: '刷新',
-    actionRequired: '需要处理 · {count} 项',
+    actionRequired: '其余 {count} 项需要处理',
     actionHint: '点链接去查',
     actionFailedPods: '{count} 个 Failed Pod',
     actionFailedPodsDetail: 'Pods 页已自动过滤 Failed',
@@ -46,7 +46,12 @@ export default {
     heroRunningFact: '{running} / {total} 个 Pod 处于 Running',
     heroOpen: '去看看',
     phaseDistribution: 'Pod 阶段分布',
-    actionFrequentRestartsDetail: '最高 {count} 次重启',
+    actionFrequentRestartsDetail: '重启次数排前面的 Pod 都在「频繁重启」那张表里',
+    // ponytail: 主位那 48px 放的是数字，数字后面跟一个单位。
+    unitFailedPods: '个失败 Pod',
+    unitNotReadyNodes: '个节点未就绪',
+    unitRestarts: '次重启',
+    unitWarningEvents: '个告警事件',
     recentActivity: '最近活动',
     recentActivityWindow: '最近 1h',
     recentActivityEmpty: '安静 — 1 小时内没有事件',
@@ -63,6 +68,12 @@ export default {
     Failed: '失败 Failed',
     Succeeded: '已成功 Succeeded',
     Unknown: '未知 Unknown',
+  },
+  // ponytail: 事件类型和 phase 是同一类东西 —— K8s API 的字段值，kubectl
+  // 打印的就是 Warning / Normal。术语首次出现的地方并列一次。
+  eventType: {
+    Warning: '告警 Warning',
+    Normal: '正常 Normal',
   },
   pods: {
     subtitle: '{count} 个 · {namespace}',
@@ -114,6 +125,7 @@ export default {
     issueCpuHeadroom: 'CPU 预留过高 · 可分配仅 {pct}%',
     issueMemoryHeadroom: '内存预留过高 · 可分配仅 {pct}%',
     statTotal: '节点总数',
+    statReady: '就绪 Ready',
     statReadyHint: '{count} 未就绪',
     statPods: 'Pod 总数',
     podsRunning: '当前运行',
@@ -132,7 +144,6 @@ export default {
     refresh: '刷新',
     filterByType: '按类型过滤',
     filterAll: '全部',
-    warningSources: '{count} 个告警源',
     showingLatest: '仅显示最近 {count} 条事件',
     nsCurrent: '当前筛选 namespace: {namespace} · 切换到',
     nsAllHint: '查看全集群事件',

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useEventListener } from '@vueuse/core'
 import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight, Layers } from '@lucide/vue'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
@@ -84,11 +85,36 @@ const countByType = computed<Record<string, number>>(() => {
 })
 
 const totalEvents = computed(() => events.value?.length ?? 0)
-// ponytail: 告警数 = 告警源条目数（与列表行数一致）。每行的发生次数
-// 在 row 内部用 `×N 次` 单独显示 —— 这里不重复加总，避免与可见行数对不上。
-const warningEntries = computed(() =>
-  (events.value ?? []).filter(e => e.type === 'Warning').length,
-)
+
+// ponytail: 消息按行截断，不按字数截断。
+// 之前是「160 个字符就砍掉」—— 160 对英文够用（两行），对中文只够一句
+// 话，而且砍在句子中间。现在折叠时用 line-clamp-3 砍在第三行的行尾。
+//
+// 什么时候显示「展开」按钮？按字数猜不准：中文一行约 78 字，英文一行
+// 约 150 字符，宽度还随视口变。所以直接量 —— 折叠状态下 scrollHeight
+// 大于 clientHeight 就是真的被截断了。
+const overflows = ref<Set<string>>(new Set())
+const msgEls = new Map<string, HTMLElement>()
+
+function setMsgEl(name: string) {
+  return (el: Element | ComponentPublicInstance | null) => {
+    if (el instanceof HTMLElement) msgEls.set(name, el)
+    else msgEls.delete(name)
+  }
+}
+
+function measureOverflow() {
+  const next = new Set<string>()
+  for (const [name, el] of msgEls) {
+    if (el.scrollHeight > el.clientHeight + 1) next.add(name)
+  }
+  overflows.value = next
+}
+
+onMounted(() => nextTick(measureOverflow))
+watch(filtered, () => nextTick(measureOverflow))
+// 视口变了，三行的容量也变了，截断状态要重新量。
+useEventListener(window, 'resize', () => nextTick(measureOverflow))
 </script>
 
 <template>
@@ -120,10 +146,12 @@ const warningEntries = computed(() =>
           @click="typeFilter = tab"
           :class="cn(
             'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
+            // ponytail: 三个 tab 的选中态统一。Warning 之前选中时是琥珀色
+            // 填充，Normal 选中时是黑色 —— 用户最该点的过滤器反而比最不该点
+            // 的弱。而且琥珀在这个产品里已经定义为「需要处理」，让一个控件
+            // 染上它会污染语义。Warning 的身份由常驻的三角图标承担。
             typeFilter === tab
-              ? tab === 'Warning'
-                ? 'bg-warning text-warning-foreground border-warning'
-                : 'bg-foreground text-background border-foreground'
+              ? 'bg-foreground text-background border-foreground'
               : 'bg-background text-muted-foreground border-border hover:bg-muted/40',
           )"
         >
@@ -135,16 +163,12 @@ const warningEntries = computed(() =>
             v-else-if="tab === 'Normal'"
             :size="12" :stroke-width="2" aria-hidden="true"
           />
-          <span>{{ tab === 'all' ? t('events.filterAll') : tab }}</span>
+          <span>{{ tab === 'all' ? t('events.filterAll') : t(`eventType.${tab}`) }}</span>
           <span :class="cn(
             'tabular-nums text-2xs px-1.5 py-0.5 rounded-sm',
             typeFilter === tab ? 'bg-black/15' : 'bg-muted text-muted-foreground',
           )">{{ tab === 'all' ? totalEvents : countByType[tab] }}</span>
         </button>
-        <span v-if="warningEntries > 0" class="text-xs text-warning ml-1 inline-flex items-center gap-1">
-          <AlertTriangle :size="12" :stroke-width="2" />
-          {{ t('events.warningSources', { count: warningEntries }) }}
-        </span>
         <span v-if="events && events.length > 0" class="text-xs text-muted-foreground ml-auto">
           {{ t('events.showingLatest', { count: events.length }) }}
         </span>
@@ -178,9 +202,9 @@ const warningEntries = computed(() =>
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="filtered.length === 0"
-    :title="typeFilter === 'all' ? t('events.emptyTitle') : t('events.emptyFilteredTitle', { type: typeFilter })"
+    :title="typeFilter === 'all' ? t('events.emptyTitle') : t('events.emptyFilteredTitle', { type: t(`eventType.${typeFilter}`) })"
     :description="typeFilter !== 'all'
-      ? t('events.emptyFilteredDescription', { type: typeFilter })
+      ? t('events.emptyFilteredDescription', { type: t(`eventType.${typeFilter}`) })
       : t('events.emptyDescription')"
   >
     <template v-if="typeFilter !== 'all'" #action>
@@ -198,8 +222,11 @@ const warningEntries = computed(() =>
       :key="ev.name"
       :class="cn(
         'group block rounded-card border transition-colors ease-app dur-fast overflow-hidden',
+        // ponytail: 卡片边框回到中性。之前是 border-warning/40，整张卡在
+        // 暗色下变成一块棕褐色，信号被稀释了。告警的身份由左竖条 + 图标 +
+        // 芯片承担，边框不需要再染一次色。
         ev.type === 'Warning'
-          ? 'border-warning/40 bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
+          ? 'border-border bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
           : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
       )"
     >
@@ -218,7 +245,7 @@ const warningEntries = computed(() =>
           <div class="flex items-center gap-2 flex-wrap">
             <StatusChip
               :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
-              :label="ev.type"
+              :label="t(`eventType.${ev.type}`)"
             />
             <span class="inline-flex items-center rounded-sm px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
             <span class="text-xs text-muted-foreground">{{ ev.namespace }}</span>
@@ -226,15 +253,14 @@ const warningEntries = computed(() =>
           </div>
           <!-- ponytail: message 是用户来 events 页面真正要读的内容，必须是视觉主角 -->
           <p
+            :ref="setMsgEl(ev.name)"
             :class="cn(
               'mt-2 text-base leading-snug',
+              expanded.has(ev.name) ? '' : 'line-clamp-3',
               ev.type === 'Warning' ? 'text-foreground font-medium' : 'text-foreground/80',
             )"
-            :title="ev.message"
           >
-            {{ expanded.has(ev.name) || ev.message.length < 160
-              ? ev.message
-              : ev.message.slice(0, 160) + '…' }}
+            {{ ev.message }}
           </p>
           <div class="text-xs text-muted-foreground mt-2 flex items-center gap-3">
             <span :title="ev.last_seen ?? undefined">{{ formatRel(ev.last_seen ?? null) }}</span>
@@ -245,7 +271,7 @@ const warningEntries = computed(() =>
             </span>
             <div class="ml-auto flex items-center gap-3">
               <button
-                v-if="ev.message.length >= 160"
+                v-if="overflows.has(ev.name) || expanded.has(ev.name)"
                 type="button"
                 class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
                 @click.stop="toggleExpand(ev.name)"

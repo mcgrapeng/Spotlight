@@ -20,6 +20,7 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import { cn } from '@/lib/utils'
+import { containerDotClass } from '@/lib/container'
 import { restartSeverity } from '@/lib/restart'
 import dayjs from '@/utils/dayjs'
 import type { PodOut, LogLineOut, EventOut } from '@/api/types'
@@ -39,10 +40,7 @@ const readyContainers = computed(
 
 /** 容器状态点，和 Pods 表格里的圆点用同一套判定。 */
 function containerDot(c: { ready?: boolean; state?: string; reason?: string | null }): string {
-  if (c.ready) return 'bg-success'
-  if (c.state === 'waiting' && c.reason === 'CrashLoopBackOff') return 'bg-error'
-  if (c.state === 'terminated' && (c.reason === 'Error' || c.reason === 'OOMKilled')) return 'bg-error'
-  return 'bg-warning'
+  return containerDotClass(c)
 }
 
 /** Map a container's K8s state/reason to a phase pill. Never label a
@@ -268,7 +266,7 @@ function back() { router.push({ name: 'pods' }) }
                   <div class="flex items-center gap-2 flex-wrap text-sm">
                     <StatusChip
                       :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
-                      :label="ev.type"
+                      :label="t(`eventType.${ev.type}`)"
                       size="xs"
                     />
                     <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">

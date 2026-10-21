@@ -104,8 +104,11 @@ const isActive = (path: string) =>
         :class="cn(
           'relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
+          // ponytail: 激活项从纯黑药丸改成灰底黑字。纯反色让侧栏里最亮的
+          // 色块是当前项，而读者的视线应该在内容上；夜里 3 点，屏幕上一块
+          // 纯黑比一段文字重得多。
           isActive(item.path)
-            ? 'bg-foreground text-background hover:bg-foreground/90'
+            ? 'bg-accent text-accent-foreground'
             : 'text-sidebar-foreground',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
@@ -155,7 +158,7 @@ const isActive = (path: string) =>
           'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
           isActive('/settings')
-            ? 'bg-foreground text-background hover:bg-foreground/90'
+            ? 'bg-accent text-accent-foreground'
             : 'text-sidebar-foreground',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
