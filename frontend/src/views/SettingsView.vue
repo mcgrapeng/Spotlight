@@ -97,11 +97,11 @@ function confirmLogout() {
           <div class="flex items-start gap-3">
             <Server :size="16" :stroke-width="1.75" class="text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
             <div class="min-w-0 flex-1">
-              <div class="text-2xs text-muted-foreground tracking-wide">{{ t('settings.clusterLabel') }}</div>
+              <div class="text-xs text-muted-foreground tracking-wide">{{ t('settings.clusterLabel') }}</div>
               <div class="mt-0.5 font-mono text-sm text-foreground truncate">
                 {{ cluster.activeCluster ?? t('settings.notSelected') }}
               </div>
-              <div v-if="currentCluster" class="mt-0.5 text-2xs text-muted-foreground font-mono truncate">
+              <div v-if="currentCluster" class="mt-0.5 text-xs text-muted-foreground font-mono truncate">
                 {{ currentCluster.cluster }} · user {{ currentCluster.user }}
               </div>
             </div>
@@ -109,13 +109,13 @@ function confirmLogout() {
           <div class="flex items-start gap-3">
             <Layers :size="16" :stroke-width="1.75" class="text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
             <div class="min-w-0 flex-1">
-              <div class="text-2xs text-muted-foreground tracking-wide">Namespace</div>
+              <div class="text-xs text-muted-foreground tracking-wide">Namespace</div>
               <div class="mt-0.5 text-sm text-foreground" :class="isAllNamespaces(cluster.activeNamespace) ? '' : 'font-mono'">
                 {{ isAllNamespaces(cluster.activeNamespace) ? t('namespace.all') : cluster.activeNamespace }}
               </div>
             </div>
           </div>
-          <p class="text-2xs text-muted-foreground pt-2 border-t border-border">
+          <p class="text-xs text-muted-foreground pt-2 border-t border-border">
             {{ t('settings.switchHint') }}
           </p>
         </CardContent>

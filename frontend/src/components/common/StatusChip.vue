@@ -12,7 +12,7 @@ const props = withDefaults(
   defineProps<{
     tone: ChipTone
     label: string
-    /** sm = text-xs, xs = text-2xs (log rows, inline metadata) */
+    /** sm = text-xs, xs = text-xs (log rows, inline metadata) */
     size?: 'sm' | 'xs'
     /** soft = tinted surface, solid = filled, bare = text only */
     variant?: 'soft' | 'solid' | 'bare'

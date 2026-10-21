@@ -21,7 +21,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import { cn } from '@/lib/utils'
 import { containerDotClass } from '@/lib/container'
-import { restartSeverity } from '@/lib/restart'
+import { restartTextClass } from '@/lib/restart'
 import dayjs from '@/utils/dayjs'
 import type { PodOut, LogLineOut, EventOut } from '@/api/types'
 
@@ -58,13 +58,11 @@ function containerPhase(c: { state: string; ready?: boolean; reason?: string | n
   return 'Unknown'
 }
 
-/** The restart count's tone, from the shared ladder. */
-function restartTone(count: number): string {
-  const s = restartSeverity(count)
-  if (s === 'critical' || s === 'high') return 'text-error'
-  if (s === 'elevated') return 'text-warning'
-  return 'text-foreground'
-}
+// ponytail: 重启次数的颜色走共享的阶梯（@/lib/restart）。它只给琥珀和
+// 中性两种 —— 一个重启了 21,320 次的 Pod 仍然是 Running，它没有失败，
+// 它只是需要人看一眼。之前最高档穿的是 error 红，于是同一个数字在
+// 仪表盘 hero 是琥珀、在重启条是红、在这一条事实条上还是红。
+const restartTone = restartTextClass
 
 const name = computed(() => String(route.params.name ?? ''))
 const namespace = computed(() => String(route.params.namespace ?? cluster.activeNamespace))
@@ -269,12 +267,12 @@ function back() { router.push({ name: 'pods' }) }
                       :label="t(`eventType.${ev.type}`, ev.type)"
                       size="xs"
                     />
-                    <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">
+                    <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">
                       {{ ev.reason }}
                     </span>
                   </div>
                   <p class="text-sm text-muted-foreground mt-1">{{ ev.message }}</p>
-                  <div class="text-2xs text-muted-foreground mt-1 flex gap-3">
+                  <div class="text-xs text-muted-foreground mt-1 flex gap-3">
                     <span :title="ev.last_seen ?? undefined">
                       <Clock :size="12" class="inline -mt-0.5" :stroke-width="1.75" />
                       {{ formatRel(ev.last_seen ?? null) }}
@@ -299,7 +297,7 @@ function back() { router.push({ name: 'pods' }) }
                   >
                     <div class="min-w-0 flex-1">
                       <div class="font-mono text-xs font-medium truncate">{{ c.name }}</div>
-                      <div class="text-2xs text-muted-foreground truncate">
+                      <div class="text-xs text-muted-foreground truncate">
                         {{ c.image }}<span v-if="c.reason"> · {{ c.reason }}</span>
                       </div>
                     </div>

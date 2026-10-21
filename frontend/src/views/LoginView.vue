@@ -14,7 +14,7 @@ import type { ProviderField } from '@/api/endpoints'
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const username = ref('')
 // One reactive bag per field, named by f.name — empty string default so the
@@ -24,6 +24,20 @@ const cluster = ref('')
 
 const availableClusters = computed(() => auth.pendingClusters)
 const fields = computed<ProviderField[]>(() => auth.status?.provider?.fields ?? [])
+
+/**
+ * The label of a provider field.
+ *
+ * The backend sends one (the auth plugin's own wording — the built-in
+ * plugins wrote it in Chinese, so an English login screen showed
+ * 「MFA 一次性码」). The field NAME is the stable machine-readable part,
+ * so the frontend owns the wording: its own translation when it has one,
+ * the backend's otherwise — which keeps third-party plugins working.
+ */
+function fieldLabel(f: ProviderField): string {
+  const key = `login.field.${f.name}`
+  return te(key) ? t(key) : f.label
+}
 
 function inputTypeFor(f: ProviderField): string {
   if (f.type === 'password') return 'password'
@@ -133,7 +147,7 @@ async function onRetryClusters() {
           <p class="text-sm text-muted-foreground mt-1">{{ t('nav.tagline') }}</p>
           <p
             v-if="auth.status?.session?.username"
-            class="mt-2 text-2xs text-muted-foreground font-mono break-all"
+            class="mt-2 text-xs text-muted-foreground font-mono break-all"
           >
             {{ auth.status.session.username }}
           </p>
@@ -143,7 +157,7 @@ async function onRetryClusters() {
              API_TOKEN but has no login plugin — nothing to type here. -->
         <div v-if="availableClusters.length === 0 && fields.length === 0" class="space-y-3">
           <p class="text-sm text-muted-foreground">{{ t('login.bearerOnly') }}</p>
-          <p class="text-2xs text-muted-foreground font-mono break-all bg-muted/40 border border-border rounded-md px-3 py-2">
+          <p class="text-xs text-muted-foreground font-mono break-all bg-muted/40 border border-border rounded-md px-3 py-2">
             Authorization: Bearer &lt;API_TOKEN&gt;
           </p>
         </div>
@@ -158,7 +172,7 @@ async function onRetryClusters() {
              again, which is exactly the loop that looks like a wrong password. -->
         <div v-else-if="auth.clustersError" class="space-y-3">
           <p class="text-sm text-error" role="alert">{{ auth.clustersError }}</p>
-          <p class="text-2xs text-muted-foreground">{{ t('login.clustersUnavailableHint') }}</p>
+          <p class="text-xs text-muted-foreground">{{ t('login.clustersUnavailableHint') }}</p>
           <Button
             class="w-full"
             :loading="auth.busy"
@@ -195,7 +209,7 @@ async function onRetryClusters() {
                ONE token field, teleport shows password + optional otp. -->
           <div v-for="f in fields" :key="f.name">
             <label class="text-sm font-medium mb-1.5 block" :for="`login-${f.name}`">
-              {{ f.label }}
+              {{ fieldLabel(f) }}
               <span
                 v-if="!f.required"
                 class="text-xs font-normal text-muted-foreground ml-1"

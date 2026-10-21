@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RefreshCw, AlertCircle, Activity, AlertTriangle, ChevronRight, Inbox } from '@lucide/vue'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
@@ -13,7 +13,6 @@ import { isNoisyRestarts } from '@/lib/restart'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import PhaseBar, { type PhaseSlice } from '@/components/common/PhaseBar.vue'
 import RestartBars from '@/components/common/RestartBars.vue'
-import StatCard from '@/components/common/StatCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { DashboardOut } from '@/api/types'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -33,6 +32,36 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
+
+// ponytail: 仪表盘自己会刷新。
+//
+// 之前这一页只有三种刷新：进页面、切集群/命名空间、手点「刷新」。开着的
+// 页面可以一整天不动 —— 而右上角写着「更新于 几秒前」。那不是刷新，是
+// 一句没人维护的谎。
+//
+// 60 秒一轮，和侧边栏徽标的轮询同频。后端对 dashboard 快照有 5 秒 TTL，
+// 所以每分钟只有一次真的打 apiserver（4 个 list 调用），不至于把集群
+// 压出褶子；60 秒也够短 —— on-call 的人不会盯着一个一分钟前的数字
+// 找罪魁。
+const AUTO_REFRESH_MS = 60_000
+let autoTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * 静默刷新：不转刷新按钮，不弹错误。
+ *
+ * 失败的时候不更新 lastRefreshed —— 「更新于 3 分钟前」本身就是那个
+ * 失败的事实，比一个一闪而过的红条诚实。屏幕上的数字是上一次成功读到
+ * 的那一版，时间戳告诉读者它有多旧。
+ */
+async function autoRefresh() {
+  if (!cluster.activeCluster) return
+  try {
+    await statsFetch.refresh()
+    lastRefreshed.value = new Date()
+  } catch {
+    /* 保持上一次的快照，时间戳会说明它有多旧 */
+  }
+}
 
 const statsFetch = useCachedFetch<DashboardOut>({
   key: '',
@@ -77,7 +106,13 @@ async function load(silent = false) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  autoTimer = setInterval(autoRefresh, AUTO_REFRESH_MS)
+})
+onUnmounted(() => {
+  if (autoTimer) clearInterval(autoTimer)
+})
 watch(() => cluster.activeCluster, () => load())
 watch(() => cluster.activeNamespace, () => load(true))
 
@@ -114,16 +149,28 @@ const phaseSlices = computed<PhaseSlice[]>(() => {
   ]
 })
 
-const podTotal = computed(() =>
-  phaseSlices.value.reduce((acc, s) => acc + s.value, 0),
-)
+/**
+ * The phases that actually have pods in them — the legend's job.
+ *
+ * Zero-valued phases used to take a slot each, and "失败 Failed 0" came
+ * with a red dot: the only red on the first screen, marking nothing.
+ * Red means failed in this product; the failure count is already in the
+ * subtitle, and that is where a zero belongs.
+ */
+const nonZeroPhases = computed(() => phaseSlices.value.filter((s) => s.value > 0))
 
 // ponytail: noisyRestarts hoisted out of template. Previous version ran
 // `stats.restart_top.filter(p => p.restarts > 5).slice(0, 5)` twice per render
 // (once for v-if, once for v-for) — now computed once.
+//
+// 阈值从 `> 5` 换成 isNoisyRestarts（>= 10），跟 hero 用的那一个对齐。
+// 之前这张卡的标题写着「频繁重启」，里面却躺着 6 次、7 次、9 次重启的
+// Pod，而同一屏的 hero 说「2 个 Pod 频繁重启」—— 同一个词，两个门槛。
+// 接到真实集群上一看更明显：重启次数是 157 / 12 / 9 / 9 / 9，卡片列了
+// 5 个，hero 说 2 个。
 const noisyRestarts = computed(() => {
   const all = stats.value?.restart_top ?? []
-  return all.filter(p => p.restarts > 5).slice(0, 5)
+  return all.filter(p => isNoisyRestarts(p.restarts)).slice(0, 5)
 })
 
 type ActionLink =
@@ -193,10 +240,23 @@ const actionItems = computed<Array<{
   }
 
   if (stats.value?.warning_events && stats.value.warning_events > 0) {
+    // ponytail: 「有几条告警」和「这条告警吵了多少次」是两个数。
+    //
+    // 真实集群上只有 1 条 Warning（FailedToRetrieveImagePullSecret），
+    // 从 9 月 8 日起已经重复了 49,002 次。仪表盘只写「1 个 Warning
+    // 事件」，读者读到的是「发生过一次」—— 那个 1 回答的是「几件事
+    // 不对」，不是「多吵」。一个六周没停过的告警写着「1」，读起来
+    // 像已经翻篇了。
+    //
+    // 两个数一起给：主位是「几件事」（1），副位是「多吵」（49,002）。
+    // 没有重复次数（count = 1）的时候就不加这半句。
+    const repeats = Math.max(0, ...(stats.value.recent_warns ?? []).map(w => w.count ?? 1))
     items.push({
       severity: 'warning',
       label: t('dashboard.actionWarningEvents', { count: stats.value.warning_events }),
-      detail: t('dashboard.actionWarningEventsDetail'),
+      detail: repeats > 1
+        ? t('dashboard.actionWarningEventsRepeated', { count: formatNumber(repeats) })
+        : t('dashboard.actionWarningEventsDetail'),
       link: { name: 'events', query: { type: 'Warning' } },
       metric: {
         value: formatNumber(stats.value.warning_events),
@@ -225,6 +285,20 @@ const heroMetric = computed(() => heroAction.value?.metric ?? null)
 const heroTone = computed(() => {
   if (!heroAction.value) return 'text-success'
   return heroAction.value.severity === 'critical' ? 'text-error' : 'text-warning'
+})
+
+// ponytail: 值变了，主位的数字动一下。
+//
+// 仪表盘每分钟自己刷新，刷新完 21,320 变成 3,200 —— 48px 的数字直接被
+// 换掉，没有任何动静。盯着这块屏的人很可能根本没发现数字变了，于是
+// 以为「还是 21,320」。
+//
+// key 在值变化时加一，元素被换掉，animate-value-in 就跑一次。第一次渲染
+// 不动（key 是 0，没有动画类）：进场动效不是这条规则要的东西，这条规则
+// 只管「数据到了」。
+const heroValueKey = ref(0)
+watch(() => heroMetric.value?.value, (v, old) => {
+  if (v !== undefined && v !== old) heroValueKey.value += 1
 })
 
 // ponytail: 主位讲第一件事，下面这张卡讲剩下的。以前两张卡讲的是同一句
@@ -271,7 +345,17 @@ const recentActivity = computed(() => {
 
     <PageHeader :title="t('route.dashboard')" :subtitle="compactStats">
       <template #actions>
-        <span class="text-xs text-muted-foreground tabular-nums hidden sm:inline">
+        <!--
+          ponytail: 相对时间是给眼睛的，绝对时间是给证据的。
+          「更新于 几秒前」会被心跳带着走（见 useRelativeTime），但它始终
+          是一句相对话；鼠标悬停给出最后一次成功刷新的绝对时刻 ——
+          凌晨三点要跟别人确认「你看到的是哪一版数据」时，需要的是一个
+          能复述的时间点，不是「几秒前」。
+        -->
+        <span
+          class="text-xs text-muted-foreground tabular-nums hidden sm:inline"
+          :title="lastRefreshed ? dayjs(lastRefreshed).format('YYYY-MM-DD HH:mm:ss') : undefined"
+        >
           {{ lastRefreshed ? t('dashboard.updatedAt', { time: formatRel(lastRefreshed.toISOString()) }) : '' }}
         </span>
         <Button variant="outline" size="sm" :loading="refreshing" @click="load(true)" :aria-label="t('dashboard.refresh')">
@@ -302,8 +386,9 @@ const recentActivity = computed(() => {
               class="flex items-baseline gap-2"
             >
               <span
+                :key="heroValueKey"
                 class="text-4xl md:text-5xl font-bold tabular-nums tracking-tight leading-[1.05] break-words"
-                :class="heroTone"
+                :class="[heroTone, heroValueKey > 0 ? 'animate-value-in' : '']"
               >{{ heroMetric.value }}</span>
               <span class="text-xl font-semibold" :class="heroTone">{{ heroMetric.unit }}</span>
             </div>
@@ -327,16 +412,22 @@ const recentActivity = computed(() => {
           </div>
 
           <div class="lg:w-[420px] lg:shrink-0">
-            <div class="flex items-baseline justify-between gap-3 mb-2">
+            <!--
+              ponytail: 这里原来还有两个重复。
+
+              头部右边写着「282 Pod」，而副标题里已经写着「287 个 Pod」——
+              同一个总数说两遍。下面的「272 / 282 个 Pod 处于 Running」是
+              第三遍，而图例里的「运行中 Running 272」是第四遍。
+
+              规则很简单：一个数字只出现一次。总数在副标题，阶段数在图例
+              （图例是那根条的刻度），于是头部和那行说明都删掉。
+            -->
+            <div class="mb-2">
               <span class="text-xs text-muted-foreground tracking-wide">{{ t('dashboard.phaseDistribution') }}</span>
-              <span class="text-xs text-muted-foreground tabular-nums">{{ formatNumber(podTotal) }} Pod</span>
             </div>
             <PhaseBar :slices="phaseSlices" height="12px" />
-            <p class="mt-2 text-xs text-muted-foreground">
-              {{ t('dashboard.heroRunningFact', { running: formatNumber(phaseCounts.running), total: formatNumber(podTotal) }) }}
-            </p>
-            <div class="mt-2.5 flex flex-wrap gap-x-5 gap-y-1.5">
-              <div v-for="s in phaseSlices" :key="s.key" class="flex items-center gap-1.5 text-xs">
+            <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1.5">
+              <div v-for="s in nonZeroPhases" :key="s.key" class="flex items-center gap-1.5 text-xs">
                 <span class="size-2 rounded-full shrink-0" :style="{ background: s.color }" aria-hidden="true" />
                 <span class="text-muted-foreground">{{ s.label }}</span>
                 <span class="font-mono tabular-nums font-medium">{{ formatNumber(s.value) }}</span>
@@ -382,39 +473,35 @@ const recentActivity = computed(() => {
       </CardContent>
     </Card>
 
-    <!-- Section 2: 次级指标。改用通用 StatCard —— 之前 Dashboard 手搓了四个
-         样式不同的卡片（text-2xs uppercase 标签 + 26px 数字），Nodes 页却用
-         StatCard（12px 标签 + 34px 数字）：同一个概念两套视觉语言，差两级字号。
-         数字再从 34px 收到 26px（size="sm"）：首屏 48px 的主位之外，剩下的
-         数字都不该跟它抢注意力。「命名空间 44」整张删掉 —— 44 个命名空间
-         不是运行信号。Nodes 页保持默认尺寸，那边的 StatCard 就是那一页的
-         全部层级，收小会把它掏空。 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-      <StatCard
-        size="sm"
-        :label="t('dashboard.statAlerts')"
-        :value="stats.warning_events"
-        :hint="t('dashboard.statAlertsHint')"
-        :class="stats.warning_events > 0 ? 'text-warning' : ''"
-      />
-      <StatCard
-        size="sm"
-        :label="t('dashboard.statNodes')"
-        :value="`${stats.nodes_ready}/${stats.nodes_total}`"
-        format="raw"
-        :hint="t('dashboard.nodesReady')"
-      />
-    </div>
+    <!--
+      ponytail: 两张 StatCard 整行删掉。
+
+      「告警 25」和上面行动卡里的「25 个 Warning 事件」是同一件事，只隔了
+      60px，一个在 26px 一个在 14px；「节点 3/3」和副标题里的「3/3 节点」
+      也是同一件事。四个数字里有两个是重复的，剩下两个（告警、节点）在
+      真实集群上又都是非信号 —— 一个集群只有 1 条告警、3 个节点全 Ready。
+
+      数字去重之后，这一行就没有内容了。空出来的地方不补东西：首屏该
+      回答「现在最该管的是什么」，多摆两张卡只会让那个答案更不响。
+      节点和告警的细节分别在 Nodes 页和 Events 页。
+    -->
 
     <!-- Section 3: Recent Activity + Top Noisy -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <!-- Recent activity (2/3 width on lg) -->
-      <Card class="p-0 lg:col-span-2">
+    <!--
+      ponytail: 两张卡各占一半，各按内容高。
+      之前是 2/3 + 1/3，比例是拍的：真实集群上「最近活动」只有 1 行
+      （Warning 只有一条，一直在重复触发），于是 2/3 那张卡里六成是空白，
+      而 1/3 那张卡挤着 2 根条。items-start 让每张卡按自己的内容高，
+      忙的集群上活动多，左边自然长一点。
+    -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
+      <!-- Recent activity -->
+      <Card class="p-0">
         <CardContent class="p-4">
           <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
             <Activity :size="16" :stroke-width="1.75" />
             {{ t('dashboard.recentActivity') }}
-            <span class="text-2xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
+            <span class="text-xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
           </h3>
           <!-- ponytail: 空态收成一行。共享的 EmptyState 是 40px 图标 + py-16 的
                居中大块，在「没有事件」时占了整个下半屏的四成面积，说的却只是
@@ -441,8 +528,8 @@ const recentActivity = computed(() => {
                   :class="item.icon === 'warn' ? 'bg-warning' : 'bg-muted-foreground/40'"
                 />
               </span>
-              <span class="shrink-0 text-2xs text-muted-foreground w-16 tabular-nums">{{ item.time }}</span>
-              <span class="shrink-0 px-1.5 py-0 rounded-sm text-2xs font-medium bg-muted text-foreground border border-border">
+              <span class="shrink-0 text-xs text-muted-foreground w-16 tabular-nums">{{ item.time }}</span>
+              <span class="shrink-0 px-1.5 py-0 rounded-sm text-xs font-medium bg-muted text-foreground border border-border">
                 {{ item.label }}
               </span>
               <span class="flex-1 min-w-0 truncate font-mono text-xs">{{ item.pod }}</span>

@@ -37,3 +37,50 @@ export function restartSeverity(count: number): RestartSeverity {
 export function isNoisyRestarts(count: number): boolean {
   return restartSeverity(count) !== 'normal'
 }
+
+/**
+ * The colour of a restart count.
+ *
+ * A pod that restarted 21,320 times is still Running. It has not failed, it
+ * has not crashed — it needs a human. The old mapping dressed the top tier
+ * in the error colour, which put the same fact in two colours across the
+ * app (amber in the dashboard hero, red in the restart bars, red in the
+ * pod detail fact bar) and broke the one rule the design rests on:
+ * red means failed, amber means "needs a look".
+ *
+ * So the ladder keeps its thresholds — they decide *whether* a pod is
+ * worth mentioning — and gives up its hues. One hue, three weights:
+ *
+ *   normal    neutral grey, no icon
+ *   elevated  amber, half strength
+ *   high      amber, three quarters
+ *   critical  amber, full strength
+ */
+export type RestartTone = 'neutral' | 'warning'
+
+export function restartTone(count: number): RestartTone {
+  return restartSeverity(count) === 'normal' ? 'neutral' : 'warning'
+}
+
+/** Text colour for a restart count. */
+export function restartTextClass(count: number): string {
+  return restartTone(count) === 'warning' ? 'text-warning' : 'text-muted-foreground'
+}
+
+/**
+ * Bar colour for a restart count: the tier is the strength, not the hue.
+ *
+ * A bar chart of restart counts is a ranking, and a ranking needs steps —
+ * so the steps are opacity on one colour. Three red bars of the same
+ * length (21,302 / 21,320 / 21,320) said "everything is fatal"; three
+ * amber bars of the same length say "these three are the noisy ones",
+ * which is what the chart is actually about.
+ */
+export function restartBarClass(count: number): string {
+  switch (restartSeverity(count)) {
+    case 'critical': return 'bg-warning'
+    case 'high': return 'bg-warning/80'
+    case 'elevated': return 'bg-warning/60'
+    default: return 'bg-muted-foreground/40'
+  }
+}

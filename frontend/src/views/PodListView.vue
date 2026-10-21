@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Search, RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Info, X } from '@lucide/vue'
+import { Search, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, Info, X } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
 import { containerDotClass } from '@/lib/container'
-import { restartSeverity as restartLevel } from '@/lib/restart'
+import { restartTone } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
 import { usePagination } from '@/composables/usePagination'
@@ -90,9 +90,14 @@ function readyOf(p: PodOut) { return p.containers.filter(c => c.ready).length }
 // dashboard's restart bars agree. They used different thresholds (5/100
 // versus 10/100/1000), so the same pod read as amber in one place and grey
 // in the other.
-function restartSeverity(p: PodOut) {
-  const s = restartLevel(p.restart_count)
-  return s === 'critical' || s === 'high' ? 'critical' : s === 'elevated' ? 'warn' : 'normal'
+//
+// Two steps, not three: a restart count is either worth a look or it is
+// not. It is never a *failure* — the phase column says whether the pod
+// failed, and a pod with 21,320 restarts is still Running. So the cell
+// wears amber, not red, and the tier only decides whether it says anything
+// at all.
+function restartSeverity(p: PodOut): 'attention' | 'normal' {
+  return restartTone(p.restart_count) === 'warning' ? 'attention' : 'normal'
 }
 function nodeShort(p: PodOut) { return p.node ? p.node.split('.')[0] : null }
 
@@ -111,7 +116,7 @@ function rowClass(p: PodOut) {
 }
 
 const severityMap = computed(() => {
-  const m = new Map<string, 'critical' | 'warn' | 'normal'>()
+  const m = new Map<string, 'attention' | 'normal'>()
   for (const p of data.value.items) m.set(`${p.namespace}/${p.name}`, restartSeverity(p))
   return m
 })
@@ -326,12 +331,15 @@ const emptyDescription = computed(() => {
                   >{{ row.name }}</router-link>
                   <span
                     v-if="row.owner_kind"
-                    class="text-2xs text-muted-foreground font-mono truncate"
+                    class="text-xs text-muted-foreground font-mono truncate"
                   >{{ row.owner_kind }}/{{ row.owner_name }}</span>
                 </div>
               </td>
               <td class=" hidden lg:table-cell" :class="densityClass.cell">
-                <span class="inline-flex items-center rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                <!-- ponytail: nowrap —— 真实集群的命名空间普遍带连字符
+                     （ai-app-test），芯片没有 nowrap 就会折成「ai-app-」
+                     「test」两行，把行高撑开。 -->
+                <span class="inline-flex items-center whitespace-nowrap rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                   {{ row.namespace }}
                 </span>
               </td>
@@ -340,7 +348,7 @@ const emptyDescription = computed(() => {
                   <PodStatusPill :phase="row.phase" />
                   <span
                     v-if="row.reason"
-                    class="rounded-sm px-1.5 py-0.5 text-2xs font-semibold bg-error-bg text-error border border-error-border"
+                    class="rounded-sm px-1.5 py-0.5 text-xs font-semibold bg-error-bg text-error border border-error-border"
                   >{{ row.reason }}</span>
                 </div>
               </td>
@@ -358,7 +366,7 @@ const emptyDescription = computed(() => {
                     />
                   </div>
                   <span :class="cn(
-                    'tabular-nums text-2xs',
+                    'tabular-nums text-xs',
                     // ponytail: 一个还没起来的容器不是「需要注意」，是「还没
                     // 到」。数字用中性灰，绿只留给全部就绪。
                     readyOf(row) === row.containers.length ? 'text-success' : 'text-muted-foreground',
@@ -371,19 +379,13 @@ const emptyDescription = computed(() => {
                   class="flex items-center gap-1 tabular-nums text-sm"
                   :aria-label="t('pods.restartsCount', { count: row.restart_count })"
                 >
-                  <AlertCircle
-                    v-if="sevOf(row) === 'critical'"
-                    :size="12" class="text-error shrink-0" :stroke-width="1.75"
-                    aria-hidden="true"
-                  />
                   <AlertTriangle
-                    v-else-if="sevOf(row) === 'warn'"
+                    v-if="sevOf(row) === 'attention'"
                     :size="12" class="text-warning shrink-0" :stroke-width="1.75"
                     aria-hidden="true"
                   />
                   <span :class="cn(
-                    sevOf(row) === 'critical' && 'text-error font-semibold',
-                    sevOf(row) === 'warn' && 'text-warning',
+                    sevOf(row) === 'attention' && 'text-warning font-semibold',
                     sevOf(row) === 'normal' && 'text-muted-foreground',
                   )">
                     {{ row.restart_count.toLocaleString() }}
@@ -426,13 +428,13 @@ const emptyDescription = computed(() => {
           <div class="flex items-start justify-between gap-2 mb-1">
             <div class="min-w-0 flex-1">
               <div class="font-mono text-sm text-foreground truncate">{{ row.name }}</div>
-              <div v-if="row.owner_kind" class="text-2xs text-muted-foreground font-mono truncate">
+              <div v-if="row.owner_kind" class="text-xs text-muted-foreground font-mono truncate">
                 {{ row.owner_kind }}/{{ row.owner_name }}
               </div>
             </div>
             <PodStatusPill :phase="row.phase" />
           </div>
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span class="font-mono">{{ row.namespace }}</span>
             <span v-if="nodeShort(row)" class="font-mono truncate max-w-[140px]">{{ nodeShort(row) }}</span>
             <span class="tabular-nums">{{ row.age ?? '—' }}</span>
@@ -441,8 +443,7 @@ const emptyDescription = computed(() => {
               :aria-label="t('pods.restartsCount', { count: row.restart_count })"
               :class="cn(
                 'tabular-nums',
-                sevOf(row) === 'critical' && 'text-error font-semibold',
-                sevOf(row) === 'warn' && 'text-warning',
+                sevOf(row) === 'attention' && 'text-warning font-semibold',
               )">×{{ row.restart_count }}</span>
           </div>
         </button>

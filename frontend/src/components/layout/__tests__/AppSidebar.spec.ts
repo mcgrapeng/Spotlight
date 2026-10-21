@@ -14,6 +14,7 @@ vi.mock('vue-router', () => ({
 }))
 
 import { mount } from '@vue/test-utils'
+import { RouterLinkStub } from '@vue/test-utils'
 import { eventsApi } from '@/api/endpoints'
 import { getI18n } from '@/i18n'
 import AppSidebar from '../AppSidebar.vue'
@@ -23,7 +24,12 @@ import AppSidebar from '../AppSidebar.vue'
 const i18n = getI18n()
 function mountSidebar() {
   i18n.global.locale.value = 'zh-CN'
-  return mount(AppSidebar, { global: { plugins: [i18n] } })
+  // The router plugin is not installed here, so <router-link> would not
+  // resolve — register the stub globally instead. Its `to` prop is what a
+  // test reads to learn where a nav item points.
+  return mount(AppSidebar, {
+    global: { plugins: [i18n], components: { RouterLink: RouterLinkStub } },
+  })
 }
 
 beforeEach(() => {
@@ -33,13 +39,18 @@ beforeEach(() => {
 
 describe('AppSidebar event badge', () => {
   it('counts distinct Warning entries (matches /events list row count), not sum of count field', async () => {
+    // The badge counts warnings from the last 5 minutes — the same window
+    // the dashboard's alert card uses, so the two never disagree. The
+    // fixture therefore needs real timestamps; an event with no last_seen
+    // cannot be placed in a window and does not count.
+    const now = new Date().toISOString()
     vi.mocked(eventsApi.list).mockResolvedValue([
       { type: 'Warning', count: 50, name: 'e1', namespace: 'default', reason: 'BackOff',
         message: 'x', involved_kind: 'Pod', involved_name: 'p1',
-        first_seen: null, last_seen: null },
+        first_seen: null, last_seen: now },
       { type: 'Warning', count: 3, name: 'e2', namespace: 'default', reason: 'FailedMount',
         message: 'x', involved_kind: 'Pod', involved_name: 'p2',
-        first_seen: null, last_seen: null },
+        first_seen: null, last_seen: now },
       { type: 'Normal', count: 1, name: 'e3', namespace: 'default', reason: 'Started',
         message: 'x', involved_kind: 'Pod', involved_name: 'p3',
         first_seen: null, last_seen: null },
@@ -57,6 +68,31 @@ describe('AppSidebar event badge', () => {
     // Badge = 2 Warning entries (NOT 53 = sum of count fields).
     // Per-row ×N 次 separately conveys repetition severity.
     expect(badge.text()).toBe('2')
+  })
+
+  it('ignores warnings older than the 5-minute window', async () => {
+    // A warning that stopped 20 minutes ago is history, not something to
+    // look at now — and counting it would put the badge out of step with
+    // the dashboard's "告警 N · 5min 内最近".
+    const old = new Date(Date.now() - 20 * 60_000).toISOString()
+    const now = new Date().toISOString()
+    vi.mocked(eventsApi.list).mockResolvedValue([
+      { type: 'Warning', count: 1, name: 'old', namespace: 'default', reason: 'BackOff',
+        message: 'x', involved_kind: 'Pod', involved_name: 'p1',
+        first_seen: null, last_seen: old },
+      { type: 'Warning', count: 1, name: 'fresh', namespace: 'default', reason: 'BackOff',
+        message: 'x', involved_kind: 'Pod', involved_name: 'p2',
+        first_seen: null, last_seen: now },
+    ] as any)
+
+    const wrapper = mountSidebar()
+    await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
+    await new Promise(r => setTimeout(r, 10))
+    await nextTick()
+
+    const badge = wrapper.find('[class*="bg-warning"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('1')
   })
 
   it('shows 0 when there are no Warning events', async () => {
@@ -96,6 +132,30 @@ describe('AppSidebar event badge', () => {
     await btn.trigger('click')
     expect(wrapper.emitted('toggle-sidebar')).toHaveLength(1)
   })
+
+  it('sends the badge click straight to the warnings', async () => {
+    // The badge says "2 warnings". Clicking it and landing on a list of
+    // 500 scheduling notices is a broken promise — the filter travels in
+    // the URL, so the page opens on what the badge was counting.
+    const now = new Date().toISOString()
+    vi.mocked(eventsApi.list).mockResolvedValue([
+      { type: 'Warning', count: 49002, name: 'w1', namespace: 'default', reason: 'BackOff',
+        message: 'x', involved_kind: 'Pod', involved_name: 'p1',
+        first_seen: null, last_seen: now },
+    ] as any)
+
+    const wrapper = mountSidebar()
+    await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
+    await new Promise(r => setTimeout(r, 10))
+    await nextTick()
+
+    const link = wrapper.findAllComponents(RouterLinkStub).find((l) => {
+      const to = l.props('to') as { path?: string } | undefined
+      return String(to?.path ?? '').includes('/events')
+    })
+    expect(link).toBeTruthy()
+    expect(link!.props('to')).toEqual({ path: '/events', query: { type: 'Warning' } })
+  })
 })
 
 describe('AppSidebar preferences', () => {
@@ -115,7 +175,7 @@ describe('AppSidebar preferences', () => {
     vi.mocked(eventsApi.list).mockResolvedValue([])
     const wrapper = mount(AppSidebar, {
       props: { collapsed: true },
-      global: { plugins: [i18n] },
+      global: { plugins: [i18n], components: { RouterLink: RouterLinkStub } },
     })
     await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
     expect(wrapper.find('[role="group"][aria-label="主题"]').exists()).toBe(false)

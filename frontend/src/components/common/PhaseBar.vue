@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 /**
  * Pod phase distribution as one stacked bar.
@@ -42,6 +42,21 @@ const segments = computed(() =>
     })),
 )
 
+// ponytail: 第一次有数据时不播「条从 0 长到 90%」。
+//
+// 数据是异步到的，所以条形图第一次出现就已经是终值 —— 但宽度过渡的类
+// 一直在，于是每次进页面都重放一次生长动画。读数字的人第一眼看到的是
+// 一根空条，等它长完才知道有多长；那个动画跟「数据变了」没关系，它
+// 只是「我进场了」。
+//
+// 所以过渡只从「第二次」开始：先画终值，再把过渡打开。
+const animated = ref(false)
+watch(segments, (s) => {
+  if (s.length > 0 && !animated.value) {
+    nextTick(() => { animated.value = true })
+  }
+}, { immediate: true })
+
 const ariaLabel = computed(() => props.slices.map((s) => `${s.label} ${s.value}`).join(', '))
 </script>
 
@@ -55,7 +70,8 @@ const ariaLabel = computed(() => props.slices.map((s) => `${s.label} ${s.value}`
     <div
       v-for="seg in segments"
       :key="seg.key"
-      class="h-full shrink-0 transition-[width] ease-app dur-base"
+      class="h-full shrink-0"
+      :class="animated ? 'transition-[width] ease-app dur-base' : ''"
       :style="{ width: seg.pct + '%', background: seg.color }"
     />
   </div>

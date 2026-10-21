@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { cn, formatNumber } from '@/lib/utils'
-import { restartSeverity } from '@/lib/restart'
+import { restartBarClass, restartTextClass } from '@/lib/restart'
 
 /**
  * Ranked restart counts as a bar chart.
@@ -17,6 +17,16 @@ const props = defineProps<{
 
 const max = computed(() => Math.max(1, ...props.items.map((i) => i.restarts)))
 
+// ponytail: 同 PhaseBar —— 第一次有数据时直接画终值，不播「条从 0
+// 长到满格」。数据是异步到的，每次进页面都重放一次生长动画，读者第一
+// 眼看到的却是一根空条。
+const animated = ref(false)
+watch(() => props.items.length, (n) => {
+  if (n > 0 && !animated.value) {
+    nextTick(() => { animated.value = true })
+  }
+}, { immediate: true })
+
 function shortName(pod: string): string {
   const parts = pod.split('/')
   return parts.length > 1 ? parts[parts.length - 1]! : pod
@@ -27,19 +37,6 @@ function namespaceOf(pod: string): string {
   return parts.length > 1 ? parts[0]! : ''
 }
 
-/**
- * Tone follows the shared restart ladder (@/lib/restart), so a pod reads the
- * same in the table and in this chart. Amber stays the "worth a look" tier:
- * it is the same amber the action card uses, not a third meaning.
- */
-function tone(count: number): string {
-  switch (restartSeverity(count)) {
-    case 'critical': return 'bg-error'
-    case 'high': return 'bg-error/70'
-    case 'elevated': return 'bg-warning'
-    default: return 'bg-muted-foreground/50'
-  }
-}
 </script>
 
 <template>
@@ -53,20 +50,23 @@ function tone(count: number): string {
         >
           {{ shortName(item.pod) }}
         </router-link>
-        <span v-if="namespaceOf(item.pod)" class="text-2xs text-muted-foreground shrink-0">
+        <span v-if="namespaceOf(item.pod)" class="text-xs text-muted-foreground shrink-0">
           {{ namespaceOf(item.pod) }}
         </span>
         <span
           class="ml-auto shrink-0 font-mono tabular-nums font-semibold text-base"
-          :class="restartSeverity(item.restarts) === 'normal' ? 'text-foreground' : 'text-error'"
+          :class="restartTextClass(item.restarts)"
         >
           {{ formatNumber(item.restarts) }}
         </span>
       </div>
       <div class="h-1.5 rounded-full bg-muted overflow-hidden">
         <div
-          class="h-full rounded-full transition-[width] ease-app dur-base"
-          :class="cn(tone(item.restarts))"
+          class="h-full rounded-full"
+          :class="cn(
+            restartBarClass(item.restarts),
+            animated ? 'transition-[width] ease-app dur-base' : '',
+          )"
           :style="{ width: `${Math.max(2, (item.restarts / max) * 100)}%` }"
         />
       </div>

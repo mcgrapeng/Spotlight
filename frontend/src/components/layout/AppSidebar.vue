@@ -13,6 +13,7 @@ import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import { STORAGE_KEYS } from '@/storage-keys'
+import dayjs from '@/utils/dayjs'
 
 const props = withDefaults(defineProps<{
   collapsed?: boolean
@@ -40,7 +41,19 @@ const badgeFetch = useCachedFetch<number>({
       namespace: cluster.activeNamespace || '_all',
       limit: 500,
     })
-    return events.filter(e => e.type === 'Warning').length
+    // ponytail: 徽标数的是「最近 5 分钟里的告警」，和仪表盘那张卡的
+    // 口径一样（后端 dashboard 的 warning_events 也是 5 分钟窗口）。
+    //
+    // 之前这里数的是「最近 500 条事件里有几条 Warning」—— 没有时间窗口。
+    // 于是徽标可能显示 1，而仪表盘显示 0（或者反过来），两个数字在同一
+    // 屏上打架，读者只能猜哪个是真的。
+    //
+    // 5 分钟这个窗口也是「需要处理」的时间尺度：一个 20 分钟前烧完就
+    // 停了的问题，不该在侧边栏继续闪。
+    const cutoff = dayjs().subtract(5, 'minute')
+    return events.filter(
+      (e) => e.type === 'Warning' && !!e.last_seen && dayjs(e.last_seen).isAfter(cutoff),
+    ).length
   },
   data: ref<number | null>(null) as unknown as import('vue').Ref<number | null>,
   loading: ref(false) as unknown as import('vue').Ref<boolean>,
@@ -70,9 +83,11 @@ async function refreshEventBadge() {
 
 onMounted(() => {
   refreshEventBadge()
-  // 5min — the page-level events view is the source of truth; the sidebar
-  // badge is a "there's something to look at" hint, not a real-time counter.
-  badgeTimer = setInterval(refreshEventBadge, 5 * 60_000)
+  // 60s — the same cadence as the dashboard's own poll, so the badge and
+  // the dashboard never disagree about how many warnings there are. The
+  // page-level events view is still the source of truth; the badge is a
+  // "there's something to look at" hint.
+  badgeTimer = setInterval(refreshEventBadge, 60_000)
 })
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
@@ -86,7 +101,22 @@ const navItems = computed(() => [
   { path: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, badge: 0 },
   { path: '/pods',      label: t('nav.pods'),      icon: Box,        badge: 0 },
   { path: '/nodes',     label: t('nav.nodes'),     icon: Server,     badge: 0 },
-  { path: '/events',    label: t('nav.events'),    icon: Activity,   badge: eventBadge.value },
+  {
+    path: '/events',
+    label: t('nav.events'),
+    icon: Activity,
+    badge: eventBadge.value,
+    // ponytail: 徽标点进去就该是告警。
+    //
+    // 徽标写着「1」，读者点它的心理预期是「带我去看那 1 条」。之前跳转
+    // 到 /events，而那一页默认列 500 条事件（真实集群：498 条 Normal、
+    // 2 条 Warning），告警排在很后面。于是徽标说的是「有 1 条告警」，
+    // 点进去看到的却是一屏调度完成的流水账。
+    //
+    // 没有徽标（没有告警）的时候还是普通的一页 —— 那时候读者要的就是
+    // 全部事件。
+    query: eventBadge.value > 0 ? { type: 'Warning' } : undefined,
+  },
   { path: '/favorites', label: t('nav.favorites'), icon: Star,       badge: 0 },
 ])
 
@@ -100,7 +130,7 @@ const isActive = (path: string) =>
       <router-link
         v-for="item in navItems"
         :key="item.path"
-        :to="item.path"
+        :to="{ path: item.path, query: item.query }"
         :class="cn(
           'relative flex items-center gap-3 rounded-md text-sm transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
@@ -138,7 +168,7 @@ const isActive = (path: string) =>
         <span v-if="!props.collapsed" class="flex-1 truncate">{{ item.label }}</span>
         <span
           v-if="!props.collapsed && item.badge"
-          class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-warning text-warning-foreground text-2xs font-semibold"
+          class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-warning text-warning-foreground text-xs font-semibold"
         >
           {{ item.badge }}
         </span>

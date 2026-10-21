@@ -19,10 +19,28 @@ export default {
     relogin: '重新登录',
     failed: '登录失败',
     clusterFailed: '选择集群失败',
+    // ponytail: 动态字段的标签归前端管。
+    //
+    // 这些标签以前是后端 auth plugin 写死的中文（「访问令牌」「密码」
+    // 「MFA 一次性码」），英文界面里也显示中文 —— 一个英文界面上写着
+    // 「MFA 一次性码（6 位 TOTP）」的登录框，看起来像没做完。
+    //
+    // 后端仍然发 label（那是它对字段的理解，第三方 plugin 也可能用），
+    // 但前端有同名字段的翻译时用自己的，没有才退回后端那个。key 用的是
+    // 字段的 name（token / password / otp），那是稳定的机器名。
+    field: {
+      token: '访问令牌',
+      password: '密码',
+      otp: 'MFA 一次性码（6 位 TOTP）',
+    },
   },
   dashboard: {
     updatedAt: '更新于 {time}',
-    compactStats: '{total} 个 Pod · {running} 运行中 · {failed} 失败 · {nodesReady}/{nodesTotal} 节点 · {warnings} 警告',
+    // ponytail: 只留规模，不留结论。
+    // 原来这一行是「287 个 Pod · 258 运行中 · 0 失败 · 3/3 节点 · 25 警告」，
+    // 而这五个数字在下面各出现一次（阶段图例、行动卡）。首屏 22 个数字里
+    // 有 8 个是重复的，重复的那部分全在这一行。
+    compactStats: '{total} 个 Pod · {nodesReady}/{nodesTotal} 节点就绪',
     refresh: '刷新',
     actionRequired: '其余 {count} 项需要处理',
     actionHint: '点链接去查',
@@ -30,6 +48,7 @@ export default {
     actionFailedPodsDetail: 'Pods 页已自动过滤 Failed',
     actionWarningEvents: '{count} 个 Warning 事件',
     actionWarningEventsDetail: 'Events 页已自动过滤 Warning',
+    actionWarningEventsRepeated: '同一告警已重复 {count} 次',
     actionNodesNotReady: '{count} 个 Node 未就绪',
     actionNodesNotReadyDetail: '节点就绪 {ready}/{total}',
     actionFrequentRestarts: '{count} 个 Pod 频繁重启',
@@ -165,7 +184,7 @@ export default {
     delete: '删除',
   },
   pod: {
-    backToPods: '返回 Pods',
+    backToPods: '返回 Pod 列表',
     refresh: '刷新',
     unscheduled: '未调度',
     meta: '元数据',
@@ -270,9 +289,14 @@ export default {
   },
   nav: {
     dashboard: '总览',
-    pods: 'Pods',
-    nodes: 'Nodes',
-    events: 'Events',
+    // ponytail: 中文界面里不夹英文。
+    //
+    // 「总览 / Pods / Nodes / Events / 收藏夹」—— 三个英文夹在两个中文
+    // 中间，读起来像翻译没做完。规则定成：Kubernetes 的资源名保留原样
+    // （Pod 是专有名词，中文工程师也说 Pod），其余一律中文。
+    pods: 'Pod',
+    nodes: '节点',
+    events: '事件',
     favorites: '收藏夹',
     ai: 'AI 模型',
     settings: '设置',
@@ -289,10 +313,10 @@ export default {
   route: {
     login: '登录',
     dashboard: '总览',
-    pods: 'Pods',
+    pods: 'Pod',
     podDetail: 'Pod 详情',
-    nodes: 'Nodes',
-    events: 'Events',
+    nodes: '节点',
+    events: '事件',
     favorites: '收藏夹',
     ai: 'AI 模型',
     settings: '设置',

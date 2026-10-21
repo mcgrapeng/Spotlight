@@ -100,10 +100,16 @@ export default {
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
       fontSize: {
-        // ponytail: 2xs 原来是 11px。全项目 76 处用到，其中大量是中文
-        // （「Running 258」「1 未就绪」「最近 1h」），11px 中文字笔画粘连，
-        // 且中文字面框比拉丁字母窄，视觉上比 11px 数字更糊。抬到 12px。
-        '2xs': ['12px', '16px'],
+        // ponytail: 2xs 这个档位没了。
+        //
+        // 它原来是 11px，全项目 76 处用到，其中大量是中文（「Running
+        // 258」「1 未就绪」「最近 1h」）—— 11px 中文字笔画粘连，抬到了
+        // 12px。抬完之后它和 xs 一模一样：两个名字，一个尺寸。
+        //
+        // 一个尺寸两个名字，代价是每个读到 `text-2xs` 的人都要查一次
+        // tailwind.config.js 才知道它多大 —— 而答案总是「跟 xs 一样」。
+        // 于是全项目 70 处改成 text-xs，配置里删掉这一档。改的是名字，
+        // 不是像素：两档都是 12px/16px，渲染结果一个像素都不动。
         xs: ['12px', '16px'],
         sm: ['13px', '18px'],
         base: ['14px', '20px'],
@@ -133,6 +139,17 @@ export default {
           from: { backgroundColor: 'hsl(var(--error) / 0.25)' },
           to: { backgroundColor: 'transparent' },
         },
+        // ponytail: 数字变了的时候，它自己动一下。
+        //
+        // 仪表盘每分钟刷新一次，刷新完 21,320 变成 3,200 —— 48px 的主位
+        // 数字直接换掉，没有任何动静。凌晨三点盯着这块屏的人很可能根本
+        // 没注意到数字变了，于是以为「还是 21,320」。
+        //
+        // 200ms 的淡入 + 2px 上移，不做滚动计数（夜里看数字滚很吵）。
+        'value-in': {
+          from: { opacity: '0', transform: 'translateY(2px)' },
+          to: { opacity: '1', transform: 'none' },
+        },
         'accordion-down': {
           from: { height: '0' },
           to: { height: 'var(--radix-accordion-content-height)' },
@@ -145,6 +162,7 @@ export default {
       animation: {
         'gradient-rotate': 'gradient-rotate 4s linear infinite',
         'log-flash': 'log-flash 400ms var(--ease)',
+        'value-in': 'value-in 200ms var(--ease)',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
       },

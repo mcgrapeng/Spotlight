@@ -191,7 +191,7 @@ defineExpose({
         >
           <component :is="item.icon" :size="16" :stroke-width="1.75" class="mr-2" />
           <span>{{ item.label }}</span>
-          <span class="ml-auto text-2xs text-muted-foreground font-mono">{{ item.path }}</span>
+          <span class="ml-auto text-xs text-muted-foreground font-mono">{{ item.path }}</span>
         </CommandItem>
       </CommandGroup>
 
@@ -217,7 +217,7 @@ defineExpose({
           >
             <Box :size="16" :stroke-width="1.75" class="mr-2" />
             <span class="font-mono truncate">{{ pod.name }}</span>
-            <span class="ml-auto text-2xs text-muted-foreground font-mono shrink-0">{{ pod.namespace }}</span>
+            <span class="ml-auto text-xs text-muted-foreground font-mono shrink-0">{{ pod.namespace }}</span>
           </CommandItem>
         </CommandGroup>
         <div
@@ -243,7 +243,7 @@ defineExpose({
       </CommandGroup>
     </CommandList>
     <!-- ponytail: footer 显示快捷键提示，让命令面板在第一次打开就有"专业工具"的感觉 -->
-    <div class="border-t border-border px-3 py-2 flex items-center gap-3 text-2xs text-muted-foreground">
+    <div class="border-t border-border px-3 py-2 flex items-center gap-3 text-xs text-muted-foreground">
       <span><kbd class="font-mono">↑↓</kbd> {{ t('palette.footer.select') }}</span>
       <span><kbd class="font-mono">⏎</kbd> {{ t('palette.footer.open') }}</span>
       <span><kbd class="font-mono">esc</kbd> {{ t('palette.footer.close') }}</span>

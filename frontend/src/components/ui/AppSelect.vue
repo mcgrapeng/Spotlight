@@ -86,8 +86,11 @@ function pick(o: AppSelectOption) {
         <span class="truncate" :class="selected ? '' : 'text-muted-foreground'">
           {{ selected?.label ?? placeholder ?? t('select.placeholder') }}
         </span>
+        <!-- ponytail: 11 → 12。这是全站唯一一个小于 12px 的图标
+             （round-3 把图标收成 12/14/16/20 时漏掉的），而且双箭头在
+             11px 下是糊的 —— 一眼看不出是「上下都能选」。 -->
         <ChevronsUpDown
-          :size="size === 'sm' ? 11 : 14"
+          :size="size === 'sm' ? 12 : 14"
           :stroke-width="1.75"
           class="shrink-0 opacity-50"
           aria-hidden="true"
@@ -118,7 +121,7 @@ function pick(o: AppSelectOption) {
               <span class="truncate flex-1">{{ o.label }}</span>
               <span
                 v-if="o.hint"
-                class="text-2xs uppercase tracking-wide text-muted-foreground"
+                class="text-xs uppercase tracking-wide text-muted-foreground"
               >{{ o.hint }}</span>
             </CommandItem>
           </CommandGroup>

@@ -39,9 +39,11 @@ async function pick(l: Locale) {
       type="button"
       :aria-pressed="locale === l"
       :class="cn(
-        'px-2 h-6 text-2xs font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ease-app dur-fast',
+        // ponytail: h-6 → h-7，和侧边栏里另两个分段控件一致。
+        // 这个切换也在侧边栏（主导航区），24px 高的按钮点不准。
+        'px-2 h-7 text-xs font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ease-app dur-fast',
         locale === l
-          ? 'bg-foreground text-background'
+          ? 'bg-foreground text-background dark:bg-accent dark:text-accent-foreground'
           : 'text-muted-foreground hover:text-foreground',
       )"
       @click="pick(l)"

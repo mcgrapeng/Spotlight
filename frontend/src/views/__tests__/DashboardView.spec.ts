@@ -29,6 +29,7 @@ vi.mock('@/api/endpoints', () => ({
 
 import DashboardView from '../DashboardView.vue'
 import { getI18n } from '@/i18n'
+import { podsApi } from '@/api/endpoints'
 
 const i18n = getI18n()
 
@@ -99,5 +100,63 @@ describe('DashboardView hero', () => {
     expect(segments).not.toContain('hsl(var(--muted))')
     expect(new Set(segments).size).toBe(segments.length)
     expect(track).toBe('bg-muted')
+  })
+
+  it('says how loud the alert is, not only how many there are', async () => {
+    // "1 Warning event" answers "how many things are wrong". It does not
+    // answer "how loud" — and the real cluster has one alert that has
+    // repeated 49,002 times since September. Read alone, "1" sounds like
+    // it is over.
+    const statsMock = (await import('@/api/endpoints')).podsApi.stats as unknown as ReturnType<typeof vi.fn>
+    statsMock.mockResolvedValue({
+      ...stats,
+      restart_top: [],
+      warning_events: 1,
+      recent_warns: [
+        { name: 'w1', namespace: 'kube-system', type: 'Warning', reason: 'FailedToRetrieveImagePullSecret',
+          message: 'x', involved_kind: 'Pod', involved_name: 'p1', count: 49002,
+          first_seen: '2026-09-08T16:24:20Z', last_seen: '2026-10-21T11:50:02Z' },
+      ],
+    })
+    const wrapper = mountDashboard()
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain('1 个 Warning 事件')
+    expect(text).toContain('同一告警已重复 49,002 次')
+  })
+})
+
+describe('DashboardView freshness', () => {
+  it('refreshes itself every minute', async () => {
+    // The dashboard used to only refresh when you pressed the button. A page
+    // left open all shift kept saying "更新于 几秒前" while the numbers
+    // underneath it aged — the one freshness signal in the product, and it
+    // was frozen.
+    vi.useFakeTimers({
+      toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'setImmediate', 'clearImmediate'],
+    })
+    try {
+      const wrapper = mountDashboard()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.mocked(podsApi.stats).mock.calls.length).toBe(1)
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.mocked(podsApi.stats).mock.calls.length).toBe(2)
+
+      // A second minute buys a third read.
+      await vi.advanceTimersByTimeAsync(60_000)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.mocked(podsApi.stats).mock.calls.length).toBe(3)
+
+      wrapper.unmount()
+      // Unmounting stops the poll: a timer that outlives the page keeps
+      // hitting the cluster for a view nobody is looking at.
+      const callsBefore = vi.mocked(podsApi.stats).mock.calls.length
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(vi.mocked(podsApi.stats).mock.calls.length).toBe(callsBefore)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

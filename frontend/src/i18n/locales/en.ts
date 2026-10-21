@@ -19,10 +19,21 @@ export default {
     relogin: 'Sign in again',
     failed: 'Sign-in failed',
     clusterFailed: 'Failed to select cluster',
+    // The dynamic field labels belong to the frontend — see the zh-CN
+    // note. The backend still sends a label (its own wording, and what a
+    // third-party plugin would use); the frontend prefers its own
+    // translation and falls back to that one when it has none.
+    field: {
+      token: 'Access token',
+      password: 'Password',
+      otp: 'MFA one-time code (6-digit TOTP)',
+    },
   },
   dashboard: {
     updatedAt: 'Updated {time}',
-    compactStats: '{total} pods · {running} running · {failed} failed · {nodesReady}/{nodesTotal} nodes · {warnings} warnings',
+    // ponytail: scale only — see the zh-CN note. Every number in this line
+    // used to be repeated further down the same screen.
+    compactStats: '{total} pods · {nodesReady}/{nodesTotal} nodes ready',
     refresh: 'Refresh',
     actionRequired: '{count} more to handle',
     actionHint: 'Follow a link to investigate',
@@ -30,6 +41,7 @@ export default {
     actionFailedPodsDetail: 'The Pods page is already filtered to Failed',
     actionWarningEvents: '{count} Warning events',
     actionWarningEventsDetail: 'The Events page is already filtered to Warning',
+    actionWarningEventsRepeated: 'the same alert has repeated {count} times',
     actionNodesNotReady: '{count} nodes not ready',
     actionNodesNotReadyDetail: 'Node Ready {ready}/{total}',
     actionFrequentRestarts: '{count} pods restarting frequently',

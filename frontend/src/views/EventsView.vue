@@ -27,28 +27,6 @@ const cluster = useClusterStore()
 const { t } = useI18n()
 const expanded = ref<Set<string>>(new Set())
 
-// ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
-// (Dashboard ?type=Warning 跳转场景)，避免双向 watch 写错循环。
-// set 时正确删除 key 而不是写 undefined —— Vue Router 4 把 undefined
-// 当成字符串 'undefined' 保留在 URL 上，会让 refresh 后读到错值。
-const VALID_TYPES = new Set(['Warning', 'Normal'])
-const typeFilter = computed<'all' | 'Warning' | 'Normal'>({
-  get() {
-    const v = route.query.type as string | undefined
-    if (v && VALID_TYPES.has(v)) return v as 'Warning' | 'Normal'
-    return 'all'
-  },
-  set(v) {
-    const newQuery = { ...route.query }
-    if (v === 'all') {
-      delete newQuery.type
-    } else {
-      newQuery.type = v
-    }
-    router.replace({ query: newQuery })
-  },
-})
-
 function toggleExpand(name: string) {
   const next = new Set(expanded.value)
   if (next.has(name)) next.delete(name)
@@ -85,6 +63,39 @@ const countByType = computed<Record<string, number>>(() => {
 })
 
 const totalEvents = computed(() => events.value?.length ?? 0)
+
+// ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
+// (Dashboard ?type=Warning 跳转场景)，避免双向 watch 写错循环。
+// set 时正确删除 key 而不是写 undefined —— Vue Router 4 把 undefined
+// 当成字符串 'undefined' 保留在 URL 上，会让 refresh 后读到错值。
+const VALID_TYPES = new Set(['Warning', 'Normal'])
+
+// ponytail: 没有显式选择时，有告警就先给告警。
+//
+// 真实集群上一次拉回来 500 条事件，其中 498 条 Normal（Pod 调度完了、
+// Job 跑完了、镜像拉下来了），2 条 Warning。默认筛「全部」的话，那 2 条
+// 告警排在第 400 行往下 —— 一页 25 行，读者翻到第二页才可能看见，
+// 而他点进 Events 页的原因就是「有没有出事」。
+//
+// 规则要说清楚，所以它不是「总是默认 Warning」：没有告警的时候默认仍是
+// 全部（一页空白比一页噪声更糟）；URL 里带了 ?type= 的永远听 URL 的
+// （侧边栏徽标跳过来时带的就是这个参数）。
+//
+// 手动选「全部」会写成 ?type=all，而不是把参数删掉 —— 删掉的话这个
+// 默认值又会把人按回 Warning，「全部」这一档就永远点不动了。
+const hasWarnings = computed(() => countByType.value.Warning > 0)
+
+const typeFilter = computed<'all' | 'Warning' | 'Normal'>({
+  get() {
+    const v = route.query.type as string | undefined
+    if (v === 'all') return 'all'
+    if (v && VALID_TYPES.has(v)) return v as 'Warning' | 'Normal'
+    return hasWarnings.value ? 'Warning' : 'all'
+  },
+  set(v) {
+    router.replace({ query: { ...route.query, type: v } })
+  },
+})
 
 // ponytail: 消息按行截断，不按字数截断。
 // 之前是「160 个字符就砍掉」—— 160 对英文够用（两行），对中文只够一句
@@ -134,8 +145,19 @@ useEventListener(window, 'resize', () => {
 </script>
 
 <template>
+  <!--
+    ponytail: 标题里那个 context 名去掉了。
+
+    原来是「Events · kubernetes-admin@kubernetes」。整个应用只有这一页
+    把 context 名写进标题 —— 别的页都没有，所以它既不是规则，也不是
+    刻意的强调，就是漏了。而且它说的是同一个事实的第二遍：顶栏那个
+    组合框就写着当前 context，距离 40 像素。
+
+    顶栏是它的位置 —— 那里是「我现在连的是哪个集群」这个问题的答案，
+    换集群的动作也在那里。标题只回答「这是哪一页」。
+  -->
   <PageHeader
-    :title="`${t('route.events')} · ${cluster.activeCluster || ''}`"
+    :title="t('route.events')"
     :subtitle="t('events.subtitle', {
       namespace: isAllNamespaces(cluster.activeNamespace)
         ? t('namespace.all')
@@ -181,8 +203,15 @@ useEventListener(window, 'resize', () => {
           />
           <span>{{ tab === 'all' ? t('events.filterAll') : t(`eventType.${tab}`) }}</span>
           <span :class="cn(
-            'tabular-nums text-2xs px-1.5 py-0.5 rounded-sm',
-            typeFilter === tab ? 'bg-black/15' : 'bg-muted text-muted-foreground',
+            // ponytail: 选中态的计数徽章用 bg-background/20。
+            //
+            // 之前是 bg-black/15 —— 而选中态的底是 bg-foreground（亮色下
+            // 是 rgb(24,24,27) 的近黑）。15% 的黑落在近黑上，这枚徽章
+            // 等于没有：数字还在（它是白字），但芯片的形状没了，看起来
+            // 像根本没有徽章。亮色下改成 20% 的白，芯片就有了；暗色下
+            // 选中态是近白底，黑 15% 同样成立。
+            'tabular-nums text-xs px-1.5 py-0.5 rounded-sm',
+            typeFilter === tab ? 'bg-background/20' : 'bg-muted text-muted-foreground',
           )">{{ tab === 'all' ? totalEvents : countByType[tab] }}</span>
         </button>
         <span v-if="events && events.length > 0" class="text-xs text-muted-foreground ml-auto">

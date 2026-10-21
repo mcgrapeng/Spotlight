@@ -30,7 +30,9 @@ const TIERS: Array<{ key: PodDensity; lines: number }> = [
       :aria-pressed="props.modelValue === tier.key"
       :title="props.labels[tier.key]"
       :class="cn(
-        'inline-flex items-center justify-center gap-[2px] size-6 rounded-md transition-colors ease-app dur-fast',
+        // ponytail: size-6 → size-7。和主题切换同一个理由：这个分组在
+        // 侧边栏（主导航区），24px 的三个按钮点不准。28px 不多占地方。
+        'inline-flex items-center justify-center gap-[2px] size-7 rounded-md transition-colors ease-app dur-fast',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         props.modelValue === tier.key
           ? 'bg-foreground text-background'

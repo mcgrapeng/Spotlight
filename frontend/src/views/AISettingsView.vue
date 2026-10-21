@@ -87,7 +87,7 @@ async function setDefault(p: AIProviderOut) {
       </Button>
     </template>
     <template #extra>
-      <p class="text-2xs text-muted-foreground">
+      <p class="text-xs text-muted-foreground">
         {{ t('ai.oneEnabledHint') }}
       </p>
     </template>
@@ -107,13 +107,13 @@ async function setDefault(p: AIProviderOut) {
         <div class="flex items-center gap-3">
           <span
             v-if="p.enabled"
-            class="inline-flex items-center rounded-sm px-2 py-0.5 text-2xs font-semibold bg-success-bg text-success border border-success-border"
+            class="inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-semibold bg-success-bg text-success border border-success-border"
           >
             {{ t('ai.enabled') }}
           </span>
           <span
             v-if="p.is_default"
-            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-2xs font-semibold bg-foreground text-background"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-semibold bg-foreground text-background"
           >
             <Star :size="12" :stroke-width="1.75" fill="currentColor" />
             {{ t('ai.isDefault') }}
