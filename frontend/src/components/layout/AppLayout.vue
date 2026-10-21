@@ -69,7 +69,7 @@ useKeyboardShortcuts(() => [
     <div class="flex-1 flex min-h-0">
       <aside
         v-if="!isMobile"
-        class="shrink-0 border-r border-sidebar-border bg-sidebar transition-[width] ease-app duration-200 overflow-hidden"
+        class="shrink-0 border-r border-sidebar-border bg-sidebar transition-[width] ease-app dur-base overflow-hidden"
         :class="collapsed ? 'w-16' : 'w-[200px]'"
         :aria-label="t('nav.main')"
       >

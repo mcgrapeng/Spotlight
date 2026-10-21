@@ -131,8 +131,10 @@ function podOverloaded(n: NodeOut): boolean {
   <div class="space-y-5">
     <PageHeader :title="t('route.nodes')" :subtitle="subtitle">
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="loading" @click="load" :aria-label="t('nodes.refresh')">
-          <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
+        <Button variant="outline" size="sm" :loading="loading" @click="load" :aria-label="t('nodes.refresh')">
+          <template #icon>
+            <RefreshCw :size="14" :stroke-width="1.75" />
+          </template>
           {{ t('nodes.refresh') }}
         </Button>
       </template>
@@ -232,7 +234,7 @@ function podOverloaded(n: NodeOut): boolean {
             <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
               <div
                 :class="cn(
-                  'h-full transition-all ease-app rounded-full',
+                  'h-full transition-[width] ease-app dur-base rounded-full',
                   podOverloaded(d.node) ? 'bg-warning' : 'bg-foreground',
                 )"
                 :style="{ width: `${podPct(d.node)}%` }"

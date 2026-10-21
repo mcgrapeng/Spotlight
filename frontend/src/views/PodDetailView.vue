@@ -161,8 +161,10 @@ function back() { router.push({ name: 'pods' }) }
     <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`" class="shrink-0">
       <template #actions>
         <PodStatusPill :phase="pod.phase" class="mr-2" />
-        <Button variant="outline" size="sm" @click="load" :disabled="loading" :aria-label="t('pod.refresh')">
-          <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
+        <Button variant="outline" size="sm" @click="load" :loading="loading" :aria-label="t('pod.refresh')">
+          <template #icon>
+            <RefreshCw :size="14" :stroke-width="1.75" />
+          </template>
         </Button>
       </template>
     </PageHeader>

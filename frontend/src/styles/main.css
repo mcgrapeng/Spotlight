@@ -158,6 +158,9 @@
     /* ponytail: --dur-slow 之前定义着但全站零引用，删掉。
        全站现在只有一条曲线：.ease-app。 */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    /* 退场曲线：比进场快，且收尾更硬。进场是「到位」，退场是「撤掉」，
+       两者用同一条曲线会让关闭动作显得拖。 */
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
     --dur-fast: 120ms;
     --dur-base: 200ms;
 
@@ -287,6 +290,15 @@
   .ease-app { transition-timing-function: var(--ease); }
   .dur-fast { transition-duration: var(--dur-fast); }
   .dur-base { transition-duration: var(--dur-base); }
+
+  /* ponytail: 浮层的 enter/exit 动画此前落在 CSS initial 的 `ease` 上。
+     tailwindcss-animate 的 .animate-in / .animate-out 只设了 animation-name
+     和 animation-duration，timing function 没设 —— 于是这个产品里最大的
+     几段运动（命令面板、AI 侧滑面板、移动抽屉）跑在一条和 hover 反馈
+     完全不同的曲线上：hover 是 .ease-app 的 expo-out，浮层是 `ease`。
+     这里把产品的曲线接到浮层上，exit 用更快的收尾曲线。 */
+  .animate-in { animation-timing-function: var(--ease); }
+  .animate-out { animation-timing-function: var(--ease-exit); }
 }
 
 /* Reduced motion */

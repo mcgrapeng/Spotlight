@@ -248,8 +248,10 @@ const recentActivity = computed(() => {
         <span class="text-xs text-muted-foreground tabular-nums hidden sm:inline">
           {{ lastRefreshed ? t('dashboard.updatedAt', { time: formatRel(lastRefreshed.toISOString()) }) : '' }}
         </span>
-        <Button variant="outline" size="sm" :disabled="refreshing" @click="load(true)" :aria-label="t('dashboard.refresh')">
-          <RefreshCw :size="14" :stroke-width="1.75" :class="refreshing && 'animate-spin'" />
+        <Button variant="outline" size="sm" :loading="refreshing" @click="load(true)" :aria-label="t('dashboard.refresh')">
+          <template #icon>
+            <RefreshCw :size="14" :stroke-width="1.75" />
+          </template>
           {{ t('dashboard.refresh') }}
         </Button>
       </template>
@@ -275,7 +277,7 @@ const recentActivity = computed(() => {
             <router-link
               v-if="heroAction"
               :to="heroAction.link"
-              class="mt-3 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-foreground transition-colors ease-app hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="mt-3 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-foreground transition-colors ease-app dur-fast hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {{ t('dashboard.heroOpen') }}
               <ChevronRight :size="14" :stroke-width="2" aria-hidden="true" />
@@ -318,7 +320,7 @@ const recentActivity = computed(() => {
             v-for="(item, i) in actionItems"
             :key="i"
             :to="item.link"
-            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors ease-app hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors ease-app dur-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             :class="item.severity === 'critical' ? 'border-error-border bg-error/5' : 'border-warning-border bg-warning/5'"
           >
             <span

@@ -161,11 +161,12 @@ async function onRetryClusters() {
           <p class="text-2xs text-muted-foreground">{{ t('login.clustersUnavailableHint') }}</p>
           <Button
             class="w-full"
-            :disabled="auth.busy"
+            :loading="auth.busy"
             @click="onRetryClusters"
           >
-            <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
-            <RefreshCw v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
+            <template #icon>
+              <RefreshCw :size="14" :stroke-width="1.75" />
+            </template>
             {{ t('login.retryClusters') }}
           </Button>
         </div>
@@ -227,9 +228,10 @@ async function onRetryClusters() {
           <p v-if="auth.error" class="text-sm text-error" role="alert">
             {{ auth.error }}
           </p>
-          <Button type="submit" class="w-full" :disabled="auth.busy">
-            <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
-            <LogIn v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
+          <Button type="submit" class="w-full" :loading="auth.busy">
+            <template #icon>
+              <LogIn :size="14" :stroke-width="1.75" />
+            </template>
             {{ auth.busy ? t('login.submitting') : t('login.submit') }}
           </Button>
         </form>
@@ -269,9 +271,10 @@ async function onRetryClusters() {
           <p v-if="auth.error" class="text-sm text-error" role="alert">
             {{ auth.error }}
           </p>
-          <Button type="submit" class="w-full" :disabled="auth.busy || !cluster">
-            <Loader2 v-if="auth.busy" :size="14" :stroke-width="1.75" class="mr-1.5 animate-spin" />
-            <LogIn v-else :size="14" :stroke-width="1.75" class="mr-1.5" />
+          <Button type="submit" class="w-full" :loading="auth.busy" :disabled="!cluster">
+            <template #icon>
+              <LogIn :size="14" :stroke-width="1.75" />
+            </template>
             {{ auth.busy ? t('login.connecting') : t('login.connect') }}
           </Button>
           <button

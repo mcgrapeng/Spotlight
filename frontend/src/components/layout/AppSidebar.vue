@@ -102,7 +102,7 @@ const isActive = (path: string) =>
         :key="item.path"
         :to="item.path"
         :class="cn(
-          'relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app',
+          'relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
           isActive(item.path)
             ? 'bg-foreground text-background hover:bg-foreground/90'
@@ -152,7 +152,7 @@ const isActive = (path: string) =>
       <router-link
         to="/settings"
         :class="cn(
-          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app',
+          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
           isActive('/settings')
             ? 'bg-foreground text-background hover:bg-foreground/90'
@@ -168,7 +168,7 @@ const isActive = (path: string) =>
       <button
         type="button"
         :class="cn(
-          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app',
+          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent text-sidebar-foreground',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"

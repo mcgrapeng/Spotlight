@@ -66,7 +66,7 @@ function pick(o: AppSelectOption) {
         :aria-label="ariaLabel"
         :disabled="disabled"
         :class="cn(
-          'inline-flex items-center gap-2 rounded-md border border-input bg-background text-sm transition-colors ease-app',
+          'inline-flex items-center gap-2 rounded-md border border-input bg-background text-sm transition-colors ease-app dur-fast',
           'hover:bg-accent hover:text-accent-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           'disabled:opacity-50 disabled:cursor-default',

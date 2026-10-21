@@ -35,4 +35,31 @@ describe('Button', () => {
       expect(heights.some((h) => wrapper.classes().includes(h))).toBe(true)
     }
   })
+
+  it('does not force a size on the icons inside it', () => {
+    // ponytail: base 里原来有 `[&_svg]:size-4`。CSS 规则压过 SVG 的
+    // width/height 属性，于是 35 处按钮内图标显式写的 :size="13" / "14"
+    // 全部无效，实际渲染 16px —— 日志工具栏那排 13px 图标在 28px 高的
+    // 按钮里显得笨重。尺寸由图标自己决定，按钮不越权。
+    const wrapper = mount(Button, { slots: { default: 'x' } })
+    expect(wrapper.classes().join(' ')).not.toContain('svg]:size-4')
+  })
+
+  it('renders the icon slot', () => {
+    const wrapper = mount(Button, {
+      slots: { icon: '<span class="ico" />', default: 'Refresh' },
+    })
+    expect(wrapper.find('.ico').exists()).toBe(true)
+  })
+
+  it('swaps the icon for a spinner and marks itself busy while loading', () => {
+    const wrapper = mount(Button, {
+      props: { loading: true },
+      slots: { icon: '<span class="ico" />', default: 'Refresh' },
+    })
+    expect(wrapper.attributes('aria-busy')).toBe('true')
+    expect(wrapper.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.ico').exists()).toBe(false)
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+  })
 })

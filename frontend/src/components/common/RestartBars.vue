@@ -65,7 +65,7 @@ function tone(count: number): string {
       </div>
       <div class="h-1.5 rounded-full bg-muted overflow-hidden">
         <div
-          class="h-full rounded-full transition-[width] ease-app duration-500"
+          class="h-full rounded-full transition-[width] ease-app dur-base"
           :class="cn(tone(item.restarts))"
           :style="{ width: `${Math.max(2, (item.restarts / max) * 100)}%` }"
         />

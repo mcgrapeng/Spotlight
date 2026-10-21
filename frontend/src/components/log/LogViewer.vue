@@ -1483,7 +1483,7 @@ const helpRows = computed(() => [
         type="button"
         :aria-pressed="minSeverity === 0"
         :class="cn(
-          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors ease-app text-2xs',
+          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-2xs',
           minSeverity === 0
             ? 'border-foreground bg-foreground text-background'
             : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -1502,7 +1502,7 @@ const helpRows = computed(() => [
         :disabled="chipCounts[chip.bucket] === 0"
         :aria-pressed="minSeverity === chip.rank"
         :class="cn(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app text-2xs',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-2xs',
           'disabled:opacity-30 disabled:cursor-default',
           minSeverity === chip.rank
             ? 'border-foreground bg-foreground text-background'
@@ -1533,7 +1533,7 @@ const helpRows = computed(() => [
         role="tab"
         :aria-selected="selectedContainer === null"
         :class="cn(
-          'px-3 py-1.5 text-2xs font-medium transition-colors ease-app border-b-2',
+          'px-3 py-1.5 text-2xs font-medium transition-colors ease-app dur-fast border-b-2',
           selectedContainer === null
             ? 'border-foreground text-foreground'
             : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
@@ -1551,7 +1551,7 @@ const helpRows = computed(() => [
         :aria-selected="selectedContainer === c"
         :title="c"
         :class="cn(
-          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors ease-app border-b-2 max-w-[180px] truncate',
+          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors ease-app dur-fast border-b-2 max-w-[180px] truncate',
           selectedContainer === c
             ? 'border-foreground text-foreground'
             : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
@@ -1717,7 +1717,7 @@ const helpRows = computed(() => [
         v-for="key in jsonFieldChips"
         :key="key"
         type="button"
-        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors ease-app"
+        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors ease-app dur-fast"
         :title="t('log.filterField', { field: key })"
         @click="applyFieldFilter(key)"
       >
@@ -1725,7 +1725,7 @@ const helpRows = computed(() => [
       </button>
       <button
         type="button"
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ease-app ml-auto"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ease-app dur-fast ml-auto"
         :title="t('log.clearFieldFilter')"
         :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
@@ -1831,7 +1831,7 @@ const helpRows = computed(() => [
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
-                'hover:bg-muted/40 transition-colors ease-app',
+                'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
               )"
               v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale]"
@@ -1840,7 +1840,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all ease-app cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -1873,7 +1873,7 @@ const helpRows = computed(() => [
                   v-if="group.lines[0].isJson"
                   type="button"
                   @click="toggleJson(`${group.key}`)"
-                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app dur-fast"
                   :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
                   :aria-label="t('log.toggleJsonLabel')"
@@ -1886,7 +1886,7 @@ const helpRows = computed(() => [
                 <button
                   v-if="plainLength(group.lines[0].raw) > TRUNCATE_LIMIT"
                   type="button"
-                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app"
+                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                   :title="truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() })"
                   @click.stop="toggleTruncate(group.lines[0].raw.content)"
                 >
@@ -1916,7 +1916,7 @@ const helpRows = computed(() => [
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
-                'hover:bg-muted/40 transition-colors ease-app',
+                'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
               )"
               v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale]"
@@ -1931,7 +1931,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all ease-app cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -1994,7 +1994,7 @@ const helpRows = computed(() => [
                      scanability — error fold = red, warn = amber, etc. -->
                 <span
                   :class="cn(
-                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors ease-app',
+                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors ease-app dur-fast',
                         severityBorderFor(group.lines[0].raw.severity),
                   )"
                   :title="t('log.foldTitle', { count: group.lines.length })"
@@ -2016,7 +2016,7 @@ const helpRows = computed(() => [
                     v-if="line.traceId"
                     type="button"
                     @click.stop="toggleTraceFilter(line.traceId)"
-                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all ease-app cursor-pointer z-10"
+                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
                     :title="t('log.filterTraceTitle', { traceId: line.traceId })"
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
@@ -2033,7 +2033,7 @@ const helpRows = computed(() => [
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
-                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app"
+                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                       :title="truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >
@@ -2053,7 +2053,7 @@ const helpRows = computed(() => [
       <button
         v-if="!autoFollow && (unreadCount ?? 0) > 0"
         type="button"
-        class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app"
+        class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app dur-fast"
         @click="toggleAutoFollow"
       >
         <ChevronDown :size="12" :stroke-width="2" />

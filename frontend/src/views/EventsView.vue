@@ -103,8 +103,10 @@ const warningEntries = computed(() =>
     })"
   >
     <template #actions>
-      <Button variant="outline" size="sm" @click="load" :disabled="loading" :aria-label="t('events.refresh')">
-        <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
+      <Button variant="outline" size="sm" @click="load" :loading="loading" :aria-label="t('events.refresh')">
+        <template #icon>
+          <RefreshCw :size="14" :stroke-width="1.75" />
+        </template>
       </Button>
     </template>
     <template #extra>
@@ -117,7 +119,7 @@ const warningEntries = computed(() =>
           :aria-selected="typeFilter === tab"
           @click="typeFilter = tab"
           :class="cn(
-            'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app',
+            'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
             typeFilter === tab
               ? tab === 'Warning'
                 ? 'bg-warning text-warning-foreground border-warning'
@@ -164,7 +166,7 @@ const warningEntries = computed(() =>
     </i18n-t>
     <button
       type="button"
-      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity ease-app font-medium"
+      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity ease-app dur-fast font-medium"
       @click="cluster.setNamespace('_all')"
     >
       {{ t('namespace.all') }}
@@ -195,7 +197,7 @@ const warningEntries = computed(() =>
       v-for="ev in filtered"
       :key="ev.name"
       :class="cn(
-        'group block rounded-lg border transition-colors ease-app overflow-hidden',
+        'group block rounded-lg border transition-colors ease-app dur-fast overflow-hidden',
         ev.type === 'Warning'
           ? 'border-warning/40 bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
           : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
