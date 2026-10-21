@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
   Copy, X, Terminal, Filter, WrapText, Download, AlertCircle, HelpCircle,
-  MoreHorizontal, Trash2,
+  MoreHorizontal, Trash2, Info, TriangleAlert, CircleX,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -1088,11 +1088,14 @@ onUnmounted(() => {
 })
 
 // === Visual helpers ===
-const SEV_ICON: Record<string, string> = {
-  trace: '·', debug: '·', info: 'i', notice: 'i',
-  warn: '!', warning: '!', error: '▲', err: '▲',
-  critical: '▲', fatal: '▲', alert: '▲', emergency: '▲',
-  unknown: '?',
+// ponytail: 过滤器芯片上的图标原来是 ASCII 字符（`i` `!` `▲` `?`）——
+// 那是等宽字体里的裸字形，不是图标：左边「全部」用的是 Lucide 的漏斗，
+// 右边三个是字符，两种视觉语言并排。`▲` 在多数图标字体里是「上三角／
+// 插入」的意思，拿它表示 ERROR 语义是反的。换成 Lucide 图标。
+const SEV_ICON_COMPONENT: Record<string, Component> = {
+  info: Info,
+  warn: TriangleAlert,
+  error: CircleX,
 }
 const SEV_CLASS: Record<string, string> = {
   trace: 'text-muted-foreground', debug: 'text-muted-foreground',
@@ -1137,6 +1140,86 @@ function isNewestLine(group: Group): boolean {
   // compare against the head of the FULL group list so the pulse follows the
   // actual newest line, not "first row currently in viewport".
   return props.streaming && groups.value[groups.value.length - 1]?.key === group.key
+}
+
+// === 新到的错误行闪一次 ===
+//
+// 这一轮方向文档写的规则是「动效只在数据到达时发生：新 ERROR 行到达时
+// severity chip 闪一次（200ms 内）」。这是整个产品承诺过的唯一一个动效
+// 时刻，之前没有实现 —— SSE 推来一条新 ERROR，它就直接出现在列表里，
+// 和历史行长得一模一样。
+//
+// 怎么知道哪些行是「新到的」？SSE 层把新批次 prepend 到 props.lines 的
+// 数组头，所以新行在前面。用上一批的头做锚点：这一批的头变了，就从
+// 头往后找到上一批的头，中间那些就是新到的。
+const flashing = ref<Set<string>>(new Set())
+const flashTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let seenHeadId: string | null = null
+/** How long a newly arrived error row stays tinted. The animation itself is
+ *  400ms; the class lives slightly longer so the animation can finish. */
+const FLASH_MS = 450
+
+function flashErrors(ids: string[]) {
+  if (!ids.length) return
+  for (const id of ids) {
+    const old = flashTimers.get(id)
+    if (old) clearTimeout(old)
+    flashTimers.set(id, setTimeout(() => {
+      flashTimers.delete(id)
+      const next = new Set(flashing.value)
+      next.delete(id)
+      flashing.value = next
+    }, FLASH_MS))
+  }
+  flashing.value = new Set([...flashing.value, ...ids])
+}
+
+watch(() => props.lines, (next) => {
+  if (!next.length) {
+    seenHeadId = null
+    return
+  }
+  const headId = lineId(next[0]!)
+  if (seenHeadId === null) {
+    seenHeadId = headId
+    return
+  }
+  if (headId === seenHeadId) return
+  // 上一批的头现在排在新行之后，它的位置就是新行的数量。
+  // 只扫前面 200 行：缓冲区满了以后旧行会被挤掉，找不到锚点就干脆不闪，
+  // 总比把整个缓冲区都闪一遍好。
+  let addedCount = 0
+  const limit = Math.min(next.length, 200)
+  for (let i = 0; i < limit; i++) {
+    if (lineId(next[i]!) === seenHeadId) {
+      addedCount = i
+      break
+    }
+  }
+  seenHeadId = headId
+  if (!addedCount) return
+  const errorIds: string[] = []
+  for (let i = 0; i < addedCount; i++) {
+    const line = next[i]!
+    // 只闪错误，不闪 warn：集群里 warn 的量级通常是 error 的十倍，
+    // 每一行都闪一次等于什么都没闪。
+    if (SEV_ERROR_KEYS.has(line.severity.toLowerCase())) errorIds.push(lineId(line))
+  }
+  flashErrors(errorIds)
+}, { immediate: true })
+
+onUnmounted(() => {
+  for (const timer of flashTimers.values()) clearTimeout(timer)
+  flashTimers.clear()
+})
+
+/** True when this group contains a line that just arrived as an error. */
+function groupFlashes(group: Group): boolean {
+  if (!flashing.value.size) return false
+  for (const l of group.lines) {
+    if (flashing.value.has(lineId(l.raw))) return true
+  }
+  return false
 }
 
 // === Severity badge (per-row label, replaces single-char icon) ===
@@ -1514,7 +1597,13 @@ const helpRows = computed(() => [
         @click="setSeverity(chip.rank)"
         :title="t('log.severityLines', { bucket: chip.bucket, count: chipCounts[chip.bucket].toLocaleString() })"
       >
-        <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[chip.bucket] }}</span>
+        <component
+          :is="SEV_ICON_COMPONENT[chip.bucket]"
+          :size="12"
+          :stroke-width="2"
+          class="shrink-0"
+          aria-hidden="true"
+        />
         <span class="uppercase tracking-wider">{{ chip.bucket }}+</span>
         <span class="tabular-nums">{{ chipCounts[chip.bucket].toLocaleString() }}</span>
       </button>
@@ -1833,8 +1922,9 @@ const helpRows = computed(() => [
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
                 'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
+                groupFlashes(group) && 'animate-log-flash',
               )"
-              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale]"
+              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale, groupFlashes(group)]"
             >
               <button
                 v-if="group.lines[0].traceId"
@@ -1918,8 +2008,9 @@ const helpRows = computed(() => [
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
                 'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
+                groupFlashes(group) && 'animate-log-flash',
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale, groupFlashes(group)]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"

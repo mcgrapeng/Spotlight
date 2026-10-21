@@ -125,6 +125,14 @@ export default {
           from: { '--gradient-angle': '0deg' },
           to: { '--gradient-angle': '360deg' },
         },
+        // ponytail: 新到的 ERROR 行闪一次。这条方向文档承诺过
+        // （「动效只在数据到达时发生」），但一直没实现 —— SSE 推来一条新
+        // 错误，它和历史行长得一模一样，读者不知道自己错过了什么。
+        // 用 error 的背景色闪一下，400ms 后回到透明。
+        'log-flash': {
+          from: { backgroundColor: 'hsl(var(--error) / 0.25)' },
+          to: { backgroundColor: 'transparent' },
+        },
         'accordion-down': {
           from: { height: '0' },
           to: { height: 'var(--radix-accordion-content-height)' },
@@ -136,6 +144,7 @@ export default {
       },
       animation: {
         'gradient-rotate': 'gradient-rotate 4s linear infinite',
+        'log-flash': 'log-flash 400ms var(--ease)',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
       },
