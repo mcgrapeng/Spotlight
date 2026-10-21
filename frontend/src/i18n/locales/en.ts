@@ -339,6 +339,9 @@ export default {
   log: {
     filterAll: 'All',
     severityLines: '{bucket} · {count} lines',
+    // ponytail: see the zh-CN note — unclassified lines get their own bucket.
+    severityUnknown: 'Unclassified',
+    severityUnknownLines: 'Unclassified · {count} lines',
     containerTabsLabel: 'Container selection',
     container: 'Container',
     searchPlaceholder: 'Filter (content / container) · / to focus search',
@@ -366,6 +369,8 @@ export default {
     outputLabel: 'Log output (newest on the bottom)',
     newLines: '{count} new · Jump',
     emptyTitle: 'No logs yet',
+    // ponytail: see the zh-CN note — a failed read is not an empty log.
+    errorTitle: 'Could not read the log',
     emptyWaiting: 'Waiting for container output…',
     emptyPaused: 'Log stream paused',
     emptyFilteredTitle: 'No matches for the current filter',

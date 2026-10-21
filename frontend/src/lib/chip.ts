@@ -50,7 +50,7 @@ const TONE: Record<ChipTone, { text: string; soft: string; solid: string; dot: s
  */
 const SIZE: Record<ChipSize, string> = {
   sm: 'rounded-md px-2 py-0.5 text-xs',
-  xs: 'rounded-sm px-1.5 py-0 text-2xs',
+  xs: 'rounded-sm px-1.5 py-0 text-xs',
 }
 
 export function chipClasses(opts: {
@@ -69,7 +69,12 @@ export function chipClasses(opts: {
         ? `bg-transparent border-transparent ${TONE[tone].text}`
         : TONE[tone].soft
   return [
-    'inline-flex items-center border font-medium',
+    // ponytail: whitespace-nowrap —— 状态胶囊永远不折行。
+    //
+    // 「运行中 Running」在状态列被挤窄时会折成两行，一枚徽章折行之后
+    // 读起来像两个标签。真实集群的表格列宽是内容挤出来的（命名空间加
+    // nowrap 之后，状态列就窄了），所以这条要写死。
+    'inline-flex items-center border font-medium whitespace-nowrap',
     SIZE[size],
     toneClass,
     dot ? 'gap-1.5' : '',

@@ -349,6 +349,10 @@ export default {
   log: {
     filterAll: '全部',
     severityLines: '{bucket} · {count} 行',
+    // ponytail: 分类器认不出来的行单独一档。它们以前被算进 INFO，
+    // 于是「INFO+ 513」说的是 513 行都没被读懂。
+    severityUnknown: '未识别',
+    severityUnknownLines: '未识别 · {count} 行',
     containerTabsLabel: '容器选择',
     container: '容器',
     searchPlaceholder: '过滤（内容 / 容器） · / 聚焦搜索',
@@ -376,6 +380,9 @@ export default {
     outputLabel: '日志输出（最新在下）',
     newLines: '{count} 条新 · 跳转',
     emptyTitle: '暂无日志',
+    // ponytail: 读取失败和「暂无日志」是两件事。之前它们同时出现，
+    // 互相矛盾：上面一条红条说读取失败，下面说等待容器输出。
+    errorTitle: '日志读取失败',
     emptyWaiting: '等待容器输出…',
     emptyPaused: '日志已暂停',
     emptyFilteredTitle: '当前过滤无匹配',

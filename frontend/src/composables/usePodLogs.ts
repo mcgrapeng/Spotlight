@@ -231,7 +231,15 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         for (const l of flat) remember(sigOf(l.timestamp, l.content))
       } catch (e: any) {
         if (!alive || myGen !== gen) return
-        error.value = e?.response?.data?.detail ?? e?.message ?? t('pod.logsLoadFailed')
+        // ponytail: 不用 axios 的原始 message。
+        //
+        // 那个字符串是 "Request failed with status code 500" —— 英文、
+        // 带状态码、没有任何可行动的信息。接到真实集群上时它出现在中文
+        // 界面的红条上，读者既不知道发生了什么，也拿不到原因。
+        //
+        // 后端现在每个错误都带 detail（"Pod 或容器不存在…"），用它；
+        // 没有 detail 的（网络断了之类）用本地文案。
+        error.value = e?.response?.data?.detail ?? t('pod.logsLoadFailed')
       }
     }
 

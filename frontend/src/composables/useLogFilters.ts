@@ -1,12 +1,16 @@
 import { computed, type Ref } from 'vue'
 import type { LogLineOut } from '@/api/types'
 import { stripAnsi } from '@/domain/services/logFormat'
+import { isUnknownSeverity } from '@/composables/useLogSeverityCounts'
 
 export const SEVERITY_RANK: Record<string, number> = {
   trace: 0, debug: 0, info: 1, notice: 1,
   warn: 2, warning: 2, error: 3, err: 3,
   critical: 4, fatal: 4, alert: 4, emergency: 4,
-  unknown: 1,
+  // ponytail: unknown 归 0（不是 1）。它在「INFO+」这一档里以前算 INFO，
+  // 于是芯片写着「INFO+ 513」，而真相是 513 行都没被认出来。归 0 之后
+  // 它只在「全部」里出现，芯片自己会说实话。
+  unknown: 0,
 }
 
 const TRACE_ID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
@@ -38,6 +42,8 @@ export interface UseLogFiltersOpts {
   search: Ref<string>
   minSeverity: Ref<number>
   max?: Ref<number>
+  /** Show ONLY the lines nobody could classify (a filter, not a rank). */
+  unknownOnly?: Ref<boolean>
 }
 
 export function useLogFilters(opts: UseLogFiltersOpts) {
@@ -50,7 +56,11 @@ export function useLogFilters(opts: UseLogFiltersOpts) {
 
     const out: LogLineOut[] = []
     for (const l of opts.lines.value) {
-      if (minSev > 0 && (SEVERITY_RANK[l.severity.toLowerCase()] ?? 1) < minSev) continue
+      if (opts.unknownOnly?.value) {
+        if (!isUnknownSeverity(l.severity)) continue
+      } else if (minSev > 0 && (SEVERITY_RANK[l.severity.toLowerCase()] ?? 0) < minSev) {
+        continue
+      }
       if (traceQ !== null) {
         // Trace filter path: must match trace_id, content match is skipped
         // so a UUID-string typed in plain search doesn't pull unrelated lines.

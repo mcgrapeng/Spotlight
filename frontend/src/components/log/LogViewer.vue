@@ -156,11 +156,18 @@ function restoreScrollMemory(): void {
 
 // === Filtering ===
 const minSeverity = ref(0)
+// ponytail: 「未识别」是一个筛选，不是档位。
+//
+// 档位（INFO+/WARN+/ERROR+）是「severity >= rank」，而未识别的行没有
+// severity 可比 —— 它们只能被单独挑出来。所以这是一个独立开关，不是
+// 第五个 rank。
+const unknownOnly = ref(false)
 
 const { filtered } = useLogFilters({
   lines: toRef(props, 'lines'),
   search,
   minSeverity,
+  unknownOnly,
 })
 
 defineExpose({})
@@ -931,6 +938,7 @@ function focusSearchInput() {
 function toggleErrorsOnly() {
   // 3 = error rank (matches useLogFilters SEVERITY_RANK).
   minSeverity.value = minSeverity.value === 3 ? 0 : 3
+  unknownOnly.value = false
 }
 function jumpToError(dir: 1 | -1) {
   const el = scrollEl.value
@@ -1176,6 +1184,21 @@ function flashErrors(ids: string[]) {
   flashing.value = new Set([...flashing.value, ...ids])
 }
 
+// ponytail: 「实时」那个点只在真的有新行到达时闪。
+//
+// 之前它跟着 streaming 状态永远在呼吸 —— 连接开着就闪，30 秒没有一行
+// 日志也闪。凌晨三点一块屏幕上有个一直在闪的绿点，是纯粹的注意力税，
+// 而且它不携带任何信息（它一直在闪，所以「闪」本身说明不了什么）。
+//
+// 现在它只在收到新行之后的 2 秒里闪：闪 = 刚刚有东西进来了。
+const livePulse = ref(false)
+let liveTimer: ReturnType<typeof setTimeout> | null = null
+function markLive() {
+  livePulse.value = true
+  if (liveTimer) clearTimeout(liveTimer)
+  liveTimer = setTimeout(() => { livePulse.value = false }, 2000)
+}
+
 watch(() => props.lines, (next) => {
   if (!next.length) {
     seenHeadId = null
@@ -1200,6 +1223,7 @@ watch(() => props.lines, (next) => {
   }
   seenHeadId = headId
   if (!addedCount) return
+  markLive()
   // ponytail: 一次只闪一条。
   // 读者翻完历史回到顶部时，SSE 层会把攒着的整个 backlog 一次性 prepend
   // 进来 —— 那时候 addedCount 是几百，「新到的」是几百行，整个面板一起
@@ -1219,6 +1243,7 @@ watch(() => props.lines, (next) => {
 onUnmounted(() => {
   for (const timer of flashTimers.values()) clearTimeout(timer)
   flashTimers.clear()
+  if (liveTimer) clearTimeout(liveTimer)
 })
 
 /** True when this group contains a line that just arrived as an error. */
@@ -1321,6 +1346,12 @@ function togglePause() {
 
 function setSeverity(rank: number) {
   minSeverity.value = minSeverity.value === rank ? 0 : rank
+  unknownOnly.value = false
+}
+
+function toggleUnknownOnly() {
+  unknownOnly.value = !unknownOnly.value
+  if (unknownOnly.value) minSeverity.value = 0
 }
 
 function clearSearch() {
@@ -1550,6 +1581,7 @@ function downloadLogs() {
 function clearAllFilters() {
   search.value = ''
   minSeverity.value = 0
+  unknownOnly.value = false
 }
 
 // ponytail: keep help content out of the template to avoid re-listing the same
@@ -1574,7 +1606,7 @@ const helpRows = computed(() => [
         type="button"
         :aria-pressed="minSeverity === 0"
         :class="cn(
-          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-2xs',
+          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
           minSeverity === 0
             ? 'border-foreground bg-foreground text-background'
             : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -1593,7 +1625,7 @@ const helpRows = computed(() => [
         :disabled="chipCounts[chip.bucket] === 0"
         :aria-pressed="minSeverity === chip.rank"
         :class="cn(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-2xs',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
           'disabled:opacity-30 disabled:cursor-default',
           minSeverity === chip.rank
             ? 'border-foreground bg-foreground text-background'
@@ -1615,30 +1647,70 @@ const helpRows = computed(() => [
         <span class="uppercase tracking-wider">{{ chip.bucket }}+</span>
         <span class="tabular-nums">{{ chipCounts[chip.bucket].toLocaleString() }}</span>
       </button>
+      <!--
+        ponytail: 「未识别」这一枚。
+
+        分类器认不出来的行（真实的 MCP 日志是 ℹ️ emoji 风格，认不出来）
+        以前被算进 INFO，于是芯片写着「INFO+ 513」—— 513 行全都没被读懂，
+        芯片却说它们都是 INFO 及以上。读者按 ERROR+ 过滤得到 0 行，面板
+        告诉他「没有错误」。
+
+        现在未识别是独立的一档，有自己的芯片和自己的计数。它不是第四个
+        rank（未识别的行没有 severity 可比），是一个单独的筛选。
+      -->
+      <button
+        type="button"
+        :disabled="counts.unknown === 0"
+        :aria-pressed="unknownOnly"
+        :class="cn(
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
+          'disabled:opacity-30 disabled:cursor-default',
+          unknownOnly
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+        )"
+        @click="toggleUnknownOnly()"
+        :title="t('log.severityUnknownLines', { count: counts.unknown.toLocaleString() })"
+      >
+        <HelpCircle :size="12" :stroke-width="2" class="shrink-0" aria-hidden="true" />
+        <span>{{ t('log.severityUnknown') }}</span>
+        <span class="tabular-nums">{{ counts.unknown.toLocaleString() }}</span>
+      </button>
     </div>
 
-    <!-- Container tabs (only when pod has multiple containers) -->
+    <!--
+      ponytail: 容器页签改成药丸，和级别芯片同族。
+
+      全站的规则定了：**筛选器用药丸，页签用下划线**。
+
+      这一行是筛选器（看哪个容器的日志），不是页签 —— 它切的是同一份
+      日志的视角，底下那张表始终在。原来它是下划线样式，于是同一个
+      面板里出现了两种下划线：上面这排容器，下面那个面板自己的标签栏。
+
+      改完，这一行的容器芯片和上面那排级别芯片是同一种东西 —— 都在
+      筛选要看的行；页面级页签（下划线）留在 Pod 详情那一层。
+    -->
     <div
       v-if="availableContainers.length > 1"
-      class="flex items-center gap-px px-3 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
+      class="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
       role="tablist"
       :aria-label="t('log.containerTabsLabel')"
     >
-      <span class="text-2xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">{{ t('log.container') }}</span>
+      <span class="text-xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">{{ t('log.container') }}</span>
       <button
         type="button"
         role="tab"
         :aria-selected="selectedContainer === null"
         :class="cn(
-          'px-3 py-1.5 text-2xs font-medium transition-colors ease-app dur-fast border-b-2',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
           selectedContainer === null
-            ? 'border-foreground text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
         @click="selectedContainer = null"
       >
         {{ t('log.filterAll') }}
-        <span class="ml-1 tabular-nums text-muted-foreground">{{ lines.length.toLocaleString() }}</span>
+        <span class="tabular-nums opacity-80">{{ lines.length.toLocaleString() }}</span>
       </button>
       <button
         v-for="c in availableContainers"
@@ -1648,15 +1720,15 @@ const helpRows = computed(() => [
         :aria-selected="selectedContainer === c"
         :title="c"
         :class="cn(
-          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors ease-app dur-fast border-b-2 max-w-[180px] truncate',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition-colors ease-app dur-fast max-w-[180px] truncate',
           selectedContainer === c
-            ? 'border-foreground text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
         @click="selectedContainer = c"
       >
         {{ c }}
-        <span class="ml-1 tabular-nums text-foreground shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
+        <span class="tabular-nums opacity-80 shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
       </button>
     </div>
 
@@ -1737,7 +1809,7 @@ const helpRows = computed(() => [
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-0" align="end">
           <div v-if="recentSearches.length > 0" class="py-1">
-            <div class="px-3 py-1 text-2xs uppercase tracking-wider text-muted-foreground">
+            <div class="px-3 py-1 text-xs uppercase tracking-wider text-muted-foreground">
               {{ t('log.searchHistoryLabel') }}
             </div>
             <button
@@ -1764,7 +1836,7 @@ const helpRows = computed(() => [
               <WrapText v-if="wrapMode === 'wrap'" :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <ChevronsRight v-else :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="flex-1">{{ t('log.menuToggleWrap') }}</span>
-              <span class="text-2xs text-muted-foreground">
+              <span class="text-xs text-muted-foreground">
                 {{ wrapMode === 'wrap' ? t('log.wrapStateOn') : t('log.wrapStateOff') }}
               </span>
             </button>
@@ -1793,10 +1865,10 @@ const helpRows = computed(() => [
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-3" align="end">
-          <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{{ t('log.shortcutsHeading') }}</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{{ t('log.shortcutsHeading') }}</div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono">
             <template v-for="row in helpRows" :key="row.key">
-              <kbd class="px-1.5 py-0.5 rounded-sm border border-border bg-muted text-2xs">{{ row.key }}</kbd>
+              <kbd class="px-1.5 py-0.5 rounded-sm border border-border bg-muted text-xs">{{ row.key }}</kbd>
               <span class="text-muted-foreground self-center">{{ row.label }}</span>
             </template>
           </dl>
@@ -1809,12 +1881,12 @@ const helpRows = computed(() => [
       v-if="jsonFieldChips.length > 0"
       class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap"
     >
-      <span class="text-2xs text-muted-foreground shrink-0 mr-1">{{ t('log.field') }}</span>
+      <span class="text-xs text-muted-foreground shrink-0 mr-1">{{ t('log.field') }}</span>
       <button
         v-for="key in jsonFieldChips"
         :key="key"
         type="button"
-        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors ease-app dur-fast"
+        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors ease-app dur-fast"
         :title="t('log.filterField', { field: key })"
         @click="applyFieldFilter(key)"
       >
@@ -1822,7 +1894,7 @@ const helpRows = computed(() => [
       </button>
       <button
         type="button"
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ease-app dur-fast ml-auto"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ease-app dur-fast ml-auto"
         :title="t('log.clearFieldFilter')"
         :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
@@ -1847,7 +1919,7 @@ const helpRows = computed(() => [
       <Button
         variant="outline"
         size="xs"
-        class="text-2xs border-error-border text-error hover:bg-error-bg"
+        class="text-xs border-error-border text-error hover:bg-error-bg"
         @click="emit('retry')"
         :aria-label="t('state.retry')"
       >
@@ -1893,12 +1965,25 @@ const helpRows = computed(() => [
              Without filter + lines=[] + streaming=true → "等待" (pods haven't
              written yet); without filter + paused → "已暂停"; with filter but
              filtered=[] (lines exist) → "无匹配" + a one-click reset. -->
-        <template v-if="lines.length === 0">
+        <!--
+          ponytail: 第四个分支 —— 出错。
+          之前这里只有三个分支，于是「读取失败」和「暂无日志」会同时出现：
+          上面一条红条说「Request failed with status code 500」，下面一块
+          空白区说「暂无日志 · 等待容器输出…」。两句话互相矛盾，读者只能
+          猜哪个是真的。失败的时候只说失败，细节和「重试」在上面的红条里。
+        -->
+        <template v-if="error">
+          <CircleX :size="32" class="mb-3 opacity-40 text-error" :stroke-width="1.5" />
+          <p class="text-sm font-medium text-foreground mb-1">
+            {{ t('log.errorTitle') }}
+          </p>
+        </template>
+        <template v-else-if="lines.length === 0">
           <Terminal :size="32" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
             {{ t('log.emptyTitle') }}
           </p>
-          <p class="text-2xs text-muted-foreground">
+          <p class="text-xs text-muted-foreground">
             {{ streaming ? t('log.emptyWaiting') : t('log.emptyPaused') }}
           </p>
         </template>
@@ -1907,7 +1992,7 @@ const helpRows = computed(() => [
           <p class="text-sm font-medium text-foreground mb-1">
             {{ t('log.emptyFilteredTitle') }}
           </p>
-          <p class="text-2xs text-muted-foreground mb-3">
+          <p class="text-xs text-muted-foreground mb-3">
             {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
           </p>
           <Button variant="outline" size="xs" class="text-xs" @click="clearAllFilters">
@@ -1953,7 +2038,7 @@ const helpRows = computed(() => [
               />
               <!-- Col 1: timestamp (sticky) -->
               <span
-                class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
@@ -1964,14 +2049,14 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <button
                   v-if="group.lines[0].isJson"
                   type="button"
                   @click="toggleJson(`${group.key}`)"
-                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded-sm text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app dur-fast"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded-sm text-xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app dur-fast"
                   :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
                   :aria-label="t('log.toggleJsonLabel')"
@@ -1984,7 +2069,7 @@ const helpRows = computed(() => [
                 <button
                   v-if="plainLength(group.lines[0].raw) > TRUNCATE_LIMIT"
                   type="button"
-                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
+                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                   :title="truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() })"
                   @click.stop="toggleTruncate(group.lines[0].raw.content)"
                 >
@@ -1994,14 +2079,14 @@ const helpRows = computed(() => [
             </div>
             <div
               v-if="group.lines[0].isJson && jsonExpanded.has(`${group.key}`)"
-              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded-md bg-muted/40 border border-border text-2xs overflow-x-auto font-mono"
+              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded-md bg-muted/40 border border-border text-xs overflow-x-auto font-mono"
             >
               <div
                 v-for="jl in formatJsonLines(group.lines[0].raw)"
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
-                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
+                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-xs mt-px">{{ jl.num }}</span>
                 <span
                   class="flex-1 min-w-0 whitespace-pre"
                   :style="JSON_GUIDE_STYLE"
@@ -2044,7 +2129,7 @@ const helpRows = computed(() => [
                 aria-hidden="true"
               />
               <span
-                class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
@@ -2053,7 +2138,7 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <span
@@ -2068,20 +2153,20 @@ const helpRows = computed(() => [
                     class="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover/fold:flex flex-col gap-1 p-2 rounded-md border border-border bg-popover text-popover-foreground shadow-md min-w-[320px] max-w-[640px]"
                     role="tooltip"
                   >
-                    <span class="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">
+                    <span class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">
                       {{ t('log.foldTooltip', { count: group.lines.length }) }}
                     </span>
                     <span
                       v-for="(l, i) in group.lines.slice(0, 3)"
                       :key="i"
-                      class="flex gap-2 text-2xs font-mono"
+                      class="flex gap-2 text-xs font-mono"
                     >
                       <span class="text-muted-foreground tabular-nums shrink-0">{{ fmtLocalTime(l.raw.timestamp) }}</span>
                       <span class="truncate text-foreground/80">{{ stripAnsi(l.raw.content).slice(0, 120) }}</span>
                     </span>
                     <span
                       v-if="group.lines.length > 3"
-                      class="text-2xs text-muted-foreground italic"
+                      class="text-xs text-muted-foreground italic"
                     >
                       {{ t('log.foldMore', { count: group.lines.length }) }}
                     </span>
@@ -2121,7 +2206,7 @@ const helpRows = computed(() => [
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
                   />
                   <span
-                    class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                    class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                     :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
@@ -2132,7 +2217,7 @@ const helpRows = computed(() => [
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
-                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
+                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                       :title="truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >
@@ -2152,7 +2237,7 @@ const helpRows = computed(() => [
       <button
         v-if="!autoFollow && (unreadCount ?? 0) > 0"
         type="button"
-        class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app dur-fast"
+        class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app dur-fast"
         @click="toggleAutoFollow"
       >
         <ChevronDown :size="12" :stroke-width="2" />
@@ -2169,7 +2254,7 @@ const helpRows = computed(() => [
     <div class="sr-only" aria-live="polite" aria-atomic="true">{{ liveMessage }}</div>
 
     <!-- Status bar -->
-    <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
+    <div class="px-3 py-1.5 border-t border-border bg-muted text-xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
       <div class="flex items-center gap-2 min-w-0">
         <span class="tabular-nums">
           <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
@@ -2193,7 +2278,7 @@ const helpRows = computed(() => [
       </div>
       <div class="flex items-center gap-3">
         <span v-if="streaming" class="flex items-center gap-1 text-success">
-          <span class="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+          <span class="h-1.5 w-1.5 rounded-full bg-success" :class="livePulse ? 'animate-pulse' : ''" />
           {{ t('log.live') }}
         </span>
         <span v-else class="text-warning">{{ t('log.paused') }}</span>

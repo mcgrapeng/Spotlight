@@ -29,16 +29,18 @@ function makeLines(n: number): LogLineOut[] {
 }
 
 describe('LogViewer', () => {
-  it('renders the severity filter chips (全部 + ≥INFO/≥WARN/≥ERROR)', () => {
+  it('renders the severity filter chips (全部 + ≥INFO/≥WARN/≥ERROR + 未识别)', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(20), unreadCount: 0 },
       global: { plugins: [i18n] },
     })
     const chips = wrapper.findAll('button[aria-pressed]')
-    // "全部" + 3 thresholds = 4. DEBUG is deliberately absent: its rank is 0,
-    // the same as "全部", so it used to render as a second active black pill
-    // while meaning exactly the same thing.
-    expect(chips.length).toBe(4)
+    // "全部" + 3 thresholds + 未识别 = 5. DEBUG is deliberately absent: its
+    // rank is 0, the same as "全部", so it used to render as a second active
+    // black pill while meaning exactly the same thing. 未识别 is not a rank
+    // at all — unlabelled lines are a separate question, with their own
+    // count, so that "INFO+ 513" can't claim 513 lines nobody read.
+    expect(chips.length).toBe(5)
     const labels = chips.map((c) => c.text().toLowerCase()).join('|')
     expect(labels).toMatch(/error/)
     expect(labels).toMatch(/warn/)
@@ -291,5 +293,29 @@ describe('LogViewer', () => {
 
     expect(wrapper.find(`button[aria-label="Filter by trace_id ${tid}"]`).exists()).toBe(true)
     expect(wrapper.find(`button[aria-label="按 trace_id ${tid} 过滤"]`).exists()).toBe(false)
+  })
+})
+
+describe('LogViewer failure state', () => {
+  it('says the read failed instead of "no logs yet"', () => {
+    // The two used to render at the same time: a red banner saying the read
+    // failed, and an empty-state block saying "暂无日志 · 等待容器输出…".
+    // Both were true-looking and mutually contradictory.
+    const wrapper = mount(LogViewer, {
+      props: { lines: [], unreadCount: 0, error: 'Pod 或容器不存在（可能已经被删除）' },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.text()).toContain('日志读取失败')
+    expect(wrapper.text()).not.toContain('暂无日志')
+    expect(wrapper.text()).not.toContain('等待容器输出')
+  })
+
+  it('still shows the empty state when nothing failed', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: [], unreadCount: 0, error: null },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.text()).toContain('暂无日志')
+    expect(wrapper.text()).not.toContain('日志读取失败')
   })
 })
