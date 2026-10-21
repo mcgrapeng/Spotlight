@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAiStore } from '@/stores/ai'
+import MarkdownAnswer from './MarkdownAnswer.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { aiApi, podsApi } from '@/api/endpoints'
 import { formatNumber } from '@/lib/utils'
@@ -122,7 +123,16 @@ async function buildContext(): Promise<{ raw: string; summary: ClusterSnapshot }
     raw: lines.join('\n'),
     summary: {
       cluster: cluster.activeCluster || 'default',
-      namespace: ns,
+      // ponytail: 给人看的那一句不能用 API 层的哨兵。
+      //
+      // 机器上下文（上面那份 markdown）用 "all" 是对的 —— 模型读的是
+      // "Namespace: all"。但这一份 summary 是画在面板上给人看的，
+      // 之前它把同一个 ns 拿来用，于是中文界面上写着「命名空间 all」。
+      // utils/namespace.ts 里那条规矩早就写好了：哨兵值永远不该出现在
+      // 界面上。Events 页和 Settings 页修过，AI 面板漏了。
+      namespace: cluster.activeNamespace === '_all'
+        ? t('namespace.all')
+        : (cluster.activeNamespace ?? ns),
       view: String(route.name ?? 'unknown'),
       total: stats.total_pods,
       running: stats.running,
@@ -394,12 +404,21 @@ const answerMeta = computed(() => {
 
         <div v-if="result">
           <h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">{{ t('ai.answerLabel') }}</h4>
-          <!-- text-only render: LLM output is untrusted — never v-html -->
-          <div class="text-sm whitespace-pre-wrap" aria-live="polite" :aria-busy="loading">
-            {{ result }}<span v-if="loading" class="animate-pulse" aria-hidden="true">▍</span>
+          <!--
+            ponytail: 答案按 markdown 排版，但绝不走 v-html。
+            LLM 的输出是不可信文本，所以这里渲染的是 @/utils/markdown 解析出来
+            的树，由 MarkdownAnswer 变成元素 —— 整条路径上没有 HTML 字符串，
+            注入是结构上不可能，而不是「大概没事」。
+            之前是 {{ result }} 直接放在 whitespace-pre-wrap 的 div 里，模型写的
+            **粗体**、- 列表、# 标题全是字符。这是产品最有说服力的那个功能，
+            而答案却是整个界面上唯一像终端 dump 的地方。
+          -->
+          <div aria-live="polite" :aria-busy="loading">
+            <MarkdownAnswer :text="result" />
+            <span v-if="loading" class="animate-pulse" aria-hidden="true">▍</span>
           </div>
           <div v-if="!loading" class="mt-2 flex items-center gap-3">
-            <span v-if="answerMeta" class="text-2xs text-muted-foreground tabular-nums">{{ answerMeta }}</span>
+            <span v-if="answerMeta" class="text-xs text-muted-foreground tabular-nums">{{ answerMeta }}</span>
             <Button
               variant="ghost"
               size="xs"
