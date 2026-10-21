@@ -1476,7 +1476,7 @@ const helpRows = computed(() => [
 </script>
 
 <template>
-  <div class="flex flex-col h-full rounded-lg border border-border bg-card overflow-hidden font-mono text-xs">
+  <div class="flex flex-col h-full rounded-card border border-border bg-card overflow-hidden font-mono text-xs">
     <!-- Severity filter chips (4 aggregated buckets: ERROR / WARN / INFO / DEBUG) -->
     <div class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
       <button
@@ -1490,7 +1490,7 @@ const helpRows = computed(() => [
         )"
         @click="setSeverity(0)"
       >
-        <Filter :size="11" :stroke-width="1.75" />
+        <Filter :size="12" :stroke-width="1.75" />
         {{ t('log.filterAll') }}
         <span class="tabular-nums">{{ lines.length.toLocaleString() }}</span>
       </button>
@@ -1566,7 +1566,7 @@ const helpRows = computed(() => [
     <!-- Toolbar -->
     <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-background shrink-0">
       <div class="relative flex-1 min-w-0">
-        <Search :size="13" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" :stroke-width="1.75" />
+        <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" :stroke-width="1.75" />
         <Input
           ref="searchInput"
           v-model="search"
@@ -1581,7 +1581,7 @@ const helpRows = computed(() => [
           class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           :aria-label="t('log.clearFilterLabel')"
         >
-          <X :size="13" :stroke-width="1.75" />
+          <X :size="14" :stroke-width="1.75" />
         </button>
       </div>
       <Button
@@ -1590,8 +1590,8 @@ const helpRows = computed(() => [
         :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
         :class="cn(!streaming && 'text-warning border-warning/50')"
       >
-        <Pause v-if="streaming" :size="13" :stroke-width="1.75" />
-        <Play v-else :size="13" :stroke-width="1.75" />
+        <Pause v-if="streaming" :size="14" :stroke-width="1.75" />
+        <Play v-else :size="14" :stroke-width="1.75" />
       </Button>
       <Button
         variant="outline" size="xs"
@@ -1599,8 +1599,8 @@ const helpRows = computed(() => [
         :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
         :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
       >
-        <ChevronDown v-if="autoFollow" :size="13" :stroke-width="1.75" />
-        <ChevronUp v-else :size="13" :stroke-width="1.75" />
+        <ChevronDown v-if="autoFollow" :size="14" :stroke-width="1.75" />
+        <ChevronUp v-else :size="14" :stroke-width="1.75" />
       </Button>
       <Button
         variant="outline" size="xs"
@@ -1608,7 +1608,7 @@ const helpRows = computed(() => [
         @click="copyAll"
         :aria-label="t('log.copyAllLabel')"
       >
-        <Copy :size="13" :stroke-width="1.75" />
+        <Copy :size="14" :stroke-width="1.75" />
       </Button>
       <Button
         variant="outline" size="xs"
@@ -1617,7 +1617,7 @@ const helpRows = computed(() => [
         :aria-label="t('log.downloadLabel')"
         :title="t('log.downloadLabel')"
       >
-        <Download :size="13" :stroke-width="1.75" />
+        <Download :size="14" :stroke-width="1.75" />
       </Button>
       <!--
         ponytail: 工具栏收成「三个动作 + 一个溢出菜单」。
@@ -1635,7 +1635,7 @@ const helpRows = computed(() => [
             :aria-label="t('log.moreActions')"
             :title="t('log.moreActions')"
           >
-            <MoreHorizontal :size="13" :stroke-width="1.75" />
+            <MoreHorizontal :size="14" :stroke-width="1.75" />
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-0" align="end">
@@ -1647,7 +1647,7 @@ const helpRows = computed(() => [
               v-for="q in recentSearches"
               :key="q"
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               @click="applyRecent(q)"
             >
               <span class="flex-1 truncate">{{ q }}</span>
@@ -1661,11 +1661,11 @@ const helpRows = computed(() => [
           <div class="border-t border-border p-1">
             <button
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               @click="toggleWrap"
             >
-              <WrapText v-if="wrapMode === 'wrap'" :size="13" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
-              <ChevronsRight v-else :size="13" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+              <WrapText v-if="wrapMode === 'wrap'" :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+              <ChevronsRight v-else :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="flex-1">{{ t('log.menuToggleWrap') }}</span>
               <span class="text-2xs text-muted-foreground">
                 {{ wrapMode === 'wrap' ? t('log.wrapStateOn') : t('log.wrapStateOff') }}
@@ -1673,12 +1673,12 @@ const helpRows = computed(() => [
             </button>
             <button
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-error hover:bg-error/10 focus-visible:bg-error/10 focus-visible:outline-none"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-error hover:bg-error/10 focus-visible:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               :disabled="!lines.length"
               :aria-label="t('log.clearLabel')"
               @click="requestClear"
             >
-              <Trash2 :size="13" :stroke-width="1.75" class="shrink-0" />
+              <Trash2 :size="14" :stroke-width="1.75" class="shrink-0" />
               <span class="flex-1">{{ t('log.menuClear') }}</span>
             </button>
           </div>
@@ -1692,14 +1692,14 @@ const helpRows = computed(() => [
             :aria-label="t('log.shortcutsHelpLabel')"
             :title="t('log.shortcutsTitle')"
           >
-            <HelpCircle :size="13" :stroke-width="1.75" />
+            <HelpCircle :size="14" :stroke-width="1.75" />
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-3" align="end">
           <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{{ t('log.shortcutsHeading') }}</div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono">
             <template v-for="row in helpRows" :key="row.key">
-              <kbd class="px-1.5 py-0.5 rounded border border-border bg-muted text-2xs">{{ row.key }}</kbd>
+              <kbd class="px-1.5 py-0.5 rounded-sm border border-border bg-muted text-2xs">{{ row.key }}</kbd>
               <span class="text-muted-foreground self-center">{{ row.label }}</span>
             </template>
           </dl>
@@ -1730,7 +1730,7 @@ const helpRows = computed(() => [
         :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
       >
-        <X :size="11" :stroke-width="1.75" />
+        <X :size="12" :stroke-width="1.75" />
         {{ t('log.clearFieldFilter') }}
       </button>
     </div>
@@ -1797,7 +1797,7 @@ const helpRows = computed(() => [
              written yet); without filter + paused → "已暂停"; with filter but
              filtered=[] (lines exist) → "无匹配" + a one-click reset. -->
         <template v-if="lines.length === 0">
-          <Terminal :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
+          <Terminal :size="32" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
             {{ t('log.emptyTitle') }}
           </p>
@@ -1806,7 +1806,7 @@ const helpRows = computed(() => [
           </p>
         </template>
         <template v-else>
-          <Search :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
+          <Search :size="32" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
             {{ t('log.emptyFilteredTitle') }}
           </p>
@@ -1814,7 +1814,7 @@ const helpRows = computed(() => [
             {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
           </p>
           <Button variant="outline" size="xs" class="text-xs" @click="clearAllFilters">
-            <X :size="11" :stroke-width="2" class="mr-1" />
+            <X :size="12" :stroke-width="2" class="mr-1" />
             {{ t('log.clearFilters') }}
           </Button>
         </template>
@@ -1866,27 +1866,27 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <button
                   v-if="group.lines[0].isJson"
                   type="button"
                   @click="toggleJson(`${group.key}`)"
-                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app dur-fast"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded-sm text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app dur-fast"
                   :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
                   :aria-label="t('log.toggleJsonLabel')"
                 >
                   JSON
-                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
-                  <ChevronUp v-else :size="9" :stroke-width="2.5" />
+                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="12" :stroke-width="2.5" />
+                  <ChevronUp v-else :size="12" :stroke-width="2.5" />
                 </button>
                 <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.lines[0].raw.content : undefined" v-html="lineHtml(group.lines[0].raw)" />
                 <button
                   v-if="plainLength(group.lines[0].raw) > TRUNCATE_LIMIT"
                   type="button"
-                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
+                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                   :title="truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() })"
                   @click.stop="toggleTruncate(group.lines[0].raw.content)"
                 >
@@ -1896,7 +1896,7 @@ const helpRows = computed(() => [
             </div>
             <div
               v-if="group.lines[0].isJson && jsonExpanded.has(`${group.key}`)"
-              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-2xs overflow-x-auto font-mono"
+              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded-md bg-muted/40 border border-border text-2xs overflow-x-auto font-mono"
             >
               <div
                 v-for="jl in formatJsonLines(group.lines[0].raw)"
@@ -1954,7 +1954,7 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <span
@@ -1999,8 +1999,8 @@ const helpRows = computed(() => [
                   )"
                   :title="t('log.foldTitle', { count: group.lines.length })"
                 >
-                  <ChevronDown v-if="group.expanded" :size="11" :stroke-width="2.5" />
-                  <ChevronRight v-else :size="11" :stroke-width="2.5" />
+                  <ChevronDown v-if="group.expanded" :size="12" :stroke-width="2.5" />
+                  <ChevronRight v-else :size="12" :stroke-width="2.5" />
                   ×{{ group.lines.length }}
                 </span>
               </div>
@@ -2033,7 +2033,7 @@ const helpRows = computed(() => [
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
-                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
+                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                       :title="truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >
@@ -2100,7 +2100,7 @@ const helpRows = computed(() => [
         <span v-else class="text-warning">{{ t('log.paused') }}</span>
         <span class="hidden sm:inline text-muted-foreground">·</span>
         <span v-if="!autoFollow">{{ t('log.scrollHint') }}</span>
-        <span v-else>{{ t('log.autoFollow') }} <ChevronDown :size="11" :stroke-width="2" class="inline -mb-px" /></span>
+        <span v-else>{{ t('log.autoFollow') }} <ChevronDown :size="12" :stroke-width="2" class="inline -mb-px" /></span>
       </div>
     </div>
 

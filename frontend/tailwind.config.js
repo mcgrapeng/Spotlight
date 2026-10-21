@@ -79,13 +79,20 @@ export default {
         },
       },
       borderRadius: {
-        // ponytail: 默认档 = Button/Pill/Badge (8px); Card 用 'card' (12px) 单独覆写
+        // ponytail: 圆角收成三档。
+        //   sm   6px  微元素（徽章 / kbd / chip）
+        //   md   8px  控件（按钮 / 输入 / 下拉 / tab）—— DEFAULT 是别名
+        //   card 12px 承载面（卡片 / 面板 / 浮层）
+        // 之前是四个名字三个值：rounded 和 rounded-md 同为 8px，rounded-lg
+        // 是 10px，rounded-card 是 12px。代码里 26 处写 rounded、36 处写
+        // rounded-md —— 写的人以为这两个值不同。现在只留 rounded-md 一个
+        // 名字代表 8px。
         DEFAULT: 'var(--radius)',
-        sm: 'calc(var(--radius) - 4px)',
+        sm: 'calc(var(--radius) - 2px)',
         md: 'var(--radius)',
-        lg: 'calc(var(--radius) + 2px)',
-        xl: 'calc(var(--radius) + 6px)',
-        '2xl': 'calc(var(--radius) + 12px)',
+        lg: 'var(--radius-card)',
+        xl: 'var(--radius-card)',
+        '2xl': 'var(--radius-card)',
         card: 'var(--radius-card)',
       },
       fontFamily: {

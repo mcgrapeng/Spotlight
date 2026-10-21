@@ -284,7 +284,7 @@ function podOverloaded(n: NodeOut): boolean {
     <LoadingState v-else-if="!nodes.length && loading" :message="t('nodes.loading')" />
     <EmptyState v-else :title="t('nodes.emptyTitle')" :description="t('nodes.emptyDescription')">
       <template #icon>
-        <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />
+        <Server :size="32" :stroke-width="1.5" class="text-muted-foreground" />
       </template>
     </EmptyState>
   </div>

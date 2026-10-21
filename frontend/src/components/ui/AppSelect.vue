@@ -68,7 +68,7 @@ function pick(o: AppSelectOption) {
         :class="cn(
           'inline-flex items-center gap-2 rounded-md border border-input bg-background text-sm transition-colors ease-app dur-fast',
           'hover:bg-accent hover:text-accent-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           'disabled:opacity-50 disabled:cursor-default',
           'justify-between',
           size === 'sm' ? 'h-7 px-1.5 text-xs' : 'h-9 px-3',

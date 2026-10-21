@@ -22,7 +22,7 @@ function goHome() {
     <Card class="p-0">
       <EmptyState :title="t('notFound.description')">
         <template #icon>
-          <Compass :size="40" class="text-muted-foreground" :stroke-width="1.5" />
+          <Compass :size="32" class="text-muted-foreground" :stroke-width="1.5" />
         </template>
         <template #action>
           <Button @click="goHome">

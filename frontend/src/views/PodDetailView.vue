@@ -256,7 +256,7 @@ function back() { router.push({ name: 'pods' }) }
               <div
                 v-for="ev in podEvents"
                 :key="ev.name"
-                class="flex items-start gap-3 p-3 rounded-lg border border-border bg-card"
+                class="flex items-start gap-3 p-3 rounded-card border border-border bg-card"
               >
                 <component
                   :is="ev.type === 'Warning' ? AlertTriangle : AlertCircle"
@@ -271,14 +271,14 @@ function back() { router.push({ name: 'pods' }) }
                       :label="ev.type"
                       size="xs"
                     />
-                    <span class="inline-flex items-center rounded px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">
+                    <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">
                       {{ ev.reason }}
                     </span>
                   </div>
                   <p class="text-sm text-muted-foreground mt-1">{{ ev.message }}</p>
                   <div class="text-2xs text-muted-foreground mt-1 flex gap-3">
                     <span :title="ev.last_seen ?? undefined">
-                      <Clock :size="11" class="inline -mt-0.5" :stroke-width="1.75" />
+                      <Clock :size="12" class="inline -mt-0.5" :stroke-width="1.75" />
                       {{ formatRel(ev.last_seen ?? null) }}
                     </span>
                     <span>×{{ ev.count }}</span>

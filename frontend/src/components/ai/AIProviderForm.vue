@@ -106,7 +106,7 @@ function close() {
         </div>
 
         <label class="flex items-center gap-2 text-sm">
-          <input v-model="form.is_default" type="checkbox" class="h-4 w-4 rounded border-input" />
+          <input v-model="form.is_default" type="checkbox" class="h-4 w-4 rounded-sm border-input" />
           {{ t('ai.formSetDefault') }}
         </label>
       </form>

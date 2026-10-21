@@ -137,7 +137,7 @@ const warningEntries = computed(() =>
           />
           <span>{{ tab === 'all' ? t('events.filterAll') : tab }}</span>
           <span :class="cn(
-            'tabular-nums text-2xs px-1.5 py-0.5 rounded',
+            'tabular-nums text-2xs px-1.5 py-0.5 rounded-sm',
             typeFilter === tab ? 'bg-black/15' : 'bg-muted text-muted-foreground',
           )">{{ tab === 'all' ? totalEvents : countByType[tab] }}</span>
         </button>
@@ -158,7 +158,7 @@ const warningEntries = computed(() =>
     v-if="!isAllNamespaces(cluster.activeNamespace)"
     class="mt-3 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-xs text-muted-foreground"
   >
-    <Layers :size="13" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+    <Layers :size="14" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
     <i18n-t keypath="events.nsCurrent" tag="span">
       <template #namespace>
         <span class="font-mono text-foreground">{{ cluster.activeNamespace }}</span>
@@ -166,7 +166,7 @@ const warningEntries = computed(() =>
     </i18n-t>
     <button
       type="button"
-      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity ease-app dur-fast font-medium"
+      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-foreground text-background hover:opacity-90 transition-opacity ease-app dur-fast font-medium"
       @click="cluster.setNamespace('_all')"
     >
       {{ t('namespace.all') }}
@@ -197,7 +197,7 @@ const warningEntries = computed(() =>
       v-for="ev in filtered"
       :key="ev.name"
       :class="cn(
-        'group block rounded-lg border transition-colors ease-app dur-fast overflow-hidden',
+        'group block rounded-card border transition-colors ease-app dur-fast overflow-hidden',
         ev.type === 'Warning'
           ? 'border-warning/40 bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
           : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
@@ -206,7 +206,7 @@ const warningEntries = computed(() =>
       <div class="flex items-start gap-3 p-3">
         <component
           :is="ev.type === 'Warning' ? AlertTriangle : AlertCircle"
-          :size="18"
+          :size="20"
           :stroke-width="1.75"
           :class="cn(
             'shrink-0 mt-0.5',
@@ -220,14 +220,14 @@ const warningEntries = computed(() =>
               :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
               :label="ev.type"
             />
-            <span class="inline-flex items-center rounded px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
+            <span class="inline-flex items-center rounded-sm px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
             <span class="text-xs text-muted-foreground">{{ ev.namespace }}</span>
             <span class="text-xs text-muted-foreground font-mono">{{ ev.involved_kind }}/{{ ev.involved_name }}</span>
           </div>
           <!-- ponytail: message 是用户来 events 页面真正要读的内容，必须是视觉主角 -->
           <p
             :class="cn(
-              'mt-2 text-[15px] leading-snug',
+              'mt-2 text-base leading-snug',
               ev.type === 'Warning' ? 'text-foreground font-medium' : 'text-foreground/80',
             )"
             :title="ev.message"
@@ -247,7 +247,7 @@ const warningEntries = computed(() =>
               <button
                 v-if="ev.message.length >= 160"
                 type="button"
-                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
                 @click.stop="toggleExpand(ev.name)"
               >
                 <component
@@ -259,7 +259,7 @@ const warningEntries = computed(() =>
               <router-link
                 v-if="ev.involved_kind === 'Pod'"
                 :to="{ name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } }"
-                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
               >
                 {{ t('events.viewDetail') }}
                 <ChevronRight :size="12" :stroke-width="2" aria-hidden="true" />

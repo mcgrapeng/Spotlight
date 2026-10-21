@@ -50,7 +50,7 @@ const TONE: Record<ChipTone, { text: string; soft: string; solid: string; dot: s
  */
 const SIZE: Record<ChipSize, string> = {
   sm: 'rounded-md px-2 py-0.5 text-xs',
-  xs: 'rounded px-1.5 py-0 text-2xs',
+  xs: 'rounded-sm px-1.5 py-0 text-2xs',
 }
 
 export function chipClasses(opts: {

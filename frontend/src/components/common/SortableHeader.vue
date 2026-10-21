@@ -18,7 +18,7 @@ const emit = defineEmits<{ toggle: [] }>()
 <template>
   <button
     type="button"
-    class="group inline-flex items-center gap-1 rounded transition-colors ease-app dur-fast hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    class="group inline-flex items-center gap-1 rounded-md transition-colors ease-app dur-fast hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     :class="align === 'right' ? 'flex-row-reverse' : ''"
     @click="emit('toggle')"
   >

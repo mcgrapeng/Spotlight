@@ -22,10 +22,10 @@ const OPTIONS: Array<{ key: ThemeMode; icon: typeof Sun; label: string }> = [
       type="button"
       :aria-pressed="mode === opt.key"
       :title="t(opt.label)"
-      :class="cn('inline-flex items-center justify-center size-6 rounded transition-colors ease-app dur-fast', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', mode === opt.key ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')"
+      :class="cn('inline-flex items-center justify-center size-6 rounded-md transition-colors ease-app dur-fast', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background', mode === opt.key ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')"
       @click="setMode(opt.key)"
     >
-      <component :is="opt.icon" :size="13" :stroke-width="1.75" aria-hidden="true" />
+      <component :is="opt.icon" :size="14" :stroke-width="1.75" aria-hidden="true" />
       <span class="sr-only">{{ t(opt.label) }}</span>
     </button>
     <span class="sr-only" aria-live="polite">{{ t(resolved === 'dark' ? 'theme.dark' : 'theme.light') }}</span>

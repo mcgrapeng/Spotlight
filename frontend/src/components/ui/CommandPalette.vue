@@ -260,7 +260,7 @@ defineExpose({
       </DialogTitle>
       <dl class="space-y-2">
         <div v-for="s in shortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">
-          <dt class="font-mono text-xs bg-muted px-2 py-0.5 rounded shrink-0 min-w-[140px] text-center">
+          <dt class="font-mono text-xs bg-muted px-2 py-0.5 rounded-sm shrink-0 min-w-[140px] text-center">
             {{ s.combo }}
           </dt>
           <dd class="text-muted-foreground">{{ s.desc }}</dd>

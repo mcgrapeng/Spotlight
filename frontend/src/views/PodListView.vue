@@ -228,7 +228,7 @@ const emptyDescription = computed(() => {
         @click="search = ''"
       >
         <span>"{{ search }}"</span>
-        <X :size="11" :stroke-width="2.5" />
+        <X :size="12" :stroke-width="2.5" />
       </button>
       <span class="text-xs text-muted-foreground">{{ t('pods.resultCount', { count: data.items.length }) }}</span>
     </div>
@@ -304,7 +304,7 @@ const emptyDescription = computed(() => {
               :style="{ contentVisibility: 'auto', containIntrinsicSize: `auto ${densityClass.intrinsic}` }"
               :class="cn(
                 'border-b border-border last:border-0 cursor-pointer transition-colors ease-app dur-fast',
-                'focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                'focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:ring-offset-0',
                 clsOf(row),
               )"
               tabindex="0"
@@ -316,7 +316,7 @@ const emptyDescription = computed(() => {
                 <div class="flex flex-col gap-0.5 min-w-0">
                   <router-link
                     :to="{ name: 'pod-detail', params: { namespace: row.namespace, name: row.name } }"
-                    class="font-mono text-[13px] text-foreground truncate rounded hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    class="font-mono text-sm text-foreground truncate rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     :aria-label="t('pods.viewDetail', { name: row.name })"
                     @click.stop
                   >{{ row.name }}</router-link>
@@ -336,7 +336,7 @@ const emptyDescription = computed(() => {
                   <PodStatusPill :phase="row.phase" />
                   <span
                     v-if="row.reason"
-                    class="rounded px-1.5 py-0.5 text-2xs font-semibold bg-error-bg text-error border border-error-border"
+                    class="rounded-sm px-1.5 py-0.5 text-2xs font-semibold bg-error-bg text-error border border-error-border"
                   >{{ row.reason }}</span>
                 </div>
               </td>
@@ -416,7 +416,7 @@ const emptyDescription = computed(() => {
           v-for="row in pagedPods"
           :key="`${row.namespace}/${row.name}`"
           type="button"
-          class="w-full text-left p-3 active:bg-muted/60 transition-colors ease-app dur-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          class="w-full text-left p-3 active:bg-muted/60 transition-colors ease-app dur-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:ring-offset-0"
           :class="clsOf(row)"
           :aria-label="t('pods.viewDetail', { name: row.name })"
           @click="open(row)"

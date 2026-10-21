@@ -30,8 +30,8 @@ const TIERS: Array<{ key: PodDensity; lines: number }> = [
       :aria-pressed="props.modelValue === tier.key"
       :title="props.labels[tier.key]"
       :class="cn(
-        'inline-flex items-center justify-center gap-[2px] size-6 rounded transition-colors ease-app dur-fast',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'inline-flex items-center justify-center gap-[2px] size-6 rounded-md transition-colors ease-app dur-fast',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         props.modelValue === tier.key
           ? 'bg-foreground text-background'
           : 'text-muted-foreground hover:text-foreground',

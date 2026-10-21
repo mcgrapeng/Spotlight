@@ -67,7 +67,7 @@ function confirmLogout() {
             :key="item.to"
             :to="item.to"
             :class="cn(
-              'flex items-center gap-3 p-4 transition-colors ease-app dur-fast hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40',
+              'flex items-center gap-3 p-4 transition-colors ease-app dur-fast hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               idx > 0 && 'border-t border-border',
             )"
           >
@@ -131,7 +131,7 @@ function confirmLogout() {
         <CardContent class="p-0">
           <button
             type="button"
-            class="flex w-full items-center gap-3 p-4 text-left transition-colors ease-app dur-fast hover:bg-error/5 focus-visible:outline-none focus-visible:bg-error/5 group"
+            class="flex w-full items-center gap-3 p-4 text-left transition-colors ease-app dur-fast hover:bg-error/5 focus-visible:outline-none focus-visible:bg-error/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background group"
             :aria-label="t('settings.logout')"
             @click="showLogoutConfirm = true"
           >

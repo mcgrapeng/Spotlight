@@ -10,7 +10,7 @@ const props = withDefaults(defineProps<{
   iconSize?: number
 }>(), {
   description: '',
-  iconSize: 40,
+  iconSize: 32,
 })
 
 // ponytail: 默认文案走 computed 而非 withDefaults —— prop default 只在实例创建时

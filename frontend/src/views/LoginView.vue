@@ -124,7 +124,7 @@ async function onRetryClusters() {
       <CardContent class="p-8">
         <div class="text-center mb-6">
           <div
-            class="inline-flex h-12 w-12 rounded-lg items-center justify-center mb-3 text-foreground"
+            class="inline-flex h-12 w-12 rounded-card items-center justify-center mb-3 text-foreground"
             aria-hidden="true"
           >
             <LogoMark :size="36" />
@@ -204,7 +204,7 @@ async function onRetryClusters() {
             <div :class="f.type === 'otp' ? 'relative' : ''">
               <KeyRound
                 v-if="f.type === 'otp'"
-                :size="13"
+                :size="14"
                 :stroke-width="1.75"
                 class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
                 aria-hidden="true"

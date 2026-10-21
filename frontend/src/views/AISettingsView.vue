@@ -107,19 +107,19 @@ async function setDefault(p: AIProviderOut) {
         <div class="flex items-center gap-3">
           <span
             v-if="p.enabled"
-            class="inline-flex items-center rounded px-2 py-0.5 text-2xs font-semibold bg-success-bg text-success border border-success-border"
+            class="inline-flex items-center rounded-sm px-2 py-0.5 text-2xs font-semibold bg-success-bg text-success border border-success-border"
           >
             {{ t('ai.enabled') }}
           </span>
           <span
             v-if="p.is_default"
-            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold bg-foreground text-background"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-2xs font-semibold bg-foreground text-background"
           >
-            <Star :size="10" :stroke-width="1.75" fill="currentColor" />
+            <Star :size="12" :stroke-width="1.75" fill="currentColor" />
             {{ t('ai.isDefault') }}
           </span>
           <span class="font-mono text-sm font-semibold">{{ p.name }}</span>
-          <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{{ p.provider }}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground font-mono">{{ p.provider }}</span>
           <span class="text-xs text-muted-foreground font-mono">{{ p.model }}</span>
           <span class="ml-auto text-xs text-muted-foreground font-mono">{{ p.api_key_masked }}</span>
         </div>

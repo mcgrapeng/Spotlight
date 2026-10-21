@@ -114,7 +114,7 @@ const isActive = (path: string) =>
       >
         <component
           :is="item.icon"
-          :size="18"
+          :size="20"
           :stroke-width="1.75"
           class="shrink-0"
           aria-hidden="true"
@@ -161,7 +161,7 @@ const isActive = (path: string) =>
         )"
         :aria-current="isActive('/settings') ? 'page' : undefined"
       >
-        <Settings :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <Settings :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">{{ t('nav.settings') }}</span>
       </router-link>
       <!-- ponytail: 折叠按钮贴在 sidebar 自己身上 —— 视觉归属清晰，logo 不被抢位 -->
@@ -176,8 +176,8 @@ const isActive = (path: string) =>
         :title="props.collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
         @click="$emit('toggle-sidebar')"
       >
-        <PanelLeftOpen v-if="props.collapsed" :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
-        <PanelLeftClose v-else :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <PanelLeftOpen v-if="props.collapsed" :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <PanelLeftClose v-else :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">{{ t('nav.collapseSidebar') }}</span>
       </button>
     </div>

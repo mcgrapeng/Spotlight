@@ -277,7 +277,7 @@ const recentActivity = computed(() => {
             <router-link
               v-if="heroAction"
               :to="heroAction.link"
-              class="mt-3 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-foreground transition-colors ease-app dur-fast hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="mt-3 inline-flex items-center gap-1 rounded-sm text-sm font-medium text-foreground transition-colors ease-app dur-fast hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {{ t('dashboard.heroOpen') }}
               <ChevronRight :size="14" :stroke-width="2" aria-hidden="true" />
@@ -320,7 +320,7 @@ const recentActivity = computed(() => {
             v-for="(item, i) in actionItems"
             :key="i"
             :to="item.link"
-            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors ease-app dur-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="flex items-start gap-3 p-2.5 rounded-md border transition-colors ease-app dur-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             :class="item.severity === 'critical' ? 'border-error-border bg-error/5' : 'border-warning-border bg-warning/5'"
           >
             <span
@@ -370,7 +370,7 @@ const recentActivity = computed(() => {
       <Card class="p-0 lg:col-span-2">
         <CardContent class="p-4">
           <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Activity :size="15" :stroke-width="1.75" />
+            <Activity :size="16" :stroke-width="1.75" />
             {{ t('dashboard.recentActivity') }}
             <span class="text-2xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
           </h3>
@@ -381,7 +381,7 @@ const recentActivity = computed(() => {
             v-if="recentActivity.length === 0"
             class="flex items-center gap-2 py-3 text-sm text-muted-foreground"
           >
-            <Inbox :size="15" :stroke-width="1.75" aria-hidden="true" />
+            <Inbox :size="16" :stroke-width="1.75" aria-hidden="true" />
             {{ t('dashboard.recentActivityEmpty') }}
           </div>
           <ol v-else class="space-y-1.5">
@@ -400,7 +400,7 @@ const recentActivity = computed(() => {
                 />
               </span>
               <span class="shrink-0 text-2xs text-muted-foreground w-16 tabular-nums">{{ item.time }}</span>
-              <span class="shrink-0 px-1.5 py-0 rounded text-2xs font-medium bg-muted text-foreground border border-border">
+              <span class="shrink-0 px-1.5 py-0 rounded-sm text-2xs font-medium bg-muted text-foreground border border-border">
                 {{ item.label }}
               </span>
               <span class="flex-1 min-w-0 truncate font-mono text-xs">{{ item.pod }}</span>
@@ -413,7 +413,7 @@ const recentActivity = computed(() => {
       <Card class="p-0">
         <CardContent class="p-4">
           <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
-            <AlertTriangle :size="15" :stroke-width="1.75" />
+            <AlertTriangle :size="16" :stroke-width="1.75" />
             {{ t('dashboard.frequentRestarts') }}
           </h3>
           <EmptyState

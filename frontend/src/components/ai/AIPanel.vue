@@ -186,7 +186,7 @@ async function submit(): Promise<void> {
     <SheetContent side="right" class="w-full sm:w-[520px] p-0 gap-0">
       <SheetHeader class="px-4 py-3 border-b border-border">
         <SheetTitle class="flex items-center gap-2">
-          <Bot :size="18" :stroke-width="1.75" />
+          <Bot :size="20" :stroke-width="1.75" />
           {{ ai.mode === 'analyze' ? t('ai.logAnalysisTitle') : t('ai.askTitle') }}
         </SheetTitle>
         <SheetDescription>

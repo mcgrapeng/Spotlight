@@ -31,18 +31,18 @@ defineEmits<{
       <!-- mobile only: hamburger 触发 drawer；desktop 下让出最左给 logo -->
       <button
         type="button"
-        class="md:hidden col-start-1 row-start-1 inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        class="md:hidden col-start-1 row-start-1 inline-flex items-center justify-center size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         :aria-label="t('nav.openMenu')"
         @click="$emit('open-mobile-menu')"
       >
-        <Menu :size="18" :stroke-width="1.75" aria-hidden="true" />
+        <Menu :size="20" :stroke-width="1.75" aria-hidden="true" />
       </button>
 
       <router-link
         to="/dashboard"
         :class="cn(
           'group col-start-2 row-start-1 flex items-center gap-2 mr-1 md:mr-2 rounded-md py-1 pr-1',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         )"
         :aria-label="t('nav.home')"
       >
