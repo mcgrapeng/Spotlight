@@ -382,6 +382,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/ask/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a cluster-level question, streaming the answer as it arrives
+         * @description The same answer as `/ai/ask`, delivered token by token.
+         *
+         *     A cluster-level question takes the model tens of seconds. A spinner
+         *     for that long is indistinguishable from a hang, so the panel shows
+         *     the answer as it is written.
+         *
+         *     The provider is checked before the response starts, so a missing or
+         *     disabled provider is a 400 rather than a stream that dies halfway
+         *     through.
+         */
+        post: operations["ask_stream_api_v1_ai_ask_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/analyze/{namespace}/{name}": {
         parameters: {
             query?: never;
@@ -1788,6 +1816,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AIAnalyzeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_stream_api_v1_ai_ask_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIAskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

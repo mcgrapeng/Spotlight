@@ -103,7 +103,11 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
     await expect(page.getByText('问 Spotlight')).toBeVisible()
 
     // The context is a live snapshot of the cluster, not a static blurb.
-    await expect(page.getByText(/total=\d+ running=/)).toBeVisible({ timeout: 10_000 })
+    // It is shown as a sentence first — the raw snapshot is addressed to the
+    // model, not to the reader, so it lives behind a disclosure.
+    await expect(page.getByText(/集群 demo-cluster/)).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: '查看原始上下文' }).click()
+    await expect(page.getByText(/total=\d+ running=/)).toBeVisible()
 
     await page.getByLabel('问题').fill('哪个 Pod 在反复重启？')
     await page.getByRole('button', { name: '提问' }).click()

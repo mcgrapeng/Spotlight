@@ -60,6 +60,11 @@ class FakeAIRepo:
             output_tokens=5,
         )
 
+    async def stream_analyze(self, cfg, req):
+        self.analysis_calls.append((cfg, req))
+        for piece in ("mock ", "answer ", "streamed"):
+            yield piece
+
 
 @pytest.fixture
 def uc():
@@ -158,6 +163,45 @@ def test_ask_prompt_carries_the_question_and_the_context():
     prompt = build_ask_prompt("which pod?", "total=287 running=258")
     assert "which pod?" in prompt
     assert "total=287 running=258" in prompt
+
+
+async def test_check_ask_rejects_a_disabled_provider(uc):
+    """The streaming route has to know before the response starts."""
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="x", provider="openai", model="m", api_key="k", enabled=False,
+    ))
+    with pytest.raises(ValueError):
+        await uc.check_ask(saved.id, "total=1")
+
+
+async def test_check_ask_rejects_an_empty_context(uc):
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="OpenAI", provider="openai", model="m", api_key="k",
+    ))
+    with pytest.raises(ValueError):
+        await uc.check_ask(saved.id, "   ")
+
+
+async def test_ask_stream_yields_the_answer_in_pieces(uc):
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="OpenAI", provider="openai", model="gpt-4o-mini", api_key="k",
+    ))
+    pieces = []
+    async for text in uc.ask_stream(saved.id, "which pod?", "total=287 running=258"):
+        pieces.append(text)
+    assert "".join(pieces) == "mock answer streamed"
+    _, req = uc._repo.analysis_calls[-1]
+    assert req.context == "total=287 running=258"
+    assert req.question == "which pod?"
+
+
+async def test_ask_stream_rejects_a_disabled_provider(uc):
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="x", provider="openai", model="m", api_key="k", enabled=False,
+    ))
+    with pytest.raises(ValueError):
+        async for _ in uc.ask_stream(saved.id, "which pod?", "total=1"):
+            pass
 
 
 async def test_ask_uses_the_cluster_prompt():

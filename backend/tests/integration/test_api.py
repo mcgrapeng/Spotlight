@@ -100,6 +100,11 @@ class FakeAIProviderRepo:
             model=cfg.model, latency_ms=12, input_tokens=5, output_tokens=3,
         )
 
+    async def stream_analyze(self, cfg, req):
+        # Mirrors a provider's token-by-token delivery.
+        for piece in ("diagnostic ", "for ", req.pod_ref.name or "the cluster"):
+            yield piece
+
 
 class FakeFavRepo:
     def __init__(self) -> None:
@@ -262,6 +267,48 @@ def test_ai_ask_answers_from_the_context(client):
     out = r2.json()
     assert "diagnostic" in out["answer"]
     assert out["model"] == "gpt-4o-mini"
+
+
+def test_ai_ask_stream_emits_the_answer_as_it_arrives(client):
+    """The streaming route delivers the text in pieces, not in one blob.
+
+    A cluster-level question takes the model tens of seconds; a spinner
+    for that long is indistinguishable from a hang.
+    """
+    client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+    })
+
+    with client.stream("POST", "/api/v1/ai/ask/stream", json={
+        "provider_id": 1,
+        "question": "which pod is restarting?",
+        "context": "# Cluster: demo\ntotal=287 running=258",
+    }) as resp:
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+        body = "".join(resp.iter_text())
+
+    assert "event: delta" in body
+    assert "diagnostic" in body
+    assert "event: done" in body
+
+
+def test_ai_ask_stream_rejects_a_disabled_provider_before_the_response(client):
+    """A bad provider is a 400, not a stream that dies halfway through."""
+    r = client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+        "enabled": False,
+    })
+    assert r.status_code == 201
+
+    r2 = client.post("/api/v1/ai/ask/stream", json={
+        "provider_id": 1,
+        "question": "which pod is restarting?",
+        "context": "# Cluster: demo\ntotal=287 running=258",
+    })
+    assert r2.status_code == 400
 
 
 def test_ai_ask_rejects_an_empty_context(client):

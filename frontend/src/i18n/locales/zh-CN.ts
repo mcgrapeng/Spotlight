@@ -221,11 +221,20 @@ export default {
     askContextLabel: '上下文',
     askContextLoading: '正在收集集群状态…',
     askContextFailed: '收集集群上下文失败',
+    // ponytail: 面板原来把整份机器快照（英文 markdown，给模型看的）直接
+    // 糊在面板上，占掉四成高度，读者一句都用不上。先给一句人话摘要，
+    // 原始快照收进一个折叠里。
+    askContextSummary: '集群 {cluster} · 命名空间 {namespace} · {total} 个 Pod（{running} 运行中 / {failed} 失败）· 节点 {nodesReady}/{nodesTotal} 就绪 · {warnings} 个告警',
+    askContextShow: '查看原始上下文',
+    askContextHide: '收起原始上下文',
     askQuestionLabel: '问题',
     askQuestionPlaceholder: '例如：哪个 Pod 在反复重启？',
     askSubmit: '提问',
     askConfigure: '去配置模型',
     answerLabel: '回答',
+    answerMeta: '{model} · {seconds} 秒',
+    answerCopy: '复制',
+    answerCopied: '已复制',
     analyzePrompt: '请分析这些日志的根因、异常点和建议',
     analyzeFailed: '分析失败',
     noProvider: '请先在「AI 设置」中配置并启用一个模型',
@@ -323,6 +332,8 @@ export default {
     logsCopyFailed: '复制失败，请检查剪贴板权限',
     logsDownloaded: '已下载 {count} 行日志',
     logsCleared: '已清空日志视图',
+    aiAnswerCopied: '已复制回答',
+    aiAnswerCopyFailed: '复制失败，请检查剪贴板权限',
   },
   theme: {
     label: '主题',

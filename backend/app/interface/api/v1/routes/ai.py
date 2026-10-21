@@ -1,7 +1,11 @@
 """AI routes: provider CRUD + log analysis."""
 from __future__ import annotations
 
+import json
+from typing import AsyncIterator
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sse_starlette.sse import EventSourceResponse
 
 from app.application.dto import (
     AIAnalyzeIn,
@@ -13,9 +17,11 @@ from app.application.dto import (
 from app.application.use_cases.ai import AIUseCases, SingleActiveProviderError
 from app.domain.entities.ai import AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
+from app.infrastructure.logging import get_logger
 from app.interface.api.v1.dependencies import ai_uc, require_permission
 
 router = APIRouter(tags=["ai"])
+log = get_logger("ai.routes")
 
 
 def _to_entity(p: AIProviderIn, *, id: int | None = None) -> AIProviderConfig:
@@ -130,6 +136,49 @@ async def ask(
         # ValueError only: a KeyError inside the use case is a server bug
         # and must stay a 5xx, not a 400.
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post(
+    "/ai/ask/stream",
+    summary="Answer a cluster-level question, streaming the answer as it arrives",
+    dependencies=[Depends(require_permission("ai.use"))],
+)
+async def ask_stream(
+    payload: AIAskIn,
+    uc: AIUseCases = Depends(ai_uc),
+):
+    """The same answer as `/ai/ask`, delivered token by token.
+
+    A cluster-level question takes the model tens of seconds. A spinner
+    for that long is indistinguishable from a hang, so the panel shows
+    the answer as it is written.
+
+    The provider is checked before the response starts, so a missing or
+    disabled provider is a 400 rather than a stream that dies halfway
+    through.
+    """
+    try:
+        await uc.check_ask(payload.provider_id, payload.context)
+    except ValueError as e:
+        # ValueError only: a KeyError inside the use case is a server bug
+        # and must stay a 5xx, not a 400.
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    async def event_gen() -> AsyncIterator[dict]:
+        try:
+            async for text in uc.ask_stream(
+                payload.provider_id, payload.question, payload.context,
+            ):
+                yield {"event": "delta", "data": json.dumps({"text": text}, ensure_ascii=False)}
+        except Exception as exc:  # noqa: BLE001
+            # The response has already begun, so this cannot be an HTTP
+            # status any more. Report it in-band and let the client decide
+            # what to show.
+            log.error("ai.ask.stream.failed", error=str(exc))
+            yield {"event": "error", "data": json.dumps({"detail": str(exc)}, ensure_ascii=False)}
+        yield {"event": "done", "data": "[DONE]"}
+
+    return EventSourceResponse(event_gen())
 
 
 @router.post(
