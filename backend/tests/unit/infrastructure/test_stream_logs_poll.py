@@ -26,7 +26,31 @@ from app.infrastructure.k8s import adapter as adapter_mod
 REF = ResourceRef(cluster="c", namespace="ns", kind="Pod", name="p")
 
 
-class _Api:
+class _OneContainerPod:
+    """Mixin: the adapter resolves the pod's container list before a
+    container-less read.
+
+    The apiserver refuses a container-less read on a multi-container pod,
+    so the adapter asks the pod which containers it has and reads them one
+    by one. These fakes model a one-container pod, which keeps the
+    scripted log bodies in the order the test wrote them.
+    """
+
+    def read_namespaced_pod(self, **kw):  # noqa: N802 - SDK name
+        class _C:
+            name = "app"
+
+        class _Spec:
+            containers = [_C()]
+            init_containers = []
+
+        class _Pod:
+            spec = _Spec()
+
+        return _Pod()
+
+
+class _Api(_OneContainerPod):
     """Answers a scripted sequence of log bodies, one per poll."""
 
     def __init__(self, script: List[str]) -> None:
@@ -96,7 +120,7 @@ def test_a_quiet_pod_backs_off_instead_of_polling_every_two_seconds(monkeypatch)
     class _Done(BaseException):
         pass
 
-    class _Quiet:
+    class _Quiet(_OneContainerPod):
         def __init__(self):
             self.calls = 0
 
@@ -130,7 +154,7 @@ def test_a_deleted_pod_ends_the_stream_instead_of_retrying_forever(monkeypatch):
     # 404 is the apiserver saying the container is gone — a real end of stream,
     # which is what lets the SSE endpoint send `end` rather than looping on an
     # error until the client gives up.
-    class _Gone:
+    class _Gone(_OneContainerPod):
         def __init__(self):
             self.calls = 0
 
@@ -147,7 +171,7 @@ def test_a_deleted_pod_ends_the_stream_instead_of_retrying_forever(monkeypatch):
 
 def test_a_transient_error_does_not_end_the_stream(monkeypatch):
     # A 500 must not kill the panel: an apiserver restart should not blank it.
-    class _Flaky:
+    class _Flaky(_OneContainerPod):
         def __init__(self):
             self.calls = 0
 
@@ -193,7 +217,7 @@ def test_timestamp_less_lines_are_still_deduplicated_across_polls(monkeypatch):
 
     stamp = "2026-10-20T03:45:12.123456789Z"
 
-    class _Api2:
+    class _Api2(_OneContainerPod):
         def __init__(self):
             self.calls = 0
 

@@ -7,6 +7,7 @@ import threading
 from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from kubernetes.client.exceptions import ApiException
 from sse_starlette.sse import EventSourceResponse
 
 from app.application.dto import LogHistoryOut
@@ -118,6 +119,23 @@ async def read_history(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except ApiException as e:
+        # ponytail: apiserver 的 404/400 是「Pod 或容器不在了」，不是
+        # 服务器故障。之前这里只有 ValueError 一个出口，ApiException 直接
+        # 变成 500 —— 前端显示的是 axios 的原始英文
+        # "Request failed with status code 500"，读者既不知道是 Pod 没了
+        # 还是 Spotlight 坏了，也拿不到任何可以据此行动的信息。
+        if e.status in (400, 404):
+            raise HTTPException(
+                status_code=404, detail="Pod 或容器不存在（可能已经被删除）",
+            ) from e
+        if e.status in (401, 403):
+            raise HTTPException(
+                status_code=403, detail="没有读取该 Pod 日志的权限",
+            ) from e
+        raise HTTPException(
+            status_code=502, detail="读取容器日志失败，apiserver 没有正常响应",
+        ) from e
     return LogHistoryOut(total=len(items), items=items)
 
 

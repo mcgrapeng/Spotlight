@@ -28,6 +28,34 @@ _STREAM_MAX_INTERVAL = 15.0   # once it goes quiet
 _STREAM_DEDUP_WINDOW = 4096   # signatures kept to cover poll overlap
 
 
+def _container_names(api, ref: ResourceRef, timeout: float) -> list[str]:
+    """The pod's container names, in spec order.
+
+    Blocking on purpose: the caller is either a threadpool worker
+    (read_logs) or the follow-stream's own thread (stream_logs), and the
+    kubernetes SDK is synchronous.
+
+    Init containers are included — they have logs too, and a crashed init
+    container is exactly where a CrashLoopBackOff story starts.
+
+    An unreadable pod (deleted mid-request, RBAC on pods/get) yields no
+    containers rather than raising: the caller then has nothing to read,
+    which the API can report as an empty log set instead of a 500.
+    """
+    try:
+        pod = api.read_namespaced_pod(
+            name=ref.name, namespace=ref.namespace, _request_timeout=timeout,
+        )
+    except ApiException:
+        return []
+    spec = getattr(pod, "spec", None)
+    if spec is None:
+        return []
+    names = [c.name for c in (getattr(spec, "containers", None) or [])]
+    names += [c.name for c in (getattr(spec, "init_containers", None) or [])]
+    return [n for n in names if n]
+
+
 def _decode_sdk_log_content(value: object) -> str:
     """Normalize a value from the kubernetes SDK's pod-log endpoints into
     a proper UTF-8 string with real newlines.
@@ -202,6 +230,36 @@ class KubernetesAdapter(K8sRepositoryPort):
         tail_lines: int, since: Optional[str],
     ) -> list[LogEntry]:
         api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
+        # ponytail: 没有指定容器时，读这个 Pod 的全部容器。
+        #
+        # 之前这里把 container=None 直接透给 apiserver，而 apiserver 在 Pod
+        # 有多个容器时要求必须指定容器名 —— 于是它回 400，SDK 抛
+        # ApiException，路由没接住，整个接口 500。
+        #
+        # 这个 bug 在 mock 里永远看不见：e2e 把 /logs 整个 mock 掉了，
+        # 而真实集群里绝大多数 Pod 是单容器（k3d 演示集群就是），只有接到
+        # 一个多容器的生产 Pod 才会露出来 —— 那是日志面板第一次打开就 500，
+        # 正是这个产品最核心的那个功能。
+        #
+        # 前端早就按「多容器合并 + 每行带容器名」设计（容器页签、按容器
+        # 过滤、containerCounts），后端只是从来没实现它。
+        targets = [container] if container else _container_names(api, ref, self._timeout)
+        if not targets:
+            return []
+        entries: list[LogEntry] = []
+        for name in targets:
+            entries.extend(await self._read_logs_from(api, ref, name, tail_lines, since))
+        # 合并之后按时间排序。tail_lines 是**每个容器**的尾行数，和
+        # `kubectl logs --all-containers --tail=N` 一个口径 —— 按整个 Pod
+        # 裁一刀的话，安静容器的日志会被话痨容器挤掉，切到那个容器的页签
+        # 看到 0 行，而它其实有日志。
+        entries.sort(key=lambda e: e.timestamp)
+        return entries
+
+    async def _read_logs_from(
+        self, api, ref: ResourceRef, container: str,
+        tail_lines: int, since: Optional[str],
+    ) -> list[LogEntry]:
         kw = {
             "name": ref.name, "namespace": ref.namespace,
             "container": container, "tail_lines": tail_lines,
@@ -287,39 +345,53 @@ class KubernetesAdapter(K8sRepositoryPort):
         """
         api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
 
+        # ponytail: 同 read_logs —— 没指定容器时，跟这个 Pod 的所有容器。
+        # 之前 container=None 直接进 apiserver，多容器 Pod 上它回 400，
+        # 下面的 `except ApiException: 400/404 → return` 于是把整条流
+        # 静默结束掉：面板上永远是「暂无日志」，而历史接口那边是 500。
+        targets = [container] if container else _container_names(api, ref, self._timeout)
+        if not targets:
+            return
+
         # Bounded: only has to cover the overlap between consecutive polls,
         # which is at most one interval's worth of lines.
-        recent: Deque[tuple[str, str]] = deque(maxlen=_STREAM_DEDUP_WINDOW)
+        recent: Deque[tuple[str, str, str]] = deque(maxlen=_STREAM_DEDUP_WINDOW)
         interval = _STREAM_MIN_INTERVAL
 
         while True:
             if stop_event is not None and stop_event.is_set():
                 return
 
-            try:
-                raw = api.read_namespaced_pod_log(
-                    name=ref.name, namespace=ref.namespace,
-                    container=container, tail_lines=tail_lines,
-                    since_seconds=_STREAM_SINCE_SECONDS,
-                    timestamps=True,
-                    _request_timeout=_STREAM_READ_TIMEOUT,
-                    _preload_content=True,
-                )
-            except ApiException as e:
-                # 400/404: the pod or its container is gone. That is a real
-                # end of stream, so return and let the caller send `end`.
-                # Anything else (a blip, a 500) is transient — keep
-                # following, because a log panel should survive an apiserver
-                # restart.
-                if e.status in (400, 404):
-                    return
-                emitted = 0
-            except Exception:
-                # Transport blip, DNS, a dropped keep-alive. Treat it as "no
-                # new lines" rather than ending the stream.
-                emitted = 0
-            else:
-                emitted = 0
+            emitted = 0
+            for target in list(targets):
+                try:
+                    raw = api.read_namespaced_pod_log(
+                        name=ref.name, namespace=ref.namespace,
+                        container=target, tail_lines=tail_lines,
+                        since_seconds=_STREAM_SINCE_SECONDS,
+                        timestamps=True,
+                        _request_timeout=_STREAM_READ_TIMEOUT,
+                        _preload_content=True,
+                    )
+                except ApiException as e:
+                    # 400/404: that container is gone (a sidecar was
+                    # removed, the pod was replaced). Drop it and keep
+                    # following the others; when the last one goes, the
+                    # stream is really over and the caller sends `end`.
+                    # Anything else (a blip, a 500) is transient — keep
+                    # following, because a log panel should survive an
+                    # apiserver restart.
+                    if e.status in (400, 404):
+                        targets.remove(target)
+                        if not targets:
+                            return
+                        continue
+                    continue
+                except Exception:
+                    # Transport blip, DNS, a dropped keep-alive. Treat it as
+                    # "no new lines" rather than ending the stream.
+                    continue
+
                 for line in _decode_sdk_log_content(raw).splitlines():
                     if not line.strip():
                         continue
@@ -328,15 +400,17 @@ class KubernetesAdapter(K8sRepositoryPort):
                     # shape from both: the line's real time, and the line's
                     # text. The raw line is still what the dedup key uses —
                     # it is the identity of the line, and the prefix is part
-                    # of it.
-                    ts, rest = parse_log_line(line, container or "")
-                    sig = (ts, line)
+                    # of it. The container name is part of the key too: two
+                    # containers can legitimately print the same line, and
+                    # dropping the second one would be a silent data loss.
+                    ts, rest = parse_log_line(line, target)
+                    sig = (ts, target, line)
                     if sig in recent:
                         continue
                     recent.append(sig)
                     emitted += 1
                     yield LogEntry(
-                        timestamp=ts, content=rest, container=container or ""
+                        timestamp=ts, content=rest, container=target
                     )
 
                 # Poll-boundary marker: this poll is complete, flush whatever
