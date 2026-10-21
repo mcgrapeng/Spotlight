@@ -1158,6 +1158,8 @@ let seenHeadId: string | null = null
 /** How long a newly arrived error row stays tinted. The animation itself is
  *  400ms; the class lives slightly longer so the animation can finish. */
 const FLASH_MS = 450
+/** Above this many new lines at once, it is a backlog flush, not an arrival. */
+const FLASH_BATCH_LIMIT = 10
 
 function flashErrors(ids: string[]) {
   if (!ids.length) return
@@ -1198,6 +1200,12 @@ watch(() => props.lines, (next) => {
   }
   seenHeadId = headId
   if (!addedCount) return
+  // ponytail: 一次只闪一条。
+  // 读者翻完历史回到顶部时，SSE 层会把攒着的整个 backlog 一次性 prepend
+  // 进来 —— 那时候 addedCount 是几百，「新到的」是几百行，整个面板一起
+  // 闪红半秒，和「一条错误刚到」是两回事。所以超过阈值就不闪，闪也只闪
+  // 头几条。
+  if (addedCount > FLASH_BATCH_LIMIT) return
   const errorIds: string[] = []
   for (let i = 0; i < addedCount; i++) {
     const line = next[i]!
@@ -1205,7 +1213,7 @@ watch(() => props.lines, (next) => {
     // 每一行都闪一次等于什么都没闪。
     if (SEV_ERROR_KEYS.has(line.severity.toLowerCase())) errorIds.push(lineId(line))
   }
-  flashErrors(errorIds)
+  flashErrors(errorIds.slice(0, FLASH_BATCH_LIMIT))
 }, { immediate: true })
 
 onUnmounted(() => {

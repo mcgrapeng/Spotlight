@@ -95,6 +95,7 @@ const totalEvents = computed(() => events.value?.length ?? 0)
 // 大于 clientHeight 就是真的被截断了。
 const overflows = ref<Set<string>>(new Set())
 const msgEls = new Map<string, HTMLElement>()
+let resizeFrame: number | null = null
 
 function setMsgEl(name: string) {
   return (el: Element | ComponentPublicInstance | null) => {
@@ -106,6 +107,14 @@ function setMsgEl(name: string) {
 function measureOverflow() {
   const next = new Set<string>()
   for (const [name, el] of msgEls) {
+    // An expanded message has no clamp, so it measures as "not
+    // overflowing" — but it is exactly the ones that overflowed. Keep
+    // them, or collapsing one would drop its own "expand" button and
+    // strand the rest of the message.
+    if (expanded.value.has(name)) {
+      next.add(name)
+      continue
+    }
     if (el.scrollHeight > el.clientHeight + 1) next.add(name)
   }
   overflows.value = next
@@ -113,8 +122,15 @@ function measureOverflow() {
 
 onMounted(() => nextTick(measureOverflow))
 watch(filtered, () => nextTick(measureOverflow))
-// 视口变了，三行的容量也变了，截断状态要重新量。
-useEventListener(window, 'resize', () => nextTick(measureOverflow))
+// The clamp comes back when a message collapses, so the button has to be
+// re-measured then too.
+watch(expanded, () => nextTick(measureOverflow))
+// 视口变了，三行的容量也变了，截断状态要重新量。rAF 把一次拖拽窗口里的
+// 几百次强制重排压成一帧一次。
+useEventListener(window, 'resize', () => {
+  if (resizeFrame) cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(() => nextTick(measureOverflow))
+})
 </script>
 
 <template>
@@ -245,7 +261,7 @@ useEventListener(window, 'resize', () => nextTick(measureOverflow))
           <div class="flex items-center gap-2 flex-wrap">
             <StatusChip
               :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
-              :label="t(`eventType.${ev.type}`)"
+              :label="t(`eventType.${ev.type}`, ev.type)"
             />
             <span class="inline-flex items-center rounded-sm px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
             <span class="text-xs text-muted-foreground">{{ ev.namespace }}</span>

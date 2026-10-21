@@ -296,9 +296,14 @@
      和 animation-duration，timing function 没设 —— 于是这个产品里最大的
      几段运动（命令面板、AI 侧滑面板、移动抽屉）跑在一条和 hover 反馈
      完全不同的曲线上：hover 是 .ease-app 的 expo-out，浮层是 `ease`。
-     这里把产品的曲线接到浮层上，exit 用更快的收尾曲线。 */
-  .animate-in { animation-timing-function: var(--ease); }
-  .animate-out { animation-timing-function: var(--ease-exit); }
+     这里把产品的曲线接到浮层上，exit 用更快的收尾曲线。
+
+     选择器用 [class*=] 而不是 .animate-in：Tailwind 只为源码里用到的变体
+     生成规则，裸的 .animate-in 从不出现，而 DOM 上的类名其实是
+     `data-[state=open]:animate-in` —— 用 class 属性包含匹配才能同时盖住
+     变体形式和将来的裸形式。 */
+  [class*="animate-in"] { animation-timing-function: var(--ease); }
+  [class*="animate-out"] { animation-timing-function: var(--ease-exit); }
 }
 
 /* Reduced motion */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -139,6 +139,13 @@ async function buildContext(): Promise<{ raw: string; summary: ClusterSnapshot }
 let providerSeq = 0
 let contextSeq = 0
 let answerSeq = 0
+/**
+ * The in-flight stream, so closing the panel (or opening a new question)
+ * actually stops the request instead of letting the provider keep billing
+ * for an answer nobody will read.
+ */
+let answerAbort: AbortController | null = null
+const ASK_TIMEOUT_MS = 90_000
 
 async function loadProvider(): Promise<void> {
   const mine = ++providerSeq
@@ -180,6 +187,13 @@ async function loadContext(): Promise<void> {
 watch(
   () => ai.requestId,
   () => {
+    // ponytail: 以前这里只清了界面，没动正在跑的流。于是「问一个问题 →
+    // 关掉面板 → 再打开」之后，上一条流的后续片段会落进新面板里 ——
+    // 一个用户没问过的问题，答案自己长了出来。answerSeq 递增作废旧流，
+    // abort 直接把它掐掉。
+    answerSeq++
+    answerAbort?.abort()
+    answerAbort = null
     result.value = ''
     error.value = ''
     question.value = ''
@@ -202,6 +216,10 @@ async function submit(): Promise<void> {
     return
   }
   const mine = ++answerSeq
+  answerAbort?.abort()
+  const controller = new AbortController()
+  answerAbort = controller
+  const timer = setTimeout(() => controller.abort(), ASK_TIMEOUT_MS)
   loading.value = true
   error.value = ''
   result.value = ''
@@ -233,6 +251,7 @@ async function submit(): Promise<void> {
           if (mine !== answerSeq) return
           result.value += text
         },
+        controller.signal,
       )
       if (mine !== answerSeq) return
       answerModel.value = provider.value.model
@@ -240,13 +259,25 @@ async function submit(): Promise<void> {
     }
   } catch (e: any) {
     if (mine !== answerSeq) return
-    error.value = e?.code === 'ECONNABORTED'
-      ? t('ai.askTimeout')
-      : e?.response?.data?.detail ?? e?.message ?? t('ai.analyzeFailed')
+    if (e?.name === 'AbortError') {
+      error.value = t('ai.askTimeout')
+    } else {
+      error.value = e?.code === 'ECONNABORTED'
+        ? t('ai.askTimeout')
+        : e?.response?.data?.detail ?? e?.message ?? t('ai.analyzeFailed')
+    }
   } finally {
-    if (mine === answerSeq) loading.value = false
+    clearTimeout(timer)
+    if (mine === answerSeq) {
+      loading.value = false
+      answerAbort = null
+    }
   }
 }
+
+onUnmounted(() => {
+  answerAbort?.abort()
+})
 
 async function copyAnswer() {
   try {
@@ -364,8 +395,8 @@ const answerMeta = computed(() => {
         <div v-if="result">
           <h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">{{ t('ai.answerLabel') }}</h4>
           <!-- text-only render: LLM output is untrusted — never v-html -->
-          <div class="text-sm whitespace-pre-wrap">
-            {{ result }}<span v-if="loading" class="animate-pulse">▍</span>
+          <div class="text-sm whitespace-pre-wrap" aria-live="polite" :aria-busy="loading">
+            {{ result }}<span v-if="loading" class="animate-pulse" aria-hidden="true">▍</span>
           </div>
           <div v-if="!loading" class="mt-2 flex items-center gap-3">
             <span v-if="answerMeta" class="text-2xs text-muted-foreground tabular-nums">{{ answerMeta }}</span>

@@ -62,7 +62,12 @@ export function usePodLogs(opts: UsePodLogsOptions) {
   // Lives in the composable scope (not inside start()) so the autoFollow
   // watcher can reach it across reconnects and the deferred backlog
   // survives a fresh history fetch. Reset only by clear() (user action).
-  const deferred: LogLineOut[] = []
+  //
+  // ponytail: 一批一批存，不是把行拍平存。之前把整个数组 reverse 一次，
+  // 那是按「行」倒的，而要的是按「批」倒 —— 结果回到顶部时，攒着的几百行
+  // 被打乱顺序插到面板最前面，最上面一行反而是最老的那条。现在 deferred
+  // 存的是批的列表，commit 时按批倒序展开，每批内部保持「最新在前」。
+  const deferred: LogLineOut[][] = []
 
   const max = opts.maxBuffered ?? MAX_BUFFERED_DEFAULT
   const tail = opts.tailLines ?? TAIL_LINES_DEFAULT
@@ -90,7 +95,9 @@ export function usePodLogs(opts: UsePodLogsOptions) {
 
   function commitDeferred() {
     if (deferred.length === 0) return
-    const batch = deferred.slice().reverse()
+    // Newest batch first, each batch internally newest-first — the panel
+    // renders the array newest-first, so the buffer goes in as it came.
+    const batch = deferred.slice().reverse().flat()
     lines.value = [...batch, ...lines.value]
     if (lines.value.length > max) {
       lines.value = lines.value.slice(0, max)
@@ -155,7 +162,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     // target change the backlog was just cleared, so this reads 0. On a
     // re-open of the same target it preserves the count, which is what lets
     // the user know unread lines are still waiting when they scroll back up.
-    unreadCount.value = deferred.length
+    unreadCount.value = deferred.reduce((n, b) => n + b.length, 0)
     error.value = null
 
     // Dedup the SSE backlog against what the panel already shows.
@@ -189,7 +196,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       // that is already waiting in the backlog would otherwise be queued in
       // `pending` and committed a second time on top of it.
       for (const l of lines.value) remember(sigOf(l.timestamp, l.content))
-      for (const l of deferred) remember(sigOf(l.timestamp, l.content))
+      for (const b of deferred) for (const l of b) remember(sigOf(l.timestamp, l.content))
     }
 
     // Backfill only on a target change. Re-fetching a target already on
@@ -264,11 +271,14 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         }
       } else {
         // User is scrolled away — buffer for later and count for the pill.
-        deferred.push(...batch)
-        if (deferred.length > max) {
-          deferred.splice(0, deferred.length - max)
+        deferred.push(batch)
+        // The cap counts lines, not batches.
+        let buffered = 0
+        for (const b of deferred) buffered += b.length
+        while (buffered > max && deferred.length > 0) {
+          buffered -= deferred.shift()!.length
         }
-        unreadCount.value = deferred.length
+        unreadCount.value = buffered
       }
       pending = []
     }

@@ -102,19 +102,32 @@ const isActive = (path: string) =>
         :key="item.path"
         :to="item.path"
         :class="cn(
-          'relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
+          'relative flex items-center gap-3 rounded-md text-sm transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
-          // ponytail: 激活项从纯黑药丸改成灰底黑字。纯反色让侧栏里最亮的
-          // 色块是当前项，而读者的视线应该在内容上；夜里 3 点，屏幕上一块
-          // 纯黑比一段文字重得多。
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          // ponytail: 激活项从纯黑药丸改成「更深的字 + 一条竖线」。
+          // 纯反色让侧栏里最亮的色块是当前项，而读者的视线应该在内容上；
+          // 夜里 3 点，屏幕上一块纯黑比一段文字重得多。
+          //
+          // 但也不能只是换个浅灰底：--accent 和 --sidebar-accent 在亮色下
+          // 是同一个值（#F4F4F5），而 --accent-foreground 和
+          // --sidebar-foreground 也是同一个值 —— 那样「当前项」和「鼠标
+          // 悬停的那一项」长得一模一样，而当前项和普通项只差 1.03:1 的
+          // 对比，等于没有标记。所以标记由竖线和字重承担：颜色最深的
+          // 那一项是当前页，悬停只是一层很淡的底。
           isActive(item.path)
-            ? 'bg-accent text-accent-foreground'
-            : 'text-sidebar-foreground',
+            ? 'text-sidebar-foreground font-semibold'
+            : 'text-muted-foreground font-medium',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
         :aria-current="isActive(item.path) ? 'page' : undefined"
         @click="$emit('navigate')"
       >
+        <span
+          v-if="isActive(item.path)"
+          class="absolute -left-0.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-foreground"
+          aria-hidden="true"
+        />
         <component
           :is="item.icon"
           :size="20"
@@ -155,15 +168,21 @@ const isActive = (path: string) =>
       <router-link
         to="/settings"
         :class="cn(
-          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
+          'relative flex items-center gap-3 rounded-md text-sm transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           isActive('/settings')
-            ? 'bg-accent text-accent-foreground'
-            : 'text-sidebar-foreground',
+            ? 'text-sidebar-foreground font-semibold'
+            : 'text-muted-foreground font-medium',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
         :aria-current="isActive('/settings') ? 'page' : undefined"
       >
+        <span
+          v-if="isActive('/settings')"
+          class="absolute -left-0.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-foreground"
+          aria-hidden="true"
+        />
         <Settings :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">{{ t('nav.settings') }}</span>
       </router-link>
@@ -172,7 +191,8 @@ const isActive = (path: string) =>
         type="button"
         :class="cn(
           'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
-          'hover:bg-sidebar-accent text-sidebar-foreground',
+          'hover:bg-sidebar-accent text-muted-foreground',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
         :aria-label="props.collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"

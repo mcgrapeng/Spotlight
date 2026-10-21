@@ -172,12 +172,14 @@ export const aiApi = {
     question: string,
     context: string,
     onDelta: (text: string) => void,
+    signal?: AbortSignal,
   ): Promise<void> => {
     const resp = await fetch('/api/v1/ai/ask/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ provider_id: providerId, question, context }),
+      signal,
     })
     if (!resp.ok) {
       if (resp.status === 401) {

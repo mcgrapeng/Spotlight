@@ -74,4 +74,17 @@ describe('LogViewer arrival flash', () => {
     expect(wrapper.html()).not.toContain('animate-log-flash')
     vi.useRealTimers()
   })
+
+  it('does not flash a whole backlog at once', async () => {
+    // The reader scrolls away, the panel buffers the backlog, and coming
+    // back prepends all of it in one go. That is not "an error just
+    // arrived" — flashing every buffered error turns the panel into a
+    // screenful of blinking red.
+    const old = line('info', 'old-1')
+    const wrapper = mountViewer([old])
+    const backlog = Array.from({ length: 20 }, (_, i) => line('error', `backlog-${i}`))
+    await wrapper.setProps({ lines: [...backlog, old] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.html()).not.toContain('animate-log-flash')
+  })
 })

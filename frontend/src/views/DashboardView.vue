@@ -104,10 +104,13 @@ const phaseSlices = computed<PhaseSlice[]>(() => {
     // Running 的绿块还重。17 个待调度的 Pod 是集群的正常状态，不该是全条
     // 第二抢眼的东西。Pending 和 Succeeded 走两级表面灰，条上只留绿和红
     // 两个有含义的颜色。
-    { key: 'pending', label: t('phase.Pending'), value: c.pending, color: 'hsl(var(--border))' },
+    // 三个灰必须两两不同：Succeeded 之前用了 --muted，而 PhaseBar 的底槽
+    // 就是 bg-muted —— 那一段画出来和底槽一个颜色，等于没画，而
+    // aria-label 里还报着「Succeeded 12」。
+    { key: 'pending', label: t('phase.Pending'), value: c.pending, color: 'hsl(var(--muted-foreground) / 0.35)' },
     { key: 'failed', label: t('phase.Failed'), value: c.failed, color: 'hsl(var(--error))' },
     // Succeeded 比 Pending 更淡一级：两级灰在同一根条上要分得开。
-    { key: 'succeeded', label: t('phase.Succeeded'), value: c.succeeded, color: 'hsl(var(--muted))' },
+    { key: 'succeeded', label: t('phase.Succeeded'), value: c.succeeded, color: 'hsl(var(--border))' },
   ]
 })
 

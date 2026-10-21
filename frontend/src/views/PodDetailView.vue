@@ -266,7 +266,7 @@ function back() { router.push({ name: 'pods' }) }
                   <div class="flex items-center gap-2 flex-wrap text-sm">
                     <StatusChip
                       :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
-                      :label="t(`eventType.${ev.type}`)"
+                      :label="t(`eventType.${ev.type}`, ev.type)"
                       size="xs"
                     />
                     <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 bg-muted text-foreground font-mono text-2xs border border-border">

@@ -26,8 +26,19 @@ export function containerTone(c: {
   reason?: string | null
 }): ContainerTone {
   if (c.ready) return 'success'
-  if (c.state === 'waiting' && c.reason === 'CrashLoopBackOff') return 'error'
-  if (c.state === 'terminated' && (c.reason === 'Error' || c.reason === 'OOMKilled')) return 'error'
+  const reason = (c.reason ?? '').toLowerCase()
+  if (c.state === 'waiting' && reason === 'crashloopbackoff') return 'error'
+  if (c.state === 'terminated' && (reason === 'error' || reason === 'oomkilled')) return 'error'
+  // A container that cannot be pulled or configured is broken, not "still
+  // starting". It was amber before amber was reserved for "needs
+  // attention" — but a failed image pull IS something to act on, so it
+  // joins the error tier rather than the neutral one.
+  if (
+    reason === 'imagepullbackoff' ||
+    reason === 'errimagepull' ||
+    reason === 'createcontainerconfigerror' ||
+    reason === 'createcontainererror'
+  ) return 'error'
   return 'neutral'
 }
 

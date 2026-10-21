@@ -21,4 +21,10 @@ describe('container tone', () => {
     expect(containerDotClass({ ready: false, state: 'waiting', reason: 'ContainerCreating' }))
       .toBe('bg-muted-foreground/50')
   })
+
+  it('marks a failed image pull as an error, not as "still starting"', () => {
+    expect(containerTone({ ready: false, state: 'waiting', reason: 'ImagePullBackOff' })).toBe('error')
+    expect(containerTone({ ready: false, state: 'waiting', reason: 'ErrImagePull' })).toBe('error')
+    expect(containerTone({ ready: false, state: 'waiting', reason: 'CreateContainerConfigError' })).toBe('error')
+  })
 })

@@ -174,8 +174,16 @@ async def ask_stream(
             # The response has already begun, so this cannot be an HTTP
             # status any more. Report it in-band and let the client decide
             # what to show.
+            #
+            # The message sent to the client is generic on purpose: a
+            # provider exception can carry the request payload, and the
+            # payload carries the question and the cluster snapshot. The
+            # detail goes to the server log, where it belongs.
             log.error("ai.ask.stream.failed", error=str(exc))
-            yield {"event": "error", "data": json.dumps({"detail": str(exc)}, ensure_ascii=False)}
+            yield {
+                "event": "error",
+                "data": json.dumps({"detail": "the model call failed — see the server log"}, ensure_ascii=False),
+            }
         yield {"event": "done", "data": "[DONE]"}
 
     return EventSourceResponse(event_gen())

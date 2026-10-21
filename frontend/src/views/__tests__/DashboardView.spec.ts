@@ -83,4 +83,21 @@ describe('DashboardView hero', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('一切正常')
   })
+
+  it('paints no phase segment in the colour of the bar\'s own track', async () => {
+    // ponytail: 阶段条上「已成功」那一段之前用的是 --muted，而底槽就是
+    // bg-muted —— 画出来和底槽一个颜色，等于没画，而 aria-label 里还报着
+    // 「Succeeded 12」。
+    const wrapper = mountDashboard()
+    await flushPromises()
+    const bar = wrapper.find('[role="img"]')
+    const track = bar.classes().find((c) => c.startsWith('bg-'))
+    const segments = bar.findAll('[style*="background"]').map((el) =>
+      (el.attributes('style') ?? '').match(/background:\s*([^;]+)/)?.[1]?.trim(),
+    )
+    expect(segments.length).toBeGreaterThan(1)
+    expect(segments).not.toContain('hsl(var(--muted))')
+    expect(new Set(segments).size).toBe(segments.length)
+    expect(track).toBe('bg-muted')
+  })
 })

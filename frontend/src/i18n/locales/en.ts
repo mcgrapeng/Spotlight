@@ -24,7 +24,7 @@ export default {
     updatedAt: 'Updated {time}',
     compactStats: '{total} pods · {running} running · {failed} failed · {nodesReady}/{nodesTotal} nodes · {warnings} warnings',
     refresh: 'Refresh',
-    actionRequired: '{count} more need attention',
+    actionRequired: '{count} more to handle',
     actionHint: 'Follow a link to investigate',
     actionFailedPods: '{count} Failed pods',
     actionFailedPodsDetail: 'The Pods page is already filtered to Failed',
