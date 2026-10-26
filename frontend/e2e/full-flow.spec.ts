@@ -93,7 +93,11 @@ test('Dashboard leads with the one thing to handle, then the counts', async ({ p
   // so the number kept saying everything was fine while the screen beneath
   // it listed three pods restarting in a loop.
   await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('258 / 287 个 Pod 处于 Running', { exact: true }).first()).toBeVisible()
+  // The hero's big slot is the NUMBER of that thing, not a phrase. The
+  // "258 / 287 个 Pod 处于 Running" line this used to assert was deleted
+  // in round 3: the same numbers live in the phase legend, and repeating
+  // them was 8 duplicated numbers on the first screen.
+  await expect(page.getByText('次重启', { exact: true }).first()).toBeVisible()
 
   // Phase distribution — the 287 pods are now a stacked bar with a legend
   // (Running 258 / Pending 17 / Failed 0 / Succeeded 12) instead of a number
@@ -101,8 +105,10 @@ test('Dashboard leads with the one thing to handle, then the counts', async ({ p
   await expect(page.getByText('Pod 阶段分布', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('运行中 Running', { exact: true }).first()).toBeVisible()
 
-  // Warning events card (25 from fixture)
-  await expect(page.getByText('告警', { exact: true }).first()).toBeVisible()
+  // Warning events (25 from fixture). The "告警" StatCard was deleted in
+  // round 3 — it repeated the action card's number — so the count now
+  // lives in the action item.
+  await expect(page.getByText('25 个 Warning 事件', { exact: true }).first()).toBeVisible()
 
   // 频繁重启 — fixture has 3 restart-heavy entries. The same pod name shows
   // in both the action-item callout and the noisy-restart list; .first()
@@ -125,7 +131,7 @@ test('Pods table renders rows and pagination controls respond', async ({ page })
   await installApiMocks(page)
   await page.goto('/pods', { waitUntil: 'networkidle' })
 
-  await expect(pageTitle(page)).toContainText('Pods')
+  await expect(pageTitle(page)).toContainText('Pod')
 
   // Fixture has 2 pods — both must appear in the table.
   await expect(page.getByText('webapp-001').first()).toBeVisible()
@@ -209,14 +215,14 @@ test('⌘K opens the command palette and navigates via a result', async ({ page 
   await expect(cmdkInput).toBeVisible({ timeout: 3_000 })
 
   // The palette shows nav items. Filter for "Pods".
-  await cmdkInput.fill('Pods')
-  await expect(page.getByRole('option', { name: /Pods/ }).first()).toBeVisible()
+  await cmdkInput.fill('Pod')
+  await expect(page.getByRole('option', { name: /Pod/ }).first()).toBeVisible()
 
   // Press Enter to select the highlighted item → navigate to /pods.
   // Match on pathname so `/login?next=/pods` can't false-positive.
   await cmdkInput.press('Enter')
   await expect(page).toHaveURL((url) => url.pathname === '/pods')
-  await expect(pageTitle(page)).toContainText('Pods')
+  await expect(pageTitle(page)).toContainText('Pod')
 
   // Open the palette again to dismiss — Escape closes.
   await page.keyboard.press('Meta+K')
@@ -263,10 +269,10 @@ test('AI page lists providers and opens the add-provider dialog', async ({ page 
 // ─────────────────────────────────────────────────────────────────────────
 const routes = [
   { path: '/',             title: /总览|demo-cluster/ },
-  { path: '/pods',         title: /^Pods$/ },
+  { path: '/pods',         title: /^Pod$/ },
   { path: '/pods/default/webapp-001', title: /webapp-001/ },
-  { path: '/nodes',        title: /^Nodes$/ },
-  { path: '/events',       title: /^Events/ },
+  { path: '/nodes',        title: /^节点$/ },
+  { path: '/events',       title: /^事件$/ },
   { path: '/favorites',    title: /^收藏夹$/ },
   { path: '/ai',           title: /^AI 模型$/ },
   { path: '/login',        title: /^Spotlight$/ },

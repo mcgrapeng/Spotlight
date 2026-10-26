@@ -31,7 +31,7 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
     })
 
     await page.goto('/pods')
-    await expect(page.locator('h1').first()).toContainText('Pods')
+    await expect(page.locator('h1').first()).toContainText('Pod')
 
     const webappLink = page.getByRole('link', { name: '查看 webapp-001 详情' })
     await expect(webappLink).toBeVisible()
@@ -124,7 +124,7 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
 
   test('Events page renders the warning row', async ({ page }) => {
     await page.goto('/events')
-    await expect(page.locator('h1').first()).toContainText('Events')
+    await expect(page.locator('h1').first()).toContainText('事件')
     await expect(page.getByText('BackOff')).toBeVisible()
     await expect(page.getByText('cache-001')).toBeVisible()
   })

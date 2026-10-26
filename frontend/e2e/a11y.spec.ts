@@ -21,9 +21,9 @@ import { installApiMocks } from './_fixtures'
 
 const pages = [
   { path: '/', name: '总览' },
-  { path: '/pods', name: 'Pods' },
-  { path: '/nodes', name: 'Nodes' },
-  { path: '/events', name: 'Events' },
+  { path: '/pods', name: 'Pod' },
+  { path: '/nodes', name: '节点' },
+  { path: '/events', name: '事件' },
   { path: '/ai', name: 'AI 模型' },
   { path: '/login', name: '登录' },
   // Pod detail hosts the LogViewer (v-html ANSI spans, dense rows) — the
