@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
   RefreshCw, Bot, Keyboard,
 } from '@lucide/vue'
-import { isTypingTarget } from '@/composables/useKeyboardShortcuts'
+import { isTypingTarget, keyboardRegionClaimed } from '@/composables/useKeyboardShortcuts'
 import { podsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useAiStore } from '@/stores/ai'
@@ -34,6 +34,10 @@ whenever(cmdK, () => { open.value = true })
 whenever(shiftSlash, () => {
   // "?" typed inside a text field is a character, not a shortcut
   if (isTypingTarget(document.activeElement)) return
+  // The log viewer has its own `?` panel, and it is the accurate one
+  // (it lists the log's real bindings). Two panels opening on one keypress
+  // is worse than neither.
+  if (keyboardRegionClaimed.value) return
   shortcutsOpen.value = true
 })
 
@@ -76,11 +80,17 @@ const actions = computed(() => [
 const shortcuts = computed(() => [
   { combo: '⌘ K / Ctrl K', desc: t('palette.shortcuts.openPalette') },
   { combo: 'g then d/p/n/e/f', desc: t('palette.shortcuts.quickNav') },
+  { combo: '⌘ J / Ctrl J', desc: t('palette.shortcuts.openAi') },
   { combo: '? (Shift+/)', desc: t('palette.shortcuts.showPanel') },
-  { combo: '/', desc: t('palette.shortcuts.focusSearch') },
-  { combo: 'k / K', desc: t('palette.shortcuts.pauseStream') },
-  { combo: 'l / L', desc: t('palette.shortcuts.toggleFollow') },
-  { combo: 'c', desc: t('palette.shortcuts.copyAll') },
+  // ponytail: 这一组以前写的是「k/K 暂停流、l/L 切换跟随、c 复制全部」。
+  // 三个键都对不上实现：暂停是 p，自动跟随根本没有快捷键，c 是清空日志
+  // 不是复制。面板在教一套不存在的操作。
+  { combo: 'f / /', desc: t('log.help.focusSearch') },
+  { combo: 'e', desc: t('log.help.errorsOnly') },
+  { combo: 'p', desc: t('log.help.pause') },
+  { combo: 'c', desc: t('log.help.clear') },
+  { combo: 'g / G', desc: t('log.help.jumpError') },
+  { combo: 'j / k', desc: t('log.help.scroll') },
   { combo: '⌘ F', desc: t('palette.shortcuts.searchNative') },
 ])
 
@@ -110,37 +120,69 @@ const search = computed(() => commandCtx.value?.filterState.search ?? '')
 const pods = shallowRef<PodOut[]>([])
 const podsLoading = ref(false)
 const POD_MATCH_CAP = 20
+/**
+ * Two characters minimum.
+ *
+ * The pods endpoint has no limit — one call returns every pod in the
+ * cluster. The palette used to fetch that whole list every time it was
+ * opened (a few MB on a large cluster) and then threw all but 20 rows
+ * away client-side. The endpoint already filters by name / container /
+ * node / namespace, so the query goes to the server and the list only
+ * arrives when there is something to search for.
+ */
+const MIN_POD_QUERY = 2
+// Orders the requests: a slow one that lands after a newer one must not
+// overwrite it.
+let podsSeq = 0
 
-async function loadPods() {
+async function loadPods(query: string) {
+  const q = query.trim()
+  const mine = ++podsSeq
+  if (q.length < MIN_POD_QUERY) {
+    pods.value = []
+    podsLoading.value = false
+    return
+  }
   podsLoading.value = true
   try {
     const res = await podsApi.list({
       cluster: cluster.activeCluster,
       namespace: cluster.activeNamespace,
+      search: q,
     })
+    if (mine !== podsSeq) return
     pods.value = res.items
   } catch {
-    // ponytail: 拉不到 Pod 不该让面板罢工 —— 资源区空着，其他分组照常用。
+    if (mine !== podsSeq) return
+    // 拉不到 Pod 不该让面板罢工 —— 资源区空着，其他分组照常用。
     pods.value = []
   } finally {
-    podsLoading.value = false
+    if (mine === podsSeq) podsLoading.value = false
   }
 }
 
 watch(open, (v) => {
   if (!v) return
-  void loadPods()
+  void loadPods(search.value)
 })
 
-const podMatches = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  const list = q
-    ? pods.value.filter(p =>
-        p.name.toLowerCase().includes(q) || p.namespace.toLowerCase().includes(q))
-    : pods.value
-  // ponytail: 大集群几千个 Pod，全塞进面板会卡 —— 只渲染前 N 个匹配项。
-  return list.slice(0, POD_MATCH_CAP)
+// The search box drives the query. Debounced: one request per keystroke
+// is one request too many.
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(search, (q) => {
+  if (!open.value) return
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { void loadPods(q) }, 200)
 })
+
+const podMatches = computed(() => pods.value.slice(0, POD_MATCH_CAP))
+
+/** Why the resources section is empty: nothing typed yet, or no match. */
+const podHint = computed(() =>
+  search.value.trim().length < MIN_POD_QUERY
+    ? t('palette.resourcesTypeToSearch')
+    : t('palette.resourcesEmpty'),
+)
 
 // ponytail: 组件库只在「搜索词变了」的时候重算一次过滤表，而 Pod 是异步
 // 拉回来的：用户先打字、Pod 后到 → 这批条目从没被计过分，所在的 group 会
@@ -224,7 +266,7 @@ defineExpose({
           v-if="!podMatches.length && !podsLoading"
           class="px-2 py-1.5 text-xs text-muted-foreground"
         >
-          {{ t('palette.resourcesEmpty') }}
+          {{ podHint }}
         </div>
       </div>
 

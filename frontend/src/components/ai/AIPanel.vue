@@ -12,7 +12,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/input'
 import { useAiStore } from '@/stores/ai'
 import MarkdownAnswer from './MarkdownAnswer.vue'
 import { useClusterStore } from '@/stores/cluster'
@@ -93,7 +93,13 @@ const snapshot = ref<ClusterSnapshot | null>(null)
 
 async function buildContext(): Promise<{ raw: string; summary: ClusterSnapshot }> {
   if (!cluster.activeCluster) throw new Error(t('ai.askNoActiveCluster'))
-  const stats = await podsApi.stats(cluster.activeCluster)
+  // ponytail: 快照按命名空间取，和顶栏的选择器一致。
+  //
+  // 之前这里取的是全集群的统计，却把「命名空间」写成了当前选择的那个 ——
+  // 于是「命名空间 kube-system · 287 个 Pod」里那 287 个是全集群的数。
+  // 给模型看的那份上下文也一样：模型拿到「Namespace: kube-system」和一份
+  // 全集群的 pod 清单，答案从一开始就建立在错的前提上。
+  const stats = await podsApi.stats(cluster.activeCluster, cluster.activeNamespace)
   const ns = cluster.activeNamespace === '_all' ? 'all' : cluster.activeNamespace
   const lines: string[] = [
     `# Cluster: ${cluster.activeCluster || 'default'}`,
@@ -392,13 +398,20 @@ const answerMeta = computed(() => {
             <label for="ai-question" class="text-xs font-semibold text-muted-foreground mb-2 block uppercase tracking-wide">
               {{ t('ai.askQuestionLabel') }}
             </label>
-            <Input
+            <!-- ponytail: 多行。回车换行，⌘/Ctrl+回车提交 ——
+                 凌晨三点要打的多半是带从句的问题，一行输入框装不下。
+                 Esc 留给 Sheet（关面板），面板关掉时在飞的请求会被 abort。 -->
+            <Textarea
               id="ai-question"
               v-model="question"
+              :rows="3"
               :placeholder="t('ai.askQuestionPlaceholder')"
               :aria-label="t('ai.askQuestionLabel')"
-              @keydown.enter.exact.prevent="submit"
+              @keydown.enter.exact.prevent
+              @keydown.meta.enter.prevent="submit"
+              @keydown.ctrl.enter.prevent="submit"
             />
+            <p class="mt-1 text-xs text-muted-foreground">{{ t('ai.askSubmitHint') }}</p>
           </div>
         </template>
 

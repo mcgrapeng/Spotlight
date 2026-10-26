@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
@@ -24,11 +24,23 @@ const collapsed = ref(false)
 const mobileOpen = ref(false)
 const isMobile = useMediaQuery('(max-width: 767px)')
 const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.appSidebarCollapsed
+const mainEl = ref<HTMLElement | null>(null)
 
 onMounted(() => {
   const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
   if (stored !== null) collapsed.value = stored === 'true'
 })
+
+// ponytail: 换页之后把焦点交给主内容。
+//
+// <main> 有 tabindex="-1"（skip link 需要它），但之前没有任何代码在换页
+// 之后把焦点移过去。读屏用户点完侧边栏，页面内容换了，焦点还留在那条
+// 链接上 —— 新内容不会被朗读；纯键盘用户的下一次 Tab 又从侧边栏开始，
+// 得再 Tab 一遍才到得了正文。WCAG 2.4.3 的焦点顺序问题。
+watch(
+  () => route.path,
+  () => { void nextTick(() => mainEl.value?.focus()) },
+)
 
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
@@ -86,6 +98,7 @@ useKeyboardShortcuts(() => [
 
       <main
         id="main-content"
+        ref="mainEl"
         class="flex-1 min-w-0 overflow-x-auto focus:outline-none"
         tabindex="-1"
       >

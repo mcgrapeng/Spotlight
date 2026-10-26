@@ -12,7 +12,7 @@ import { cn, formatNumber } from '@/lib/utils'
 import { isNoisyRestarts } from '@/lib/restart'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
 import PhaseBar, { type PhaseSlice } from '@/components/common/PhaseBar.vue'
-import RestartBars from '@/components/common/RestartBars.vue'
+import RestartList from '@/components/common/RestartList.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { DashboardOut } from '@/api/types'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -30,6 +30,15 @@ const cluster = useClusterStore()
 const stats = ref<DashboardOut | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
+// ponytail: 刷新失败单独一个错误位，不复用 error。
+//
+// error 绑在 <ErrorState> 上，而 ErrorState 会把整个仪表盘换成一张错误页。
+// 之前后台轮询失败时，useCachedFetch 把异常写进 error，页面于是从「287 个
+// Pod」变成「加载失败」—— 一句代码注释承诺的「保留上一次成功读到的那一版」
+// 一次也没兑现。夜里 apiserver 抖一下，整块屏幕就没了。
+//
+// 现在：error 只管「第一次就没数据」，refreshError 管「有数据但刷新失败」。
+const refreshError = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
 
@@ -52,23 +61,32 @@ let autoTimer: ReturnType<typeof setInterval> | null = null
  * 失败的时候不更新 lastRefreshed —— 「更新于 3 分钟前」本身就是那个
  * 失败的事实，比一个一闪而过的红条诚实。屏幕上的数字是上一次成功读到
  * 的那一版，时间戳告诉读者它有多旧。
+ *
+ * 静默还意味着不写 error：这个页面的 error 绑着 <ErrorState>，而
+ * ErrorState 会把整块仪表盘换成错误页。后台轮询失败一次就丢一屏数据，
+ * 是这个产品最不能犯的错。
  */
 async function autoRefresh() {
   if (!cluster.activeCluster) return
-  try {
-    await statsFetch.refresh()
+  const ok = await statsFetch.refresh(true)
+  if (ok) {
     lastRefreshed.value = new Date()
-  } catch {
-    /* 保持上一次的快照，时间戳会说明它有多旧 */
+    refreshError.value = null
+  } else {
+    // 静默的是「不弹错误页」，不是「不告诉读者」。快照留着，时刻停在
+    // 上一次成功刷新的那一秒。
+    refreshError.value = t('dashboard.refreshFailed')
   }
 }
 
 const statsFetch = useCachedFetch<DashboardOut>({
   key: '',
-  fetcher: () => podsApi.stats(cluster.activeCluster!),
+  fetcher: () => podsApi.stats(cluster.activeCluster!, cluster.activeNamespace),
   data: stats as unknown as import('vue').Ref<DashboardOut | null>,
   loading,
   error,
+  // axios 的原始英文（"Network Error"）不该出现在中文界面上。
+  errorFallback: t('state.error'),
   ttlMs: 30_000,
 })
 
@@ -78,17 +96,21 @@ async function load(silent = false) {
   if (!cluster.activeCluster) return
   // Rekey here, not at setup: a `computed(...).value` captured at store setup
   // freezes at 'none' and serves one cluster's dashboard for every other one.
-  statsFetch.rekey(`dashboard:${cluster.activeCluster}`)
+  // 命名空间也进键：快照是按命名空间的，键里没有它就会串。
+  statsFetch.rekey(`dashboard:${cluster.activeCluster}:${cluster.activeNamespace || '_all'}`)
   error.value = null
+  refreshError.value = null
   if (silent) {
     refreshing.value = true
     try {
-      // refresh() writes the fresh snapshot straight into `stats` (it IS
-      // the bound data ref) and returns void.
-      await statsFetch.refresh()
-      lastRefreshed.value = new Date()
-    } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
+      // silent: a failed refresh keeps the snapshot on screen. Only the
+      // staleness of `lastRefreshed` says anything went wrong.
+      const ok = await statsFetch.refresh(true)
+      if (ok) {
+        lastRefreshed.value = new Date()
+      } else {
+        refreshError.value = t('dashboard.refreshFailed')
+      }
     } finally {
       refreshing.value = false
     }
@@ -96,10 +118,12 @@ async function load(silent = false) {
     loading.value = true
     try {
       const v = await statsFetch.loadOrHydrate()
-      if (v) stats.value = v
-      lastRefreshed.value = new Date()
-    } catch (e: any) {
-      error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
+      // A failed first load returns null: the composable has already put
+      // the reason in `error`, and the page shows the error state.
+      if (v) {
+        stats.value = v
+        lastRefreshed.value = new Date()
+      }
     } finally {
       loading.value = false
     }
@@ -232,7 +256,12 @@ const actionItems = computed<Array<{
       label: t('dashboard.actionFrequentRestarts', { count: noisy.length }),
       // 详情说人话：具体是哪几个 Pod 交给「频繁重启」那张表。
       detail: t('dashboard.actionFrequentRestartsDetail'),
-      link: { name: 'pods' },
+      // ponytail: 链接把 Pod 表按重启次数倒序打开。
+      //
+      // 之前是 { name: 'pods' } —— 287 个 Pod 按名字排，罪魁不在视野里。
+      // 首屏那个「去看看」承诺的是「3 个 Pod 频繁重启」，点进去却要读者
+      // 自己再点一次表头才知道该看哪一列。
+      link: { name: 'pods', query: { sort: 'restarts', dir: 'desc' } },
       // 21,320 是这一屏里最刺眼的数字，之前它躺在右下角 16px 的表里。
       // 48px 的主位应该放数字，不是放一句短语。
       metric: { value: formatNumber(worst), unit: t('dashboard.unitRestarts') },
@@ -298,6 +327,10 @@ const heroTone = computed(() => {
 // 只管「数据到了」。
 const heroValueKey = ref(0)
 watch(() => heroMetric.value?.value, (v, old) => {
+  // ponytail: 第一次不算「变了」。数据第一次到的时候，old 是 undefined，
+  // 条件成立会把 key 加一，于是每次进页面都重播一次「值变了」的入场动画。
+  // 进场动效和「值变了」动效是两件事：前者属于组件，后者属于数据。
+  if (old === undefined) return
   if (v !== undefined && v !== old) heroValueKey.value += 1
 })
 
@@ -340,23 +373,32 @@ const recentActivity = computed(() => {
 
 <template>
   <LoadingState v-if="!stats && loading" />
-  <ErrorState v-else-if="error" :message="error" @retry="load" />
+  <!-- ponytail: 只有「一屏数据都没有」才整页换成错误页。有数据的时候，
+       刷新失败只更新 refreshError，快照留在屏幕上。 -->
+  <ErrorState v-else-if="error && !stats" :message="error" @retry="load" />
   <div v-else-if="stats">
 
     <PageHeader :title="t('route.dashboard')" :subtitle="compactStats">
       <template #actions>
         <!--
-          ponytail: 相对时间是给眼睛的，绝对时间是给证据的。
-          「更新于 几秒前」会被心跳带着走（见 useRelativeTime），但它始终
-          是一句相对话；鼠标悬停给出最后一次成功刷新的绝对时刻 ——
-          凌晨三点要跟别人确认「你看到的是哪一版数据」时，需要的是一个
-          能复述的时间点，不是「几秒前」。
+          ponytail: 可见的是绝对时刻，相对时间做 title。
+          相对时间是一句关于「现在」的话，读者要信浏览器的时钟；绝对时刻
+          是一个能复述的事实 —— 凌晨三点跟人确认「你看到的是哪一版」的时候，
+          要的是后者。上一轮审计的建议就是这个方向，之前实现反了。
         -->
         <span
           class="text-xs text-muted-foreground tabular-nums hidden sm:inline"
-          :title="lastRefreshed ? dayjs(lastRefreshed).format('YYYY-MM-DD HH:mm:ss') : undefined"
+          :title="lastRefreshed ? t('dashboard.updatedTitle', {
+            stamp: dayjs(lastRefreshed).format('YYYY-MM-DD HH:mm:ss'),
+            rel: formatRel(lastRefreshed.toISOString()),
+          }) : undefined"
         >
-          {{ lastRefreshed ? t('dashboard.updatedAt', { time: formatRel(lastRefreshed.toISOString()) }) : '' }}
+          {{ lastRefreshed ? t('dashboard.updatedAt', { time: dayjs(lastRefreshed).format('HH:mm:ss') }) : '' }}
+        </span>
+        <!-- ponytail: 刷新失败是一条小字，不是整页错误。快照还在屏幕上，
+             「更新于 3 分钟前」已经说明它有多旧。 -->
+        <span v-if="refreshError" class="text-xs text-warning" role="status">
+          {{ refreshError }}
         </span>
         <Button variant="outline" size="sm" :loading="refreshing" @click="load(true)" :aria-label="t('dashboard.refresh')">
           <template #icon>
@@ -549,7 +591,7 @@ const recentActivity = computed(() => {
             v-if="noisyRestarts.length === 0"
             :title="t('dashboard.frequentRestartsEmpty')"
           />
-          <RestartBars v-else :items="noisyRestarts" />
+          <RestartList v-else :items="noisyRestarts" />
         </CardContent>
       </Card>
     </div>

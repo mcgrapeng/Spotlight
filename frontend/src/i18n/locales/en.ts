@@ -31,10 +31,12 @@ export default {
   },
   dashboard: {
     updatedAt: 'Updated {time}',
+    updatedTitle: '{stamp} · {rel}',
     // ponytail: scale only — see the zh-CN note. Every number in this line
     // used to be repeated further down the same screen.
     compactStats: '{total} pods · {nodesReady}/{nodesTotal} nodes ready',
     refresh: 'Refresh',
+    refreshFailed: 'Refresh failed — still showing the last snapshot',
     actionRequired: '{count} more to handle',
     actionHint: 'Follow a link to investigate',
     actionFailedPods: '{count} Failed pods',
@@ -58,7 +60,9 @@ export default {
     heroRunningFact: '{running} / {total} pods are Running',
     heroOpen: 'Take a look',
     phaseDistribution: 'Pod phase distribution',
-    actionFrequentRestartsDetail: 'The pods with the most restarts are in the frequent-restarts chart',
+    actionFrequentRestartsDetail: 'Sorted by restarts, worst first',
+    restartLeadGap: '{count} more than 2nd place',
+    restartLeadTie: 'Level with 2nd place',
     unitFailedPods: 'failed pods',
     unitNotReadyNodes: 'nodes not ready',
     unitRestarts: 'restarts',
@@ -234,6 +238,7 @@ export default {
     askContextHide: 'Hide the raw context',
     askQuestionLabel: 'Question',
     askQuestionPlaceholder: 'e.g. which pod is restarting in a loop?',
+    askSubmitHint: 'Enter for a new line · ⌘/Ctrl + Enter to ask',
     askSubmit: 'Ask',
     askConfigure: 'Configure a model',
     answerLabel: 'Answer',
@@ -382,7 +387,6 @@ export default {
     newLines: '{count} new · Jump',
     emptyTitle: 'No logs yet',
     // ponytail: see the zh-CN note — a failed read is not an empty log.
-    errorTitle: 'Could not read the log',
     emptyWaiting: 'Waiting for container output…',
     emptyPaused: 'Log stream paused',
     emptyFilteredTitle: 'No matches for the current filter',
@@ -436,6 +440,7 @@ export default {
     navGroup: 'Navigation',
     resourcesGroup: 'Resources',
     resourcesEmpty: 'No matching pod or node',
+    resourcesTypeToSearch: 'Type at least 2 characters to search pods',
     actionsGroup: 'Actions',
     shortcutsTitle: 'Shortcuts',
     footer: {
@@ -448,10 +453,7 @@ export default {
       openPalette: 'Open the command palette',
       quickNav: 'Quick jump — press g, then d overview / p pods / n nodes / e events / f favorites',
       showPanel: 'Show the shortcuts panel',
-      focusSearch: 'Focus log search',
-      pauseStream: 'Pause / resume log stream',
-      toggleFollow: 'Toggle auto-follow',
-      copyAll: 'Copy all logs',
+      openAi: 'Open the AI assistant',
       searchNative: 'Search (browser default)',
     },
     actions: {

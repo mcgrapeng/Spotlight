@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 export type ShortcutHandler = (e: KeyboardEvent) => void
 
@@ -13,6 +13,23 @@ export interface Shortcut {
   /** Disable when an input/textarea/contenteditable is focused */
   ignoreInInputs?: boolean
 }
+
+/**
+ * True while a dense keyboard region owns the keyboard.
+ *
+ * The log viewer is such a region: it binds `g` to "jump to the next
+ * error", `p` to "pause the stream", `j`/`k` to line jumps. The global
+ * registry binds `g` as a PREFIX for `g d` / `g p` / `g n` / `g e` /
+ * `g f` (quick navigation).
+ *
+ * Both registries listen on the document, so before this flag existed a
+ * reader who pressed `g` (jump to next error) and then `p` (pause) was
+ * navigated to the Pods list — `g p` is a registered combo, and it fired.
+ *
+ * The region claims the keyboard, so the global registry stops arming
+ * its prefixes while it holds it. Single-key globals (⌘J) keep working.
+ */
+export const keyboardRegionClaimed = ref(false)
 
 export function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false
@@ -57,16 +74,24 @@ export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
         prefix = null
         if (prefixTimer) clearTimeout(prefixTimer)
       } else {
-      const combined = `${prefix} ${keyOnly}`
-      const match = list.find((s) => s.combo.toLowerCase() === combined)
-      if (match) {
-        if (isTypingTarget(e.target)) return
-        if (match.preventDefault ?? true) e.preventDefault()
-        match.handler(e)
-      }
-      prefix = null
-      if (prefixTimer) clearTimeout(prefixTimer)
-      return
+        const combined = `${prefix} ${keyOnly}`
+        const match = list.find((s) => s.combo.toLowerCase() === combined)
+        prefix = null
+        if (prefixTimer) clearTimeout(prefixTimer)
+        if (match) {
+          if (isTypingTarget(e.target)) return
+          // The region claimed the keyboard after the prefix was armed
+          // (the pointer moved into the log viewer). The sequence still
+          // belongs to the global registry, but the reader is now typing
+          // into a dense surface — do not navigate them out of it.
+          if (keyboardRegionClaimed.value) return
+          if (match.preventDefault ?? true) e.preventDefault()
+          match.handler(e)
+          return
+        }
+        // The second key matched no sequence. It must not be swallowed:
+        // a single-key shortcut (or another region) may still want it.
+        // Fall through to the single-key match below.
       }
     }
 
@@ -76,6 +101,10 @@ export function useKeyboardShortcuts(shortcuts: () => Shortcut[]) {
       const first = twoKeyMatch.combo.split(' ')[0].toLowerCase()
       if (first === keyOnly) {
         if (isTypingTarget(e.target)) return
+        // A dense region (the log viewer) owns the keyboard while it is
+        // active: `g` is "jump to next error" there, and arming the global
+        // prefix would turn the next letter into a navigation.
+        if (keyboardRegionClaimed.value) return
         if (twoKeyMatch.preventDefault ?? true) e.preventDefault()
         prefix = first
         prefixTimer = setTimeout(() => { prefix = null }, PREFIX_TIMEOUT_MS)

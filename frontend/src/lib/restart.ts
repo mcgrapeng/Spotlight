@@ -66,21 +66,3 @@ export function restartTone(count: number): RestartTone {
 export function restartTextClass(count: number): string {
   return restartTone(count) === 'warning' ? 'text-warning' : 'text-muted-foreground'
 }
-
-/**
- * Bar colour for a restart count: the tier is the strength, not the hue.
- *
- * A bar chart of restart counts is a ranking, and a ranking needs steps —
- * so the steps are opacity on one colour. Three red bars of the same
- * length (21,302 / 21,320 / 21,320) said "everything is fatal"; three
- * amber bars of the same length say "these three are the noisy ones",
- * which is what the chart is actually about.
- */
-export function restartBarClass(count: number): string {
-  switch (restartSeverity(count)) {
-    case 'critical': return 'bg-warning'
-    case 'high': return 'bg-warning/80'
-    case 'elevated': return 'bg-warning/60'
-    default: return 'bg-muted-foreground/40'
-  }
-}

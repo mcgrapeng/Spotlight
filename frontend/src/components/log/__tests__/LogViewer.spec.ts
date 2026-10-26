@@ -305,9 +305,12 @@ describe('LogViewer failure state', () => {
       props: { lines: [], unreadCount: 0, error: 'Pod 或容器不存在（可能已经被删除）' },
       global: { plugins: [i18n] },
     })
-    expect(wrapper.text()).toContain('日志读取失败')
+    // The message is the backend's own words now — one place, one wording.
+    expect(wrapper.text()).toContain('Pod 或容器不存在（可能已经被删除）')
     expect(wrapper.text()).not.toContain('暂无日志')
     expect(wrapper.text()).not.toContain('等待容器输出')
+    // And the banner does not repeat it.
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
   it('still shows the empty state when nothing failed', () => {
@@ -316,6 +319,21 @@ describe('LogViewer failure state', () => {
       global: { plugins: [i18n] },
     })
     expect(wrapper.text()).toContain('暂无日志')
-    expect(wrapper.text()).not.toContain('日志读取失败')
+    expect(wrapper.text()).not.toContain('Pod 或容器不存在')
+  })
+
+  it('keeps the banner for a partial failure, and does not repeat it below', () => {
+    // One container's stream died but there are still logs on screen: the
+    // banner says so, the log area keeps the lines it has.
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('info', 'still streaming')],
+        unreadCount: 0,
+        error: 'sidecar 容器读取失败',
+      },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.find('[role="alert"]').text()).toContain('sidecar 容器读取失败')
+    expect(wrapper.text()).toContain('still streaming')
   })
 })

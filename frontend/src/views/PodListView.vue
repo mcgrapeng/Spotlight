@@ -18,7 +18,7 @@ import { restartTone } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
 import { usePagination } from '@/composables/usePagination'
-import { usePodSorting, DENSITY_CLASSES, type PodDensity } from '@/composables/usePodSorting'
+import { usePodSorting, DENSITY_CLASSES, type PodDensity, type PodSortKey, type SortDir } from '@/composables/usePodSorting'
 import SortableHeader from '@/components/common/SortableHeader.vue'
 import DensityToggle from '@/components/common/DensityToggle.vue'
 import { STORAGE_KEYS } from '@/storage-keys'
@@ -144,9 +144,47 @@ const { page, totalPages } = usePagination({
 // 排序：这张表之前一个能排序的列都没有，而 on-call 的第一个动作就是
 // 「按重启次数倒序找罪魁」。默认按名称升序（可预期），点「重启」即按
 // 次数倒序 —— 数字列第一次点击就用「大的在前」，小的在前没有意义。
+//
+// 排序键进 URL（?sort=restarts&dir=desc）：仪表盘那个「去看看」指着
+// 「3 个 Pod 频繁重启」，点过去如果还是按名字排的 287 个 Pod，这个承诺
+// 就没有兑现 —— 读者得自己再点一次表头才知道要看哪一列。
+const VALID_SORTS = new Set<PodSortKey>([
+  'name', 'namespace', 'phase', 'containers', 'restarts', 'node', 'age',
+])
+const querySort = computed<PodSortKey>(() => {
+  const v = route.query.sort as string | undefined
+  return v && VALID_SORTS.has(v as PodSortKey) ? (v as PodSortKey) : 'name'
+})
+const queryDir = computed<SortDir>(() => (route.query.dir === 'desc' ? 'desc' : 'asc'))
+
 const { sortKey, sortDir, sorted, toggle, ariaSortFor } = usePodSorting(
   computed(() => data.value.items),
+  { key: querySort.value, dir: queryDir.value },
 )
+
+// URL → 排序：链接带着 ?sort= 进来时，表格按那个排。组件不重新挂载
+// （AppLayout 的 key 只看 path），所以这里要主动同步一次。
+watch([querySort, queryDir], ([k, d]) => {
+  if (k !== sortKey.value) sortKey.value = k
+  if (d !== sortDir.value) sortDir.value = d
+})
+
+// 排序 → URL：排序是别人会复制粘贴的上下文，刷新和分享都该带着。
+// 只在真的有差别时 replace，两个 watcher 才不会互相绕。
+watch([sortKey, sortDir], ([k, d]) => {
+  const isDefault = k === 'name' && d === 'asc'
+  const q = { ...route.query }
+  if (isDefault) {
+    delete q.sort
+    delete q.dir
+  } else {
+    q.sort = k
+    q.dir = d
+  }
+  if (String(q.sort ?? '') === String(route.query.sort ?? '')
+      && String(q.dir ?? '') === String(route.query.dir ?? '')) return
+  router.replace({ query: q })
+})
 
 // 密度：默认行高是为「好看」定的，SRE 关心的是一屏能扫多少个 Pod。
 const DENSITY_KEY = STORAGE_KEYS.podTableDensity

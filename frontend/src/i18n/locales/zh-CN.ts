@@ -35,14 +35,20 @@ export default {
     },
   },
   dashboard: {
+    // ponytail: 可见的是绝对时刻，相对时间做 title。
+    // 相对时间是一句关于「现在」的话，读者要信浏览器的时钟；绝对时刻是
+    // 一个能复述的事实 —— 凌晨三点跟人确认「你看到的是哪一版」的时候，
+    // 要的是后者。
     updatedAt: '更新于 {time}',
+    updatedTitle: '{stamp} · {rel}',
     // ponytail: 只留规模，不留结论。
     // 原来这一行是「287 个 Pod · 258 运行中 · 0 失败 · 3/3 节点 · 25 警告」，
     // 而这五个数字在下面各出现一次（阶段图例、行动卡）。首屏 22 个数字里
     // 有 8 个是重复的，重复的那部分全在这一行。
     compactStats: '{total} 个 Pod · {nodesReady}/{nodesTotal} 节点就绪',
     refresh: '刷新',
-    actionRequired: '其余 {count} 项需要处理',
+    refreshFailed: '刷新失败，仍是上一次的数据',
+    actionRequired: '还有 {count} 项需要处理',
     actionHint: '点链接去查',
     actionFailedPods: '{count} 个 Failed Pod',
     actionFailedPodsDetail: 'Pods 页已自动过滤 Failed',
@@ -65,7 +71,13 @@ export default {
     heroRunningFact: '{running} / {total} 个 Pod 处于 Running',
     heroOpen: '去看看',
     phaseDistribution: 'Pod 阶段分布',
-    actionFrequentRestartsDetail: '重启次数排前面的 Pod 都在「频繁重启」那张表里',
+    actionFrequentRestartsDetail: '按重启次数倒序，罪魁在前',
+    // ponytail: 那张表原来是一张条形图，每根条的长度是 restarts/max ——
+    // 真实集群上的前三名是 21,302 / 21,320 / 21,320，画出来是三条一样长
+    // 的满格线。条形图的全部意义是相对大小，相对大小恒等于 1 的时候它
+    // 什么也没说。现在它是一份名次表，比较的那句话写在这里。
+    restartLeadGap: '比第 2 名多 {count} 次',
+    restartLeadTie: '与第 2 名持平',
     // ponytail: 主位那 48px 放的是数字，数字后面跟一个单位。
     unitFailedPods: '个失败 Pod',
     unitNotReadyNodes: '个节点未就绪',
@@ -248,6 +260,7 @@ export default {
     askContextHide: '收起原始上下文',
     askQuestionLabel: '问题',
     askQuestionPlaceholder: '例如：哪个 Pod 在反复重启？',
+    askSubmitHint: '回车换行 · ⌘/Ctrl + 回车提问',
     askSubmit: '提问',
     askConfigure: '去配置模型',
     answerLabel: '回答',
@@ -406,7 +419,6 @@ export default {
     emptyTitle: '暂无日志',
     // ponytail: 读取失败和「暂无日志」是两件事。之前它们同时出现，
     // 互相矛盾：上面一条红条说读取失败，下面说等待容器输出。
-    errorTitle: '日志读取失败',
     emptyWaiting: '等待容器输出…',
     emptyPaused: '日志已暂停',
     emptyFilteredTitle: '当前过滤无匹配',
@@ -458,6 +470,7 @@ export default {
     navGroup: '导航',
     resourcesGroup: '资源',
     resourcesEmpty: '没有匹配的 Pod 或节点',
+    resourcesTypeToSearch: '输入至少 2 个字符以搜索 Pod',
     actionsGroup: '操作',
     shortcutsTitle: '快捷键',
     footer: {
@@ -470,10 +483,7 @@ export default {
       openPalette: '打开命令面板',
       quickNav: '快速跳转：先按 g，再按 d 总览 / p Pod / n 节点 / e 事件 / f 收藏夹',
       showPanel: '显示快捷键面板',
-      focusSearch: 'LogViewer 聚焦搜索',
-      pauseStream: 'LogViewer 暂停/继续流',
-      toggleFollow: 'LogViewer 切换自动跟随',
-      copyAll: 'LogViewer 复制全部',
+      openAi: '打开 AI 助手',
       searchNative: 'LogViewer 搜索（保留原生行为）',
     },
     actions: {

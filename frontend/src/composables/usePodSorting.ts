@@ -58,9 +58,14 @@ function compare(a: PodOut, b: PodOut, key: PodSortKey): number {
  * engineer the first thing they do on this page is "sort by restarts, show
  * me the worst one" - that was impossible.
  */
-export function usePodSorting(source: Ref<PodOut[]>) {
-  const sortKey = ref<PodSortKey>('name')
-  const sortDir = ref<SortDir>('asc')
+export function usePodSorting(
+  source: Ref<PodOut[]>,
+  initial: { key?: PodSortKey; dir?: SortDir } = {},
+) {
+  // The initial sort can come from the URL: the dashboard's "go see" link
+  // opens the table already sorted by restarts, biggest first.
+  const sortKey = ref<PodSortKey>(initial.key ?? 'name')
+  const sortDir = ref<SortDir>(initial.dir ?? 'asc')
 
   function toggle(key: PodSortKey) {
     if (sortKey.value === key) {

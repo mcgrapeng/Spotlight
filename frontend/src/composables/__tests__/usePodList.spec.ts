@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { usePodList } from '@/composables/usePodList'
+import { getI18n } from '@/i18n'
 import { podsApi } from '@/api/endpoints'
 
 vi.mock('@/api/endpoints', () => ({
@@ -112,15 +113,26 @@ describe('usePodList', () => {
     vi.useRealTimers()
   })
 
-  it('captures error messages', async () => {
-    vi.mocked(podsApi.list).mockRejectedValueOnce(new Error('boom'))
+  it('shows the backend\'s reason when it gave one, and a localized line when it did not', async () => {
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
     const status = ref('all')
     const search = ref('')
-    const { error, loading } = usePodList({ cluster, namespace, status, search })
-    await vi.waitFor(() => expect(loading.value).toBe(false))
-    expect(error.value).toBe('boom')
+
+    // The server explained the failure → its words are shown.
+    vi.mocked(podsApi.list).mockRejectedValueOnce({
+      response: { data: { detail: 'Pod 或容器不存在（可能已经被删除）' } },
+    })
+    const first = usePodList({ cluster, namespace, status, search })
+    await vi.waitFor(() => expect(first.loading.value).toBe(false))
+    expect(first.error.value).toBe('Pod 或容器不存在（可能已经被删除）')
+
+    // It did not → the reader gets the localized line, not axios's English
+    // ("Network Error" / "Request failed with status code 500").
+    vi.mocked(podsApi.list).mockRejectedValueOnce(new Error('boom'))
+    const second = usePodList({ cluster, namespace, status, search })
+    await vi.waitFor(() => expect(second.loading.value).toBe(false))
+    expect(second.error.value).toBe(getI18n().global.t('state.error'))
   })
 
   it('reload() re-invokes podsApi.list', async () => {

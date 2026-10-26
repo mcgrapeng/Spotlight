@@ -42,7 +42,7 @@ async function load() {
   try {
     nodes.value = await nodesApi.list(cluster.activeCluster)
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
+    error.value = e?.response?.data?.detail ?? t('state.error')
   } finally {
     loading.value = false
   }

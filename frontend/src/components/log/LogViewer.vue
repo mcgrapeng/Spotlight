@@ -1908,9 +1908,15 @@ const helpRows = computed(() => [
          stream. It used to sit inside the scrollable region, where it took
          flow space the virtual model knew nothing about, so every offset
          was shifted by the banner's height whenever an error was showing,
-         and the banner scrolled away from the thing it was reporting on. -->
+         and the banner scrolled away from the thing it was reporting on.
+
+         It only shows when there are still logs on screen — a partial
+         failure (one container's stream died, the others are fine). When
+         the whole fetch failed there is nothing to show, and the empty
+         area below carries the message and the retry instead. Two error
+         surfaces for one failure is one too many. -->
     <div
-      v-if="error"
+      v-if="error && displayedLines.length > 0"
       class="flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-error shrink-0"
       role="alert"
     >
@@ -1970,13 +1976,21 @@ const helpRows = computed(() => [
           之前这里只有三个分支，于是「读取失败」和「暂无日志」会同时出现：
           上面一条红条说「Request failed with status code 500」，下面一块
           空白区说「暂无日志 · 等待容器输出…」。两句话互相矛盾，读者只能
-          猜哪个是真的。失败的时候只说失败，细节和「重试」在上面的红条里。
+          猜哪个是真的。
+
+          现在这一块是失败的唯一出口：文案用 error 本身（后端说的原话，
+          比如「Pod 或容器不存在」），「重试」按钮也在这里。上面那条红条
+          只在还有日志可看的时候出现（部分容器失败），两种情况不再同时
+          出现，也不再用两个词说同一件事。
         -->
         <template v-if="error">
           <CircleX :size="32" class="mb-3 opacity-40 text-error" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
-            {{ t('log.errorTitle') }}
+            {{ error }}
           </p>
+          <Button variant="outline" size="xs" @click="emit('retry')">
+            {{ t('state.retry') }}
+          </Button>
         </template>
         <template v-else-if="lines.length === 0">
           <Terminal :size="32" class="mb-3 opacity-30" :stroke-width="1.5" />
