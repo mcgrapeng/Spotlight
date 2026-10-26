@@ -91,8 +91,10 @@ export const podsApi = {
     }).then((r) => r.data),
   get: (cluster: string | null, namespace: string, name: string) =>
     http.get<PodOut>(`/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, ctx(cluster)).then((r) => r.data),
-  stats: (cluster?: string | null) =>
-    http.get<DashboardOut>('/pods/stats', { params: { context: cluster || undefined } }).then((r) => r.data),
+  stats: (cluster?: string | null, namespace?: string | null) =>
+    http.get<DashboardOut>('/pods/stats', {
+      params: { context: cluster || undefined, namespace: namespace || undefined },
+    }).then((r) => r.data),
   historyLogs: (
     cluster: string | null, namespace: string, name: string,
     container?: string | null, tail = 500, since?: string,

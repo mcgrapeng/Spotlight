@@ -1396,6 +1396,8 @@ export interface operations {
         parameters: {
             query?: {
                 context?: string | null;
+                /** @description namespace name or '_all' */
+                namespace?: string | null;
             };
             header?: never;
             path?: never;

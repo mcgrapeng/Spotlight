@@ -90,3 +90,54 @@ async def test_an_event_without_a_timestamp_is_not_reported_as_just_happened():
     out = await _build([_warning("no-time", "")])
     assert out.warning_events == 0
     assert out.recent_warns == []
+
+
+@pytest.mark.asyncio
+async def test_the_snapshot_is_scoped_to_the_namespace():
+    """The dashboard must read the namespace it is asked about.
+
+    It used to always read the whole cluster, while the sidebar badge
+    counted per namespace. Two numbers about the same thing, on the same
+    screen, disagreeing: pick "kube-system" in the top bar and the badge
+    said 0 while the dashboard said 1.
+    """
+    seen: list[tuple] = []
+
+    class NamespaceRepo(FakeRepo):
+        async def list_pods(self, cluster, namespace, label_selector, search, status):
+            seen.append(("pods", namespace))
+            return []
+
+        async def list_events(self, cluster, namespace, involved_name, limit):
+            seen.append(("events", namespace))
+            return list(self.events)
+
+    uc = DashboardUseCases(f"scope-{uuid4().hex}", NamespaceRepo([]))
+    await uc.build(None, "kube-system")
+    assert seen == [("pods", "kube-system"), ("events", "kube-system")]
+
+
+@pytest.mark.asyncio
+async def test_two_namespaces_do_not_share_a_cached_snapshot():
+    """The cache key has to include the namespace.
+
+    Without it, a cluster-wide snapshot served for every namespace for the
+    whole TTL — the user switches namespace, the numbers stay.
+    """
+    class CountingRepo(FakeRepo):
+        calls = 0
+
+        async def list_pods(self, cluster, namespace, label_selector, search, status):
+            type(self).calls += 1
+            return []
+
+        async def list_events(self, cluster, namespace, involved_name, limit):
+            return []
+
+    repo = CountingRepo([])
+    uc = DashboardUseCases(f"scope-{uuid4().hex}", repo)
+    await uc.build(None, "ns-a")
+    await uc.build(None, "ns-b")
+    # Each namespace loaded its own snapshot; a shared key would have made
+    # the second call a cache hit.
+    assert repo.calls == 2

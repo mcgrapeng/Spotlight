@@ -57,13 +57,13 @@ def _within_window(last_seen: str | None, window: timedelta, now: datetime) -> b
     return now - moment <= window
 
 
-def _cache_key(scope: str, cluster: str | None) -> str:
+def _cache_key(scope: str, cluster: str | None, namespace: str | None) -> str:
     # `<scope>|…` prefix is what `invalidate_scope` matches on.
-    return f"{scope}|{cluster or ''}"
+    return f"{scope}|{cluster or ''}|{namespace or ''}"
 
 
-def _cache_for(scope: str, cluster: str | None):
-    key = _cache_key(scope, cluster)
+def _cache_for(scope: str, cluster: str | None, namespace: str | None):
+    key = _cache_key(scope, cluster, namespace)
     return _caches.get(key, float(get_settings().cache_ttl_pods))
 
 
@@ -72,13 +72,23 @@ class DashboardUseCases:
         self._scope = scope
         self._k8s = k8s
 
-    async def build(self, cluster: str | None) -> DashboardOut:
-        cache = _cache_for(self._scope, cluster)
+    async def build(self, cluster: str | None, namespace: str | None = None) -> DashboardOut:
+        # ponytail: 快照是按命名空间的，和顶栏那个选择器对齐。
+        #
+        # 之前这里永远是全集群的（namespace 传 None），于是同一个屏幕上有
+        # 两个「告警」数打架：侧边栏徽标按命名空间算，仪表盘按全集群算。
+        # 用户在顶栏选了 kube-system，徽标说 0，仪表盘说 1。
+        #
+        # 命名空间还进缓存键 —— 不进的话，先看 A 命名空间再切到 B 命名空间，
+        # B 会拿到 A 的快照（5 秒 TTL 内）。
+        #
+        # 节点数仍然是集群级的：节点不属于任何命名空间。
+        cache = _cache_for(self._scope, cluster, namespace)
         async def _load() -> DashboardOut:
             pods, nodes, events, namespaces = await asyncio.gather(
-                self._k8s.list_pods(cluster, None, LabelSelector(), None, None),
+                self._k8s.list_pods(cluster, namespace, LabelSelector(), None, None),
                 self._k8s.list_nodes(cluster),
-                self._k8s.list_events(cluster, None, None, 500),
+                self._k8s.list_events(cluster, namespace, None, 500),
                 self._k8s.list_namespaces(cluster),
             )
             phase_counter = Counter(p.phase for p in pods)
