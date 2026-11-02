@@ -99,6 +99,10 @@ export function ansiToHtml(input: string): AnsiParts {
 
   const emit = (text: string) => {
     if (!text) return
+    // A lone ESC with no `[` never matches ANSI_RE; strip the control char so
+    // copy/search never sees it — "all escapes stripped" is this module's contract.
+    text = text.replace(/\x1b/g, '')
+    if (!text) return
     setSpan(stateCls())
     html += escapeHtml(text)
     plain += text
