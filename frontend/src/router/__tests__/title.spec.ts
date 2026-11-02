@@ -30,11 +30,13 @@ describe('router document title', () => {
     await router.push('/login')
   }
 
+  // Cold: this test pays the lazy LoginView import, which can exceed the
+  // 5s default when the suite runs full-tilt in parallel.
   it('renders the localized title and lang on navigation', async () => {
     await gotoLogin('zh-CN')
     expect(document.title).toBe('登录 · Spotlight')
     expect(document.documentElement.lang).toBe('zh-CN')
-  })
+  }, 15_000)
 
   it('recomputes the title when the locale switches', async () => {
     await gotoLogin('zh-CN')

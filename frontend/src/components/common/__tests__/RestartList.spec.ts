@@ -143,5 +143,7 @@ describe('focus on route change', () => {
 
     expect(document.activeElement?.id).toBe('main-content')
     wrapper.unmount()
-  })
+    // Slow test: it re-imports the whole AppLayout tree after vi.resetModules,
+    // which can outgrow the 5s default under a saturated parallel run.
+  }, 15_000)
 })
