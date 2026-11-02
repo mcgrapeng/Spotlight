@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sse_starlette.sse import EventSourceResponse
 
 from app.application.dto import (
@@ -22,6 +22,10 @@ from app.interface.api.v1.dependencies import ai_uc, require_permission
 
 router = APIRouter(tags=["ai"])
 log = get_logger("ai.routes")
+
+# sqlite INTEGER is int64 — a path id beyond it overflows the driver and
+# turned into a 500 (found by API fuzzing). Out-of-range ids are a 422.
+_MAX_SQL_ID = 2**63 - 1
 
 
 def _to_entity(p: AIProviderIn, *, id: int | None = None) -> AIProviderConfig:
@@ -69,34 +73,54 @@ async def list_providers(uc: AIUseCases = Depends(ai_uc)):
     response_model=AIProviderOut,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission("ai.manage"))],
+    responses={400: {"description": "Invalid provider configuration"}},
 )
 async def add_provider(payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc)):
     try:
         return _to_out(await uc.upsert_provider(_to_entity(payload)))
     except SingleActiveProviderError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except ValueError as e:
+        # Domain validation ("api_key required for non-ollama provider"):
+        # bad input is a 400, never a 500. ValueError only — a KeyError
+        # inside the use case is a server bug and must stay a 5xx.
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.put(
     "/ai/providers/{provider_id}",
     response_model=AIProviderOut,
     dependencies=[Depends(require_permission("ai.manage"))],
+    responses={
+        400: {"description": "Invalid provider configuration"},
+        404: {"description": "Provider not found"},
+    },
 )
 async def update_provider(
-    provider_id: int, payload: AIProviderIn, uc: AIUseCases = Depends(ai_uc),
+    payload: AIProviderIn,
+    provider_id: int = Path(ge=1, le=_MAX_SQL_ID),
+    uc: AIUseCases = Depends(ai_uc),
 ):
     try:
         return _to_out(await uc.upsert_provider(_to_entity(payload, id=provider_id)))
     except SingleActiveProviderError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.delete(
     "/ai/providers/{provider_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_permission("ai.manage"))],
+    responses={404: {"description": "Provider not found"}},
 )
-async def delete_provider(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
+async def delete_provider(
+    provider_id: int = Path(ge=1, le=_MAX_SQL_ID),
+    uc: AIUseCases = Depends(ai_uc),
+):
     ok = await uc.delete_provider(provider_id)
     if not ok:
         raise HTTPException(status_code=404, detail="provider not found")
@@ -107,9 +131,16 @@ async def delete_provider(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
     "/ai/providers/{provider_id}/default",
     response_model=AIProviderOut,
     dependencies=[Depends(require_permission("ai.manage"))],
+    responses={404: {"description": "Provider not found"}},
 )
-async def set_default(provider_id: int, uc: AIUseCases = Depends(ai_uc)):
-    return _to_out(await uc.set_default(provider_id))
+async def set_default(
+    provider_id: int = Path(ge=1, le=_MAX_SQL_ID),
+    uc: AIUseCases = Depends(ai_uc),
+):
+    try:
+        return _to_out(await uc.set_default(provider_id))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.post(

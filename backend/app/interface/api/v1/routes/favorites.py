@@ -1,7 +1,7 @@
 """Favorite routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from app.application.dto import FavoriteCreate, FavoriteOut
 from app.application.use_cases.favorites import FavoriteUseCases
@@ -40,6 +40,10 @@ async def add_fav(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_permission("favorites.write"))],
 )
-async def remove_fav(fav_id: int, uc: FavoriteUseCases = Depends(favorite_uc)):
+async def remove_fav(
+    # sqlite INTEGER is int64; beyond it the driver overflows (fuzz-found).
+    fav_id: int = Path(ge=1, le=2**63 - 1),
+    uc: FavoriteUseCases = Depends(favorite_uc),
+):
     await uc.remove(fav_id)
     return None
