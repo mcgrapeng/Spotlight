@@ -42,9 +42,13 @@ async def list_pods(
 )
 async def stats(
     context: str | None = Query(default=None),
+    namespace: str | None = Query(default=None, description="namespace name or '_all'"),
     uc: DashboardUseCases = Depends(dashboard_uc),
 ):
-    return await uc.build(context)
+    # ponytail: namespace 进快照。仪表盘之前永远是全集群口径，而侧边栏
+    # 徽标是按命名空间算的 —— 同一个屏幕上两个「告警」数打架。顶栏选了
+    # 什么命名空间，这一页就说那个命名空间的事。
+    return await uc.build(context, namespace)
 
 
 @router.get(

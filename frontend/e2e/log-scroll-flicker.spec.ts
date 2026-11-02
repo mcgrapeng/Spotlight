@@ -13,9 +13,13 @@ import { installApiMocks } from './_fixtures'
  *   1. every rendered row belongs to a group whose height the model can
  *      see, so no row is invisible to the measurement;
  *   2. scrollTop never walks backwards while the reader scrolls forward;
- *   3. the oldest line is reachable and fully visible at maximum scroll;
+ *   3. both ends of the log are reachable and fully visible;
  *   4. the content moves by exactly the distance the reader scrolled, so
  *      nothing slides under the cursor.
+ *
+ * The log renders oldest-first with the tail at the BOTTOM, the way
+ * `kubectl logs -f` does, so the panel opens at the newest line and the
+ * reader scrolls UP into the history.
  */
 
 // A log that contains every shape that breaks a flat-height model: plain
@@ -28,9 +32,9 @@ const LINES = Array.from({ length: 400 }, (_, i) => {
     container: i % 3 === 0 ? 'app' : '',
     severity: i % 5 === 0 ? 'error' : 'info',
   }
-  // The buffer is newest-first, so the LAST indices are the oldest lines and
-  // the FIRST indices are the newest. The shapes that matter are put at the
-  // newest end so they are on screen when the panel opens.
+  // The API returns the buffer oldest-first (index 0 is 00:00) and the app
+  // reverses it, so the shapes that matter sit at the newest end — which is
+  // the BOTTOM of the panel now, and therefore on screen when it opens.
   if (i >= 360) {
     // 40 identical lines: they fold into ONE group.
     return { ...base, content: 'identical heartbeat line' }
@@ -63,6 +67,18 @@ async function openLog(page) {
   return log
 }
 
+/**
+ * Toggle line wrapping.
+ *
+ * The toggle lives in the toolbar's overflow menu now: the toolbar was nine
+ * same-weight icon buttons, and the ones a reader does not press every
+ * minute went into a menu where each entry has a word on it.
+ */
+async function toggleWrap(page) {
+  await page.getByRole('button', { name: '更多' }).click()
+  await page.getByRole('button', { name: /切换自动换行/ }).click()
+}
+
 /** Put the wheel over the middle of the log panel. */
 async function wheelOver(page, log, dy: number) {
   const box = await log.boundingBox()
@@ -86,6 +102,13 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
     const jsonChip = log.getByRole('button', { name: /JSON/i }).first()
     await jsonChip.click()
     await page.waitForTimeout(400)
+    // Clicking the JSON chip scrolls the reader UP to it, which is exactly
+    // what a reader does too, and it breaks the follow. Go back to the
+    // tail so the expanded fold is inside the window this report measures.
+    await log.evaluate(
+      (el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior }),
+    )
+    await page.waitForTimeout(600)
 
     const report = await log.evaluate((el) => {
       const ROW = 'div[class*="min-h-[22px]"]'
@@ -111,6 +134,10 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
       return {
         groupCount: groups.length,
         rowCount: allRows.length,
+        foldCount: wrap.querySelectorAll('div[role="button"]').length,
+        jsonCount: [...wrap.querySelectorAll('button')].filter((b) =>
+          /JSON/i.test(b.textContent || ''),
+        ).length,
         orphanRows: orphans.length,
         tooShort: tooShort.slice(0, 3),
       }
@@ -118,15 +145,24 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
 
     expect(report.orphanRows, 'every rendered row must belong to a measured group').toBe(0)
     expect(report.tooShort, 'a group wrapper must be as tall as the rows it holds').toEqual([])
-    // The fixture has to actually contain the shapes, or the assertion
-    // above is vacuous.
-    expect(report.rowCount, 'the fixture must render a folded run').toBeGreaterThan(40)
+    // The fixture has to actually contain the shapes, or the assertions
+    // above are vacuous. The panel opens at the tail, where the folded run
+    // and the JSON payloads live.
+    expect(report.foldCount, 'the fixture must render a folded run').toBeGreaterThan(0)
+    expect(report.jsonCount, 'the fixture must render JSON payloads').toBeGreaterThan(0)
   })
 
   test('scrollTop never moves backwards while scrolling forward', async ({ page }) => {
     const log = await openLog(page)
-    await page.getByRole('button', { name: /切换换行/ }).click()
+    await toggleWrap(page)
     await page.waitForTimeout(400)
+    // The panel opens at the tail, so scroll forward means scrolling DOWN
+    // from here — which is a no-op at the bottom. Start at the top of the
+    // history and scroll down into it.
+    await log.evaluate(
+      (el) => el.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }),
+    )
+    await page.waitForTimeout(600)
 
     await log.evaluate((el) => {
       const w = window as unknown as { __t: number[] }
@@ -148,13 +184,14 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
     expect(regressions, 'scrollTop moved backwards ' + regressions.length + ' times').toEqual([])
   })
 
-  test('the oldest line is reachable at maximum scroll', async ({ page }) => {
+  test('both ends of the log are reachable and fully visible', async ({ page }) => {
     const log = await openLog(page)
     for (const wrap of [false, true]) {
       if (wrap) {
-        await page.getByRole('button', { name: /切换换行/ }).click()
+        await toggleWrap(page)
         await page.waitForTimeout(500)
       }
+      // The bottom is the tail now: the newest line has to be on screen.
       await log.evaluate(
         (el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior }),
       )
@@ -175,9 +212,33 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
       expect(end.scrollTop, 'wrap=' + wrap + ': the reader must be able to reach the end').toBe(
         end.maxScroll,
       )
-      expect(end.visible, 'wrap=' + wrap + ': the oldest line must be fully visible').toBe(true)
+      expect(end.visible, 'wrap=' + wrap + ': the newest line must be fully visible').toBe(true)
       expect(
         end.lastRowText,
+        'wrap=' + wrap + ': the newest line must be the one on screen',
+      ).toContain('identical heartbeat')
+
+      // And the oldest line is at the top.
+      await log.evaluate(
+        (el) => el.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }),
+      )
+      await page.waitForTimeout(700)
+      const start = await log.evaluate((el) => {
+        const wrap = el.querySelector('div.relative')!
+        const rows = [...wrap.querySelectorAll('div[class*="min-h-[22px]"]')]
+        const first = rows[0]
+        const fb = first?.getBoundingClientRect()
+        const eb = el.getBoundingClientRect()
+        return {
+          scrollTop: Math.round(el.scrollTop),
+          firstRowText: (first?.innerText || '').replace(/\s+/g, ' ').slice(0, 40),
+          visible: fb ? fb.bottom <= eb.bottom + 2 && fb.top >= eb.top - 2 : false,
+        }
+      })
+      expect(start.scrollTop, 'wrap=' + wrap + ': the reader must be able to reach the start').toBe(0)
+      expect(start.visible, 'wrap=' + wrap + ': the oldest line must be fully visible').toBe(true)
+      expect(
+        start.firstRowText,
         'wrap=' + wrap + ': the oldest line must be the one on screen',
       ).toContain('line 0 ')
     }
@@ -185,7 +246,7 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
 
   test('the content moves by exactly the distance the reader scrolled', async ({ page }) => {
     const log = await openLog(page)
-    await page.getByRole('button', { name: /切换换行/ }).click()
+    await toggleWrap(page)
     await page.waitForTimeout(500)
     await log.evaluate(
       (el) => el.scrollTo({ top: 1200, behavior: 'instant' as ScrollBehavior }),

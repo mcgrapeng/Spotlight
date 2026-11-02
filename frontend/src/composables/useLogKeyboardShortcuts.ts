@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref, watchEffect, type Ref } from 'vue'
+import { keyboardRegionClaimed } from './useKeyboardShortcuts'
 
 export interface LogShortcutHandlers {
   /** 'f' or '/' — focus the search input. */
@@ -96,9 +97,15 @@ export function useLogKeyboardShortcuts(
     } else {
       document.removeEventListener('keydown', onKey)
     }
+    // Claim the keyboard for the region. The global registry binds `g` as
+    // a navigation prefix; inside the log viewer `g` means "jump to the
+    // next error", and `g p` ("go to pods") would yank the reader off the
+    // pod they are debugging.
+    keyboardRegionClaimed.value = opts.active.value
   })
 
   onBeforeUnmount(() => {
     document.removeEventListener('keydown', onKey)
+    keyboardRegionClaimed.value = false
   })
 }

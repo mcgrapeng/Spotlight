@@ -1,4 +1,5 @@
 import { http } from './client'
+import { readSSE } from './sse'
 import type {
   AIAnalyzeOut, AIProviderOut, AIProviderIn, ClusterOut, DashboardOut,
   EventOut, FavoriteOut, LogHistoryOut, LogLineOut,
@@ -90,8 +91,10 @@ export const podsApi = {
     }).then((r) => r.data),
   get: (cluster: string | null, namespace: string, name: string) =>
     http.get<PodOut>(`/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, ctx(cluster)).then((r) => r.data),
-  stats: (cluster?: string | null) =>
-    http.get<DashboardOut>('/pods/stats', { params: { context: cluster || undefined } }).then((r) => r.data),
+  stats: (cluster?: string | null, namespace?: string | null) =>
+    http.get<DashboardOut>('/pods/stats', {
+      params: { context: cluster || undefined, namespace: namespace || undefined },
+    }).then((r) => r.data),
   historyLogs: (
     cluster: string | null, namespace: string, name: string,
     container?: string | null, tail = 500, since?: string,
@@ -154,11 +157,55 @@ export const aiApi = {
   deleteProvider: (id: number) => http.delete(`/ai/providers/${id}`),
   setDefault: (id: number) =>
     http.post<AIProviderOut>(`/ai/providers/${id}/default`).then((r) => r.data),
+  ask: (providerId: number, question: string, context: string) =>
+    http.post<AIAnalyzeOut>('/ai/ask', {
+      provider_id: providerId, question, context,
+    }, { timeout: 60_000 }).then((r) => r.data),
+  /**
+   * The same question, answered token by token.
+   *
+   * A cluster-level question takes the model tens of seconds. A spinner for
+   * that long looks exactly like a hang, so the panel renders the answer as
+   * it is written. `fetch` rather than `EventSource` because the request
+   * carries a body.
+   */
+  askStream: async (
+    providerId: number,
+    question: string,
+    context: string,
+    onDelta: (text: string) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const resp = await fetch('/api/v1/ai/ask/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ provider_id: providerId, question, context }),
+      signal,
+    })
+    if (!resp.ok) {
+      if (resp.status === 401) {
+        const { useAuthStore } = await import('@/stores/auth')
+        useAuthStore().requireLogin()
+      }
+      const body = await resp.json().catch(() => null)
+      throw new Error(body?.detail ?? `HTTP ${resp.status}`)
+    }
+    for await (const frame of readSSE(resp)) {
+      if (frame.event === 'delta') {
+        const { text } = JSON.parse(frame.data) as { text: string }
+        if (text) onDelta(text)
+      } else if (frame.event === 'error') {
+        const { detail } = JSON.parse(frame.data) as { detail: string }
+        throw new Error(detail)
+      }
+    }
+  },
   analyze: (cluster: string | null, namespace: string, name: string,
              providerId: number, logLines: string[], question: string) =>
     http.post<AIAnalyzeOut>(
       `/ai/analyze/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
       { provider_id: providerId, question, log_lines: logLines },
-      { params: { context: cluster || undefined } },
+      { params: { context: cluster || undefined }, timeout: 90_000 },
     ).then((r) => r.data),
 }

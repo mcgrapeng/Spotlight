@@ -52,10 +52,10 @@ test('AppHeader renders cluster + namespace comboboxes and no AI button', async 
   await expect(clusterBtn).toBeVisible()
   await expect(clusterBtn).toContainText('demo-cluster')
 
-  // Namespace combobox — visible, labelled, defaults to "所有 namespace".
-  const nsBtn = page.getByRole('combobox', { name: '选择 namespace' })
+  // Namespace combobox — visible, labelled, defaults to "所有命名空间".
+  const nsBtn = page.getByRole('combobox', { name: '选择命名空间' })
   await expect(nsBtn).toBeVisible()
-  await expect(nsBtn).toContainText('所有 namespace')
+  await expect(nsBtn).toContainText('所有命名空间')
 
   // Open the cluster popover → clickable option → confirm selection updates.
   await clusterBtn.click()
@@ -79,7 +79,7 @@ test('AppHeader renders cluster + namespace comboboxes and no AI button', async 
 // ─────────────────────────────────────────────────────────────────────────
 // 2. Dashboard metrics
 // ─────────────────────────────────────────────────────────────────────────
-test('Dashboard renders health score, pod counts, warnings, restart top', async ({ page }) => {
+test('Dashboard leads with the one thing to handle, then the counts', async ({ page }) => {
   const errors = attachErrorRecorder(page)
   await installApiMocks(page)
   await page.goto('/dashboard', { waitUntil: 'networkidle' })
@@ -87,25 +87,38 @@ test('Dashboard renders health score, pod counts, warnings, restart top', async 
   // Page title reflects the active cluster (mocked: demo-cluster).
   await expect(pageTitle(page)).toContainText(/demo-cluster|总览/)
 
-  // Health score: running / (running+pending+failed) = 258/275 → 94.
-  await expect(page.getByText('健康', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('94', { exact: true }).first()).toBeVisible()
+  // The hero answers "what is the one thing to handle", not "what is the
+  // health score". The health percentage is gone: it could not go red,
+  // because a pod that has crash-looped 21,320 times is still phase=Running,
+  // so the number kept saying everything was fine while the screen beneath
+  // it listed three pods restarting in a loop.
+  await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
+  // The hero's big slot is the NUMBER of that thing, not a phrase. The
+  // "258 / 287 个 Pod 处于 Running" line this used to assert was deleted
+  // in round 3: the same numbers live in the phase legend, and repeating
+  // them was 8 duplicated numbers on the first screen.
+  await expect(page.getByText('次重启', { exact: true }).first()).toBeVisible()
 
-  // Pods card (287 total)
-  await expect(page.getByText('Pods', { exact: true }).first()).toBeVisible()
+  // Phase distribution — the 287 pods are now a stacked bar with a legend
+  // (Running 258 / Pending 17 / Failed 0 / Succeeded 12) instead of a number
+  // in its own card.
+  await expect(page.getByText('Pod 阶段分布', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('运行中 Running', { exact: true }).first()).toBeVisible()
 
-  // Warning events card (25 from fixture)
-  await expect(page.getByText('告警', { exact: true }).first()).toBeVisible()
+  // Warning events (25 from fixture). The "告警" StatCard was deleted in
+  // round 3 — it repeated the action card's number — so the count now
+  // lives in the action item.
+  await expect(page.getByText('25 个 Warning 事件', { exact: true }).first()).toBeVisible()
 
   // 频繁重启 — fixture has 3 restart-heavy entries. The same pod name shows
   // in both the action-item callout and the noisy-restart list; .first()
   // to keep strict mode happy.
-  await expect(page.getByRole('heading', { name: '频繁重启' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '频繁重启', exact: true })).toBeVisible()
   await expect(page.getByText('tempo-distributed-query-658f6bc8b9-5jdr6').first()).toBeVisible()
 
   // Refresh button visible + clickable, doesn't crash.
   await page.getByRole('button', { name: '刷新' }).first().click()
-  await expect(page.getByText('健康', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
 
   expect(filterCritical(errors)).toHaveLength(0)
 })
@@ -118,7 +131,7 @@ test('Pods table renders rows and pagination controls respond', async ({ page })
   await installApiMocks(page)
   await page.goto('/pods', { waitUntil: 'networkidle' })
 
-  await expect(pageTitle(page)).toContainText('Pods')
+  await expect(pageTitle(page)).toContainText('Pod')
 
   // Fixture has 2 pods — both must appear in the table.
   await expect(page.getByText('webapp-001').first()).toBeVisible()
@@ -130,7 +143,7 @@ test('Pods table renders rows and pagination controls respond', async ({ page })
 
   // Status filter (AppSelect popover) accepts a value without crashing.
   await page.getByRole('combobox', { name: '按状态筛选' }).click()
-  await page.getByRole('option', { name: 'Running' }).click()
+  await page.getByRole('option', { name: '运行中 Running' }).click()
   // Both mocked pods are Running → both still visible.
   await expect(page.getByText('webapp-001').first()).toBeVisible()
 
@@ -160,14 +173,14 @@ test('PodDetail Logs tab renders LogViewer and survives tab switching', async ({
   await page.goto('/pods/default/webapp-001', { waitUntil: 'networkidle' })
 
   // Logs tab is selected by default and history backfills automatically.
-  await expect(page.getByRole('tab', { name: 'Logs' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '日志' })).toBeVisible()
 
   // LogViewer toolbar appears (search, clear, pause/play).
   // The pause button's aria-label toggles between "暂停 (K)" (streaming) and
   // "继续 (K)" (paused) — accept either to avoid racing the SSE EventSource
   // open. Either label proves LogViewer mounted and bound its props.
   await expect(page.getByLabel('过滤日志')).toBeVisible()
-  await expect(page.getByLabel('清空')).toBeVisible()
+  await expect(page.getByRole('button', { name: '更多' })).toBeVisible()
   await expect(page.getByRole('button', { name: /^(暂停|继续)/ })).toBeVisible()
 
   // History backfill renders the mocked lines.
@@ -178,11 +191,11 @@ test('PodDetail Logs tab renders LogViewer and survives tab switching', async ({
   await expect(page.getByRole('button', { name: 'AI 分析' })).toBeVisible()
 
   // Switch to Events tab — log lines should disappear, no crash.
-  await page.getByRole('tab', { name: 'Events' }).click()
+  await page.getByRole('tab', { name: '事件' }).click()
   await expect(page.getByText('该 Pod 无相关事件')).toBeVisible()
 
   // Back to Logs — lines render again (tab switching survives).
-  await page.getByRole('tab', { name: 'Logs' }).click()
+  await page.getByRole('tab', { name: '日志' }).click()
   await expect(page.getByText('service ready')).toBeVisible({ timeout: 10_000 })
 
   expect(filterCritical(errors)).toHaveLength(0)
@@ -202,14 +215,14 @@ test('⌘K opens the command palette and navigates via a result', async ({ page 
   await expect(cmdkInput).toBeVisible({ timeout: 3_000 })
 
   // The palette shows nav items. Filter for "Pods".
-  await cmdkInput.fill('Pods')
-  await expect(page.getByRole('option', { name: /Pods/ }).first()).toBeVisible()
+  await cmdkInput.fill('Pod')
+  await expect(page.getByRole('option', { name: /Pod/ }).first()).toBeVisible()
 
   // Press Enter to select the highlighted item → navigate to /pods.
   // Match on pathname so `/login?next=/pods` can't false-positive.
   await cmdkInput.press('Enter')
   await expect(page).toHaveURL((url) => url.pathname === '/pods')
-  await expect(pageTitle(page)).toContainText('Pods')
+  await expect(pageTitle(page)).toContainText('Pod')
 
   // Open the palette again to dismiss — Escape closes.
   await page.keyboard.press('Meta+K')
@@ -256,10 +269,10 @@ test('AI page lists providers and opens the add-provider dialog', async ({ page 
 // ─────────────────────────────────────────────────────────────────────────
 const routes = [
   { path: '/',             title: /总览|demo-cluster/ },
-  { path: '/pods',         title: /^Pods$/ },
+  { path: '/pods',         title: /^Pod$/ },
   { path: '/pods/default/webapp-001', title: /webapp-001/ },
-  { path: '/nodes',        title: /^Nodes$/ },
-  { path: '/events',       title: /^Events/ },
+  { path: '/nodes',        title: /^节点$/ },
+  { path: '/events',       title: /^事件$/ },
   { path: '/favorites',    title: /^收藏夹$/ },
   { path: '/ai',           title: /^AI 模型$/ },
   { path: '/login',        title: /^Spotlight$/ },

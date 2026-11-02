@@ -9,6 +9,7 @@ Business rules (single source of truth):
   configured (no fallback).
 """
 from __future__ import annotations
+from typing import AsyncIterator
 
 from app.application.dto import AIAnalyzeOut
 from app.application.ports.outbound import AIRepositoryPort
@@ -70,6 +71,73 @@ class AIUseCases:
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
         )
+
+    async def ask(
+        self, provider_id: int, question: str, context: str,
+    ) -> AIAnalyzeOut:
+        """Answer a cluster-level question against a context snapshot."""
+        cfg = await self._require_enabled_provider(provider_id)
+        if not context.strip():
+            raise ValueError("context is required to answer a cluster-level question")
+        req = AIAnalysisRequest(
+            provider_id=provider_id,
+            pod_ref=ResourceRef(cluster="", namespace="", kind="Cluster", name=""),
+            log_lines=[],
+            question=question,
+            context=context,
+        )
+        result = await self._repo.analyze(cfg, req)
+        return AIAnalyzeOut(
+            answer=result.answer,
+            model=result.model,
+            latency_ms=result.latency_ms or 0,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+        )
+
+    async def check_ask(self, provider_id: int, context: str) -> AIProviderConfig:
+        """Validate a cluster-level ask BEFORE the response starts.
+
+        The streaming route has to answer 400 for a missing or disabled
+        provider, but it cannot wait for the first token to find out — by
+        then the response has already begun and the only way to report a
+        failure is a broken stream. This is the same check `ask` does,
+        hoisted so the route can run it first.
+        """
+        if not context.strip():
+            raise ValueError("context is required to answer a cluster-level question")
+        return await self._require_enabled_provider(provider_id)
+
+    async def ask_stream(
+        self, provider_id: int, question: str, context: str,
+    ) -> AsyncIterator[str]:
+        """Answer a cluster-level question, yielding the text as it arrives.
+
+        The wait is the problem this solves: a cluster-level question
+        takes the model tens of seconds, and a spinner for that long
+        looks exactly like a hang. Run `check_ask` first so a bad
+        provider is a 400 rather than a stream that dies mid-flight.
+        """
+        cfg = await self._require_enabled_provider(provider_id)
+        if not context.strip():
+            raise ValueError("context is required to answer a cluster-level question")
+        req = AIAnalysisRequest(
+            provider_id=provider_id,
+            pod_ref=ResourceRef(cluster="", namespace="", kind="Cluster", name=""),
+            log_lines=[],
+            question=question,
+            context=context,
+        )
+        async for text in self._repo.stream_analyze(cfg, req):
+            yield text
+
+    async def _require_enabled_provider(self, provider_id: int) -> AIProviderConfig:
+        cfg = await self._repo.get_provider(provider_id)
+        if cfg is None:
+            raise ValueError(f"ai provider {provider_id} not found")
+        if not cfg.enabled:
+            raise ValueError(f"ai provider {cfg.name} is disabled")
+        return cfg
 
     async def _can_enable(self, exclude_id: int | None) -> bool:
         """True if enabling `exclude_id` (None for a new row) keeps active count ≤1."""

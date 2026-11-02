@@ -7,11 +7,16 @@ pydantic v2 settings cannot introspect).
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, AsyncIterator
 
 from app.application.ports.outbound import AIRepositoryPort
 from app.domain.entities.ai import AIAnalysisRequest, AIAnalysisResult, AIProviderConfig
-from app.infrastructure.ai.prompts.templates import SYSTEM_PROMPT, build_user_prompt
+from app.infrastructure.ai.prompts.templates import (
+    ASK_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    build_ask_prompt,
+    build_user_prompt,
+)
 from app.infrastructure.ai.providers.sql_provider import SQLAIProviderRepository
 from app.infrastructure.logging import get_logger
 
@@ -47,10 +52,7 @@ class LiteLLMAIRepository(AIRepositoryPort):
         # Lazy import — litellm module surface is heavy and not pydantic-v2-clean.
         import litellm  # type: ignore
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(req.question, req.pod_ref, req.log_lines)},
-        ]
+        messages = self._build_messages(req)
         kwargs = self._build_call_kwargs(cfg, messages)
         started = time.perf_counter()
         try:
@@ -74,6 +76,49 @@ class LiteLLMAIRepository(AIRepositoryPort):
             latency_ms=latency_ms,
             raw={"id": getattr(response, "id", "") or ""},
         )
+
+    async def stream_analyze(
+        self, cfg: AIProviderConfig, req: AIAnalysisRequest,
+    ) -> AsyncIterator[str]:
+        """Yield the answer's text as the model produces it.
+
+        Same call as `analyze`, with `stream=True`. The provider-neutral
+        bit: every provider LiteLLM fronts normalises the streaming shape
+        to chunks with `choices[0].delta.content`, and the role-only first
+        chunk carries no text.
+        """
+        import litellm  # type: ignore
+
+        messages = self._build_messages(req)
+        kwargs = self._build_call_kwargs(cfg, messages)
+        kwargs["stream"] = True
+        try:
+            stream = await litellm.acompletion(**kwargs)
+            async for chunk in stream:
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                delta = getattr(choices[0], "delta", None)
+                text = getattr(delta, "content", None) if delta is not None else None
+                if text:
+                    yield text
+        except Exception as e:
+            log.error("ai.stream.failed", error=str(e), provider=cfg.provider, model=cfg.model)
+            raise
+
+    @staticmethod
+    def _build_messages(req: AIAnalysisRequest) -> list[dict]:
+        if req.context:
+            # A cluster-level question: different system rules, and the
+            # context replaces the log excerpt.
+            return [
+                {"role": "system", "content": ASK_SYSTEM_PROMPT},
+                {"role": "user", "content": build_ask_prompt(req.question, req.context)},
+            ]
+        return [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_user_prompt(req.question, req.pod_ref, req.log_lines)},
+        ]
 
     @staticmethod
     def _build_call_kwargs(cfg: AIProviderConfig, messages: list[dict]) -> dict:

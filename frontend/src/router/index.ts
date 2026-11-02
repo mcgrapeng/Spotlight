@@ -17,6 +17,9 @@ const router = createRouter({
     { path: '/ai-settings', redirect: '/ai' },
     { path: '/ai', name: 'ai', component: () => import('@/views/AISettingsView.vue'), meta: { titleKey: 'route.ai' } },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { titleKey: 'route.settings' } },
+    // ponytail: 兜底路由 —— 没有它，未匹配的路径落到 Vue Router 的默认空白页，
+    // 用户只看到一个空地址栏，不知道是路径打错了还是应用挂了。
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue'), meta: { titleKey: 'notFound.title' } },
   ],
 })
 

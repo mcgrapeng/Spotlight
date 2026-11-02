@@ -1,52 +1,31 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useEventListener } from '@vueuse/core'
 import { RefreshCw, AlertTriangle, AlertCircle, ChevronDown, ChevronRight, Layers } from '@lucide/vue'
 import { eventsApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useResource } from '@/composables/useResource'
+import { useRelativeTime } from '@/composables/useRelativeTime'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import { cn } from '@/lib/utils'
+import { isAllNamespaces } from '@/utils/namespace'
 import dayjs from '@/utils/dayjs'
 import type { EventOut } from '@/api/types'
 
-function formatRel(iso: string | null) {
-  if (!iso) return '—'
-  return dayjs(iso).fromNow()
-}
+const { formatRel } = useRelativeTime()
 
 const route = useRoute()
 const router = useRouter()
 const cluster = useClusterStore()
 const { t } = useI18n()
 const expanded = ref<Set<string>>(new Set())
-
-// ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
-// (Dashboard ?type=Warning 跳转场景)，避免双向 watch 写错循环。
-// set 时正确删除 key 而不是写 undefined —— Vue Router 4 把 undefined
-// 当成字符串 'undefined' 保留在 URL 上，会让 refresh 后读到错值。
-const VALID_TYPES = new Set(['Warning', 'Normal'])
-const typeFilter = computed<'all' | 'Warning' | 'Normal'>({
-  get() {
-    const v = route.query.type as string | undefined
-    if (v && VALID_TYPES.has(v)) return v as 'Warning' | 'Normal'
-    return 'all'
-  },
-  set(v) {
-    const newQuery = { ...route.query }
-    if (v === 'all') {
-      delete newQuery.type
-    } else {
-      newQuery.type = v
-    }
-    router.replace({ query: newQuery })
-  },
-})
 
 function toggleExpand(name: string) {
   const next = new Set(expanded.value)
@@ -84,25 +63,114 @@ const countByType = computed<Record<string, number>>(() => {
 })
 
 const totalEvents = computed(() => events.value?.length ?? 0)
-// ponytail: 告警数 = 告警源条目数（与列表行数一致）。每行的发生次数
-// 在 row 内部用 `×N 次` 单独显示 —— 这里不重复加总，避免与可见行数对不上。
-const warningEntries = computed(() =>
-  (events.value ?? []).filter(e => e.type === 'Warning').length,
-)
+
+// ponytail: 用 computed + setter 让 typeFilter 跟 URL query 双向同步
+// (Dashboard ?type=Warning 跳转场景)，避免双向 watch 写错循环。
+// set 时正确删除 key 而不是写 undefined —— Vue Router 4 把 undefined
+// 当成字符串 'undefined' 保留在 URL 上，会让 refresh 后读到错值。
+const VALID_TYPES = new Set(['Warning', 'Normal'])
+
+// ponytail: 没有显式选择时，有告警就先给告警。
+//
+// 真实集群上一次拉回来 500 条事件，其中 498 条 Normal（Pod 调度完了、
+// Job 跑完了、镜像拉下来了），2 条 Warning。默认筛「全部」的话，那 2 条
+// 告警排在第 400 行往下 —— 一页 25 行，读者翻到第二页才可能看见，
+// 而他点进 Events 页的原因就是「有没有出事」。
+//
+// 规则要说清楚，所以它不是「总是默认 Warning」：没有告警的时候默认仍是
+// 全部（一页空白比一页噪声更糟）；URL 里带了 ?type= 的永远听 URL 的
+// （侧边栏徽标跳过来时带的就是这个参数）。
+//
+// 手动选「全部」会写成 ?type=all，而不是把参数删掉 —— 删掉的话这个
+// 默认值又会把人按回 Warning，「全部」这一档就永远点不动了。
+const hasWarnings = computed(() => countByType.value.Warning > 0)
+
+const typeFilter = computed<'all' | 'Warning' | 'Normal'>({
+  get() {
+    const v = route.query.type as string | undefined
+    if (v === 'all') return 'all'
+    if (v && VALID_TYPES.has(v)) return v as 'Warning' | 'Normal'
+    return hasWarnings.value ? 'Warning' : 'all'
+  },
+  set(v) {
+    router.replace({ query: { ...route.query, type: v } })
+  },
+})
+
+// ponytail: 消息按行截断，不按字数截断。
+// 之前是「160 个字符就砍掉」—— 160 对英文够用（两行），对中文只够一句
+// 话，而且砍在句子中间。现在折叠时用 line-clamp-3 砍在第三行的行尾。
+//
+// 什么时候显示「展开」按钮？按字数猜不准：中文一行约 78 字，英文一行
+// 约 150 字符，宽度还随视口变。所以直接量 —— 折叠状态下 scrollHeight
+// 大于 clientHeight 就是真的被截断了。
+const overflows = ref<Set<string>>(new Set())
+const msgEls = new Map<string, HTMLElement>()
+let resizeFrame: number | null = null
+
+function setMsgEl(name: string) {
+  return (el: Element | ComponentPublicInstance | null) => {
+    if (el instanceof HTMLElement) msgEls.set(name, el)
+    else msgEls.delete(name)
+  }
+}
+
+function measureOverflow() {
+  const next = new Set<string>()
+  for (const [name, el] of msgEls) {
+    // An expanded message has no clamp, so it measures as "not
+    // overflowing" — but it is exactly the ones that overflowed. Keep
+    // them, or collapsing one would drop its own "expand" button and
+    // strand the rest of the message.
+    if (expanded.value.has(name)) {
+      next.add(name)
+      continue
+    }
+    if (el.scrollHeight > el.clientHeight + 1) next.add(name)
+  }
+  overflows.value = next
+}
+
+onMounted(() => nextTick(measureOverflow))
+watch(filtered, () => nextTick(measureOverflow))
+// The clamp comes back when a message collapses, so the button has to be
+// re-measured then too.
+watch(expanded, () => nextTick(measureOverflow))
+// 视口变了，三行的容量也变了，截断状态要重新量。rAF 把一次拖拽窗口里的
+// 几百次强制重排压成一帧一次。
+useEventListener(window, 'resize', () => {
+  if (resizeFrame) cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(() => nextTick(measureOverflow))
+})
 </script>
 
 <template>
+  <!--
+    ponytail: 标题里那个 context 名去掉了。
+
+    原来是「Events · kubernetes-admin@kubernetes」。整个应用只有这一页
+    把 context 名写进标题 —— 别的页都没有，所以它既不是规则，也不是
+    刻意的强调，就是漏了。而且它说的是同一个事实的第二遍：顶栏那个
+    组合框就写着当前 context，距离 40 像素。
+
+    顶栏是它的位置 —— 那里是「我现在连的是哪个集群」这个问题的答案，
+    换集群的动作也在那里。标题只回答「这是哪一页」。
+  -->
   <PageHeader
-    :title="`${t('route.events')} · ${cluster.activeCluster || ''}`"
+    :title="t('route.events')"
     :subtitle="t('events.subtitle', {
-      namespace: cluster.activeNamespace,
+      namespace: isAllNamespaces(cluster.activeNamespace)
+        ? t('namespace.all')
+        : cluster.activeNamespace,
       filtered: filtered.length,
       total: totalEvents,
     })"
   >
     <template #actions>
-      <Button variant="outline" size="sm" @click="load" :disabled="loading" :aria-label="t('events.refresh')">
-        <RefreshCw :size="14" :stroke-width="1.75" :class="loading && 'animate-spin'" />
+      <Button variant="outline" size="sm" @click="load" :loading="loading" :aria-label="t('events.refresh')">
+        <template #icon>
+          <RefreshCw :size="14" :stroke-width="1.75" />
+        </template>
       </Button>
     </template>
     <template #extra>
@@ -115,11 +183,13 @@ const warningEntries = computed(() =>
           :aria-selected="typeFilter === tab"
           @click="typeFilter = tab"
           :class="cn(
-            'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors',
+            'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
+            // ponytail: 三个 tab 的选中态统一。Warning 之前选中时是琥珀色
+            // 填充，Normal 选中时是黑色 —— 用户最该点的过滤器反而比最不该点
+            // 的弱。而且琥珀在这个产品里已经定义为「需要处理」，让一个控件
+            // 染上它会污染语义。Warning 的身份由常驻的三角图标承担。
             typeFilter === tab
-              ? tab === 'Warning'
-                ? 'bg-warning text-warning-foreground border-warning'
-                : 'bg-foreground text-background border-foreground'
+              ? 'bg-foreground text-background border-foreground'
               : 'bg-background text-muted-foreground border-border hover:bg-muted/40',
           )"
         >
@@ -131,16 +201,19 @@ const warningEntries = computed(() =>
             v-else-if="tab === 'Normal'"
             :size="12" :stroke-width="2" aria-hidden="true"
           />
-          <span>{{ tab === 'all' ? t('events.filterAll') : tab }}</span>
+          <span>{{ tab === 'all' ? t('events.filterAll') : t(`eventType.${tab}`) }}</span>
           <span :class="cn(
-            'tabular-nums text-2xs px-1.5 py-0.5 rounded',
-            typeFilter === tab ? 'bg-black/15' : 'bg-muted text-muted-foreground',
+            // ponytail: 选中态的计数徽章用 bg-background/20。
+            //
+            // 之前是 bg-black/15 —— 而选中态的底是 bg-foreground（亮色下
+            // 是 rgb(24,24,27) 的近黑）。15% 的黑落在近黑上，这枚徽章
+            // 等于没有：数字还在（它是白字），但芯片的形状没了，看起来
+            // 像根本没有徽章。亮色下改成 20% 的白，芯片就有了；暗色下
+            // 选中态是近白底，黑 15% 同样成立。
+            'tabular-nums text-xs px-1.5 py-0.5 rounded-sm',
+            typeFilter === tab ? 'bg-background/20' : 'bg-muted text-muted-foreground',
           )">{{ tab === 'all' ? totalEvents : countByType[tab] }}</span>
         </button>
-        <span v-if="warningEntries > 0" class="text-xs text-warning ml-1 inline-flex items-center gap-1">
-          <AlertTriangle :size="12" :stroke-width="2" />
-          {{ t('events.warningSources', { count: warningEntries }) }}
-        </span>
         <span v-if="events && events.length > 0" class="text-xs text-muted-foreground ml-auto">
           {{ t('events.showingLatest', { count: events.length }) }}
         </span>
@@ -151,10 +224,10 @@ const warningEntries = computed(() =>
   <!-- ponytail: 顶部 namespace 提示，让用户立刻知道当前在看哪个 namespace，
        避免 default (0 events) 被误认为"事件丢了"。点 [所有 namespace] 一键切换。 -->
   <div
-    v-if="cluster.activeNamespace && cluster.activeNamespace !== '_all'"
+    v-if="!isAllNamespaces(cluster.activeNamespace)"
     class="mt-3 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-xs text-muted-foreground"
   >
-    <Layers :size="13" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+    <Layers :size="14" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
     <i18n-t keypath="events.nsCurrent" tag="span">
       <template #namespace>
         <span class="font-mono text-foreground">{{ cluster.activeNamespace }}</span>
@@ -162,7 +235,7 @@ const warningEntries = computed(() =>
     </i18n-t>
     <button
       type="button"
-      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity font-medium"
+      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-foreground text-background hover:opacity-90 transition-opacity ease-app dur-fast font-medium"
       @click="cluster.setNamespace('_all')"
     >
       {{ t('namespace.all') }}
@@ -174,9 +247,9 @@ const warningEntries = computed(() =>
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="filtered.length === 0"
-    :title="typeFilter === 'all' ? t('events.emptyTitle') : t('events.emptyFilteredTitle', { type: typeFilter })"
+    :title="typeFilter === 'all' ? t('events.emptyTitle') : t('events.emptyFilteredTitle', { type: t(`eventType.${typeFilter}`) })"
     :description="typeFilter !== 'all'
-      ? t('events.emptyFilteredDescription', { type: typeFilter })
+      ? t('events.emptyFilteredDescription', { type: t(`eventType.${typeFilter}`) })
       : t('events.emptyDescription')"
   >
     <template v-if="typeFilter !== 'all'" #action>
@@ -193,16 +266,19 @@ const warningEntries = computed(() =>
       v-for="ev in filtered"
       :key="ev.name"
       :class="cn(
-        'group block rounded-lg border transition-colors overflow-hidden',
+        'group block rounded-card border transition-colors ease-app dur-fast overflow-hidden',
+        // ponytail: 卡片边框回到中性。之前是 border-warning/40，整张卡在
+        // 暗色下变成一块棕褐色，信号被稀释了。告警的身份由左竖条 + 图标 +
+        // 芯片承担，边框不需要再染一次色。
         ev.type === 'Warning'
-          ? 'border-warning/40 bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
+          ? 'border-border bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
           : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
       )"
     >
       <div class="flex items-start gap-3 p-3">
         <component
           :is="ev.type === 'Warning' ? AlertTriangle : AlertCircle"
-          :size="18"
+          :size="20"
           :stroke-width="1.75"
           :class="cn(
             'shrink-0 mt-0.5',
@@ -212,27 +288,24 @@ const warningEntries = computed(() =>
         />
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
-            <span :class="cn(
-              'inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold border',
-              ev.type === 'Warning'
-                ? 'bg-warning-bg text-warning border-warning-border'
-                : 'bg-muted text-muted-foreground border-border',
-            )">{{ ev.type }}</span>
-            <span class="inline-flex items-center rounded px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
+            <StatusChip
+              :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
+              :label="t(`eventType.${ev.type}`, ev.type)"
+            />
+            <span class="inline-flex items-center rounded-sm px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
             <span class="text-xs text-muted-foreground">{{ ev.namespace }}</span>
             <span class="text-xs text-muted-foreground font-mono">{{ ev.involved_kind }}/{{ ev.involved_name }}</span>
           </div>
           <!-- ponytail: message 是用户来 events 页面真正要读的内容，必须是视觉主角 -->
           <p
+            :ref="setMsgEl(ev.name)"
             :class="cn(
-              'mt-2 text-[15px] leading-snug',
+              'mt-2 text-base leading-snug',
+              expanded.has(ev.name) ? '' : 'line-clamp-3',
               ev.type === 'Warning' ? 'text-foreground font-medium' : 'text-foreground/80',
             )"
-            :title="ev.message"
           >
-            {{ expanded.has(ev.name) || ev.message.length < 160
-              ? ev.message
-              : ev.message.slice(0, 160) + '…' }}
+            {{ ev.message }}
           </p>
           <div class="text-xs text-muted-foreground mt-2 flex items-center gap-3">
             <span :title="ev.last_seen ?? undefined">{{ formatRel(ev.last_seen ?? null) }}</span>
@@ -243,9 +316,9 @@ const warningEntries = computed(() =>
             </span>
             <div class="ml-auto flex items-center gap-3">
               <button
-                v-if="ev.message.length >= 160"
+                v-if="overflows.has(ev.name) || expanded.has(ev.name)"
                 type="button"
-                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
                 @click.stop="toggleExpand(ev.name)"
               >
                 <component
@@ -257,7 +330,7 @@ const warningEntries = computed(() =>
               <router-link
                 v-if="ev.involved_kind === 'Pod'"
                 :to="{ name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } }"
-                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
               >
                 {{ t('events.viewDetail') }}
                 <ChevronRight :size="12" :stroke-width="2" aria-hidden="true" />

@@ -212,6 +212,32 @@ export async function installApiMocks(page: Page) {
     })
   })
 
+  // ── AI ask (cluster-level question) ──────────────────────────────────────
+  await page.route(/\/api\/v1\/ai\/ask(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        answer: '集群级回答：monitoring 命名空间的 tempo-distributed-query 重启了 21320 次。',
+        model: 'gpt-4o-mini', latency_ms: 512,
+        input_tokens: 420, output_tokens: 96,
+      }),
+    }),
+  )
+
+  // ── AI ask, streamed ────────────────────────────────────────────────────
+  // The panel streams the answer so the reader sees it arrive instead of a
+  // spinner for the model's full think time. Same shape the backend's
+  // EventSourceResponse emits: `event: delta` frames, then `done`.
+  await page.route(/\/api\/v1\/ai\/ask\/stream(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      body:
+        'event: delta\ndata: {"text":"集群级回答："}\n\n' +
+        'event: delta\ndata: {"text":"monitoring 命名空间的 tempo-distributed-query 重启了 21320 次。"}\n\n' +
+        'event: done\ndata: [DONE]\n\n',
+    }),
+  )
+
   // ── AI analyze ──────────────────────────────────────────────────────────
   await page.route(/\/api\/v1\/ai\/analyze\/.*/, (route) =>
     route.fulfill({

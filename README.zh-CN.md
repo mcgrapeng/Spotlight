@@ -49,6 +49,8 @@ Kubernetes Dashboard 告诉你它**在哪里**。
 - **实时日志流** —— SSE、多 Pod 选择、保留 ANSI 颜色、自动去重、可下载。
 - **AI 解读，任意模型** —— OpenAI · Anthropic · Bedrock · Gemini · Ollama · 经 LiteLLM 支持 100+ 家。
 - **键盘优先** —— `⌘K` 命令面板，`g d/p/n/e/f/a` 页面跳转，不碰鼠标也能用。
+- **夜里也看得清** —— 完整的暗色主题（改的是 token，不是给界面套一层滤镜），因为这个产品被打开的时间点就是凌晨三点。
+- **需要密度时就有密度** —— Pod 表格可排序、三档行密度、日志区独占视口。
 - **鉴权可插拔** —— bearer · session · Teleport `tsh` · 或者你自己写一个插件，一个文件的事。
 - **端到端类型安全** —— Pydantic v2 → OpenAPI → `openapi-typescript`，前端不可能和 API 脱节。
 
@@ -83,6 +85,18 @@ VITE_API_PROXY=http://127.0.0.1:8002
 
 **前端端口：** `VITE_PORT` 留空即可，Vite 会自己找空闲端口，默认端口被占就往上顺延。它会打印
 实际绑定的 URL —— 打开那个，不要假定固定端口。
+
+**macOS 上启动后端前要设 `no_proxy`。** Kubernetes Python SDK 的 HTTP 客户端是从*系统*代理设置里
+读配置的，所以发往本地集群（`127.0.0.1`）的请求会走代理，回来是一个 500，TLS 报 EOF。系统代理的
+例外列表里没有本地 apiserver 的地址（k3d 写的 `0.0.0.0` 也不在里面），所以必须显式告诉它跳过：
+
+```bash
+# backend
+no_proxy=127.0.0.1,localhost,0.0.0.0 python -m app.server --reload --port 8002
+```
+
+症状是 `/api/v1/pods` 报 500，而 `/api/v1/clusters` 还是 200 —— 集群列表是直接从磁盘上的
+kubeconfig 读的，其他请求都要走网络。
 
 <details>
 <summary>鉴权：Teleport、共享令牌，或直连 kubeconfig</summary>

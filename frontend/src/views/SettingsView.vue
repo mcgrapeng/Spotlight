@@ -7,14 +7,19 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { isAllNamespaces } from '@/utils/namespace'
 import { useClusterStore } from '@/stores/cluster'
 import { useAuthStore } from '@/stores/auth'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const cluster = useClusterStore()
 const auth = useAuthStore()
 const { t } = useI18n()
 const currentCluster = computed(() => cluster.clusters.find(c => c.name === cluster.activeCluster) ?? null)
+const { mode: themeMode } = useTheme()
 
 // computed, not plain arrays: `t()` must be re-read on a locale switch.
 const settingsItems = computed(() => [
@@ -29,7 +34,6 @@ const settingsItems = computed(() => [
 
 const aboutItems = computed(() => [
   { label: t('settings.aboutApp'), value: `Spotlight · ${t('nav.tagline')}` },
-  { label: t('settings.aboutTheme'), value: t('settings.aboutThemeValue') },
   { label: t('settings.aboutStorage'), value: t('settings.aboutStorageValue') },
 ])
 
@@ -50,7 +54,8 @@ function confirmLogout() {
       <p class="mt-1 text-sm text-muted-foreground">{{ t('settings.subtitle') }}</p>
     </header>
 
-    <!-- 配置项：当前只有 AI 模型，点击进入 AISettingsView -->
+    <!-- 配置项：AI 模型。AI 是配置页不是工作面，导航里已经没有它了，
+         这里就是它的正门（/ai 路径不动，老书签不失效）。 -->
     <section aria-labelledby="settings-config-heading">
       <h2 id="settings-config-heading" class="text-sm font-semibold text-muted-foreground tracking-wide mb-3">
         {{ t('settings.configHeading') }}
@@ -62,7 +67,7 @@ function confirmLogout() {
             :key="item.to"
             :to="item.to"
             :class="cn(
-              'flex items-center gap-3 p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40',
+              'flex items-center gap-3 p-4 transition-colors ease-app dur-fast hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
               idx > 0 && 'border-t border-border',
             )"
           >
@@ -92,11 +97,11 @@ function confirmLogout() {
           <div class="flex items-start gap-3">
             <Server :size="16" :stroke-width="1.75" class="text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
             <div class="min-w-0 flex-1">
-              <div class="text-2xs text-muted-foreground tracking-wide">{{ t('settings.clusterLabel') }}</div>
+              <div class="text-xs text-muted-foreground tracking-wide">{{ t('settings.clusterLabel') }}</div>
               <div class="mt-0.5 font-mono text-sm text-foreground truncate">
                 {{ cluster.activeCluster ?? t('settings.notSelected') }}
               </div>
-              <div v-if="currentCluster" class="mt-0.5 text-2xs text-muted-foreground font-mono truncate">
+              <div v-if="currentCluster" class="mt-0.5 text-xs text-muted-foreground font-mono truncate">
                 {{ currentCluster.cluster }} · user {{ currentCluster.user }}
               </div>
             </div>
@@ -104,13 +109,13 @@ function confirmLogout() {
           <div class="flex items-start gap-3">
             <Layers :size="16" :stroke-width="1.75" class="text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
             <div class="min-w-0 flex-1">
-              <div class="text-2xs text-muted-foreground tracking-wide">Namespace</div>
-              <div class="mt-0.5 font-mono text-sm text-foreground">
-                {{ cluster.activeNamespace }}
+              <div class="text-xs text-muted-foreground tracking-wide">Namespace</div>
+              <div class="mt-0.5 text-sm text-foreground" :class="isAllNamespaces(cluster.activeNamespace) ? '' : 'font-mono'">
+                {{ isAllNamespaces(cluster.activeNamespace) ? t('namespace.all') : cluster.activeNamespace }}
               </div>
             </div>
           </div>
-          <p class="text-2xs text-muted-foreground pt-2 border-t border-border">
+          <p class="text-xs text-muted-foreground pt-2 border-t border-border">
             {{ t('settings.switchHint') }}
           </p>
         </CardContent>
@@ -126,7 +131,7 @@ function confirmLogout() {
         <CardContent class="p-0">
           <button
             type="button"
-            class="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-error/5 focus-visible:outline-none focus-visible:bg-error/5 group"
+            class="flex w-full items-center gap-3 p-4 text-left transition-colors ease-app dur-fast hover:bg-error/5 focus-visible:outline-none focus-visible:bg-error/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background group"
             :aria-label="t('settings.logout')"
             @click="showLogoutConfirm = true"
           >
@@ -137,7 +142,7 @@ function confirmLogout() {
               <div class="text-sm font-medium text-error">{{ t('settings.logout') }}</div>
               <div class="mt-0.5 text-xs text-muted-foreground">{{ t('settings.logoutDesc') }}</div>
             </div>
-            <ChevronRight :size="16" :stroke-width="1.75" class="text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+            <ChevronRight :size="16" :stroke-width="1.75" class="text-muted-foreground shrink-0 transition-transform ease-app dur-fast group-hover:translate-x-0.5" aria-hidden="true" />
           </button>
         </CardContent>
       </Card>
@@ -161,6 +166,15 @@ function confirmLogout() {
             <Info :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" aria-hidden="true" />
             <span class="text-muted-foreground w-16 shrink-0">{{ item.label }}</span>
             <span class="text-foreground font-mono text-xs">{{ item.value }}</span>
+          </div>
+          <div class="flex items-center gap-3 px-4 py-3 text-sm border-t border-border">
+            <Info :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" aria-hidden="true" />
+            <span class="text-muted-foreground w-16 shrink-0">{{ t('settings.aboutTheme') }}</span>
+            <span class="text-foreground text-xs mr-2">{{ t(`theme.${themeMode}`) }}</span>
+            <ThemeToggle />
+            <!-- ponytail: 语言切换器从顶栏搬到这里（顶栏只留「范围」）。
+                 切换器自带 aria-label（Language / 语言），不需要额外文案。 -->
+            <LocaleSwitcher class="ml-auto" />
           </div>
         </CardContent>
       </Card>

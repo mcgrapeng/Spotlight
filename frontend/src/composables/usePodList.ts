@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
+import { getI18n } from '@/i18n'
 import { podsApi } from '@/api/endpoints'
 import type { PodListOut } from '@/api/types'
 
@@ -31,6 +32,10 @@ export function usePodList(opts: {
   const data = shallowRef<PodListOut>({ total: 0, items: [] })
   const loading = ref(false)
   const error = ref<string | null>(null)
+  // The global composer, not useI18n(): this composable is called from
+  // outside a component setup too (its own unit test does exactly that),
+  // and useI18n() throws there.
+  const t = (key: string) => getI18n().global.t(key)
 
   // Single generation counter. `load()` is the only writer of `loading`,
   // `error` and `data` — which is what stops (3) and (4) from regressing into
@@ -89,7 +94,10 @@ export function usePodList(opts: {
     } catch (e: any) {
       if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return
       if (!alive || mySeq !== seq) return
-      error.value = e?.message ?? 'load failed'
+      // ponytail: 不用 axios 的原始英文（"Network Error" / "Request failed
+      // with status code 500"）。后端给了 detail 就用 detail，没给就只说
+      // 「加载失败」—— 中文界面上混一句英文是噪声。
+      error.value = e?.response?.data?.detail ?? t('state.error')
     } finally {
       if (mySeq === seq) loading.value = false
     }

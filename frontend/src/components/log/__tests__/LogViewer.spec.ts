@@ -29,19 +29,34 @@ function makeLines(n: number): LogLineOut[] {
 }
 
 describe('LogViewer', () => {
-  it('renders 4 severity chip buckets (ERROR/WARN/INFO/DEBUG)', () => {
+  it('renders the severity filter chips (全部 + ≥INFO/≥WARN/≥ERROR + 未识别)', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(20), unreadCount: 0 },
       global: { plugins: [i18n] },
     })
     const chips = wrapper.findAll('button[aria-pressed]')
-    // "全部" + 4 buckets = 5
-    expect(chips.length).toBeGreaterThanOrEqual(5)
+    // "全部" + 3 thresholds + 未识别 = 5. DEBUG is deliberately absent: its
+    // rank is 0, the same as "全部", so it used to render as a second active
+    // black pill while meaning exactly the same thing. 未识别 is not a rank
+    // at all — unlabelled lines are a separate question, with their own
+    // count, so that "INFO+ 513" can't claim 513 lines nobody read.
+    expect(chips.length).toBe(5)
     const labels = chips.map((c) => c.text().toLowerCase()).join('|')
     expect(labels).toMatch(/error/)
     expect(labels).toMatch(/warn/)
     expect(labels).toMatch(/info/)
-    expect(labels).toMatch(/debug/)
+  })
+
+  it('never has two filter chips active at the same time', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(20), unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    const pressed = () =>
+      wrapper.findAll('button[aria-pressed]').filter((c) => c.attributes('aria-pressed') === 'true')
+    // Regression: "全部" and "DEBUG" both had rank 0, so both rendered as
+    // active black pills — two contradicting states of the same control.
+    expect(pressed().length).toBe(1)
   })
 
   it('hides the unread pill when unreadCount is 0', () => {
@@ -120,21 +135,25 @@ describe('LogViewer', () => {
     // Rows use the responsive grid (sm:+ keeps the 72px badge column).
     // The per-row 5% severity background tint was removed as vestigial —
     // the 3px left bar is the scan signal.
+    //
+    // The DOM is oldest-first now (the tail is at the bottom), and the
+    // `lines` prop is newest-first, so the rendered order is the REVERSE of
+    // the prop: row 0 is the debug line, row 4 is the critical one.
     const rows = wrapper.findAll('div.grid[class*="sm:grid-cols"]')
     expect(rows.length).toBeGreaterThanOrEqual(5)
     const classOf = (i: number) => rows[i]!.attributes('class') ?? ''
-    // critical: full-opacity red 3px bar
-    expect(classOf(0)).toContain('border-l-[3px]')
-    expect(classOf(0)).toContain('border-l-red-500')
-    // error: 70% red bar
-    expect(classOf(1)).toContain('border-l-[3px]')
-    expect(classOf(1)).toContain('border-l-red-500/70')
-    // warn: 60% amber bar
-    expect(classOf(2)).toContain('border-l-amber-500/60')
-    // info: faint blue 30% bar
-    expect(classOf(3)).toContain('border-l-blue-500/30')
     // debug: transparent bar (badge carries the signal)
-    expect(classOf(4)).toContain('border-l-transparent')
+    expect(classOf(0)).toContain('border-l-transparent')
+    // info: faint blue 30% bar
+    expect(classOf(1)).toContain('border-l-info/30')
+    // warn: 60% amber bar
+    expect(classOf(2)).toContain('border-l-warning/60')
+    // error: 70% red bar
+    expect(classOf(3)).toContain('border-l-[3px]')
+    expect(classOf(3)).toContain('border-l-error/70')
+    // critical: full-opacity red 3px bar
+    expect(classOf(4)).toContain('border-l-[3px]')
+    expect(classOf(4)).toContain('border-l-error')
   })
 
   it('clicking the trace-id bar sets search to trace:<uuid>', async () => {
@@ -248,13 +267,13 @@ describe('LogViewer', () => {
       global: { plugins: [i18n] },
     })
     // The badge is a span containing ×N. Find it by text and assert its class includes
-    // the severity tint (border-l-red-500/70 for error).
+    // the severity tint (border-l-error/70 for error).
     const all = wrapper.findAll('span')
     const badge = all.find((s) => /^×\d+$/.test(s.text().trim()))
     expect(badge).toBeTruthy()
     const cls = badge!.attributes('class') ?? ''
-    // error → border-l-red-500/70 from severityBorderFor()
-    expect(cls).toMatch(/border-l-red-500/)
+    // error → border-l-error/70 from severityBorderFor()
+    expect(cls).toMatch(/border-l-error/)
   })
 
   // Rows are wrapped in v-memo, which skips the whole subtree when its dependency
@@ -274,5 +293,47 @@ describe('LogViewer', () => {
 
     expect(wrapper.find(`button[aria-label="Filter by trace_id ${tid}"]`).exists()).toBe(true)
     expect(wrapper.find(`button[aria-label="按 trace_id ${tid} 过滤"]`).exists()).toBe(false)
+  })
+})
+
+describe('LogViewer failure state', () => {
+  it('says the read failed instead of "no logs yet"', () => {
+    // The two used to render at the same time: a red banner saying the read
+    // failed, and an empty-state block saying "暂无日志 · 等待容器输出…".
+    // Both were true-looking and mutually contradictory.
+    const wrapper = mount(LogViewer, {
+      props: { lines: [], unreadCount: 0, error: 'Pod 或容器不存在（可能已经被删除）' },
+      global: { plugins: [i18n] },
+    })
+    // The message is the backend's own words now — one place, one wording.
+    expect(wrapper.text()).toContain('Pod 或容器不存在（可能已经被删除）')
+    expect(wrapper.text()).not.toContain('暂无日志')
+    expect(wrapper.text()).not.toContain('等待容器输出')
+    // And the banner does not repeat it.
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('still shows the empty state when nothing failed', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: [], unreadCount: 0, error: null },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.text()).toContain('暂无日志')
+    expect(wrapper.text()).not.toContain('Pod 或容器不存在')
+  })
+
+  it('keeps the banner for a partial failure, and does not repeat it below', () => {
+    // One container's stream died but there are still logs on screen: the
+    // banner says so, the log area keeps the lines it has.
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('info', 'still streaming')],
+        unreadCount: 0,
+        error: 'sidecar 容器读取失败',
+      },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.find('[role="alert"]').text()).toContain('sidecar 容器读取失败')
+    expect(wrapper.text()).toContain('still streaming')
   })
 })

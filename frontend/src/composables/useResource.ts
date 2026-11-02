@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { getI18n } from '@/i18n'
 
 interface Options<T> {
   /** Reactive dependency to watch. When it changes, load() refires. */
@@ -26,7 +26,9 @@ interface Options<T> {
  */
 export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {}) {
   // Only ever called from `<script setup>`, so `useI18n()` is available here.
-  const { t } = useI18n()
+  // The global composer works in both places — this composable is also
+  // called from outside a component setup in tests.
+  const t = (key: string) => getI18n().global.t(key)
   const data = ref<T | null>(null) as Ref<T | null>
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -63,7 +65,10 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
       data.value = value
     } catch (e: any) {
       if (!alive || mySeq !== seq) return
-      error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
+      // ponytail: 只用后端给的 detail，不用 axios 的原始英文。
+      // "Request failed with status code 500" 出现在中文界面上是噪声：
+      // 读者要的是「加载失败」加上后端说的原因（如果有）。
+      error.value = e?.response?.data?.detail ?? t('state.error')
     } finally {
       if (mySeq === seq) loading.value = false
     }

@@ -1,7 +1,34 @@
 """Shared in-memory fakes for the test suite."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from app.domain.entities.permissions import AppUser, Role
+
+
+@asynccontextmanager
+async def in_memory_session():
+    """A fresh in-memory SQLite session per test: no shared state, no cleanup.
+
+    Repo methods commit internally, so rollback wrappers cannot isolate
+    them; a private engine per test can. StaticPool keeps one connection
+    shared — separate pool connections would each see their own empty
+    :memory: database.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.infrastructure.persistence.models.orm import Base
+
+    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 class FakePermissionRepo:

@@ -17,15 +17,15 @@ import { installApiMocks } from './_fixtures'
 /**
  * Per-page expected title regex. Matches the first `.page-title` or `h1`.
  * - Dashboard renders `cluster.activeCluster` (defaults to '总览' when empty).
- * - Events appends the cluster name: `Events · demo-cluster`.
+ * - Page titles are Chinese since round 3 (Pod / 节点 / 事件).
  * - LoginView uses a plain `<h1>` (no PageHeader) — title text is "Spotlight".
  */
 const pages = [
   { path: '/', name: '总览', expectTitle: /demo-cluster|总览/ },
-  { path: '/pods', name: 'Pods', expectTitle: /^Pods$/ },
+  { path: '/pods', name: 'Pod', expectTitle: /^Pod$/ },
   { path: '/pods/default/webapp-001', name: 'Pod 详情', expectTitle: /webapp-001/ },
-  { path: '/nodes', name: 'Nodes', expectTitle: /^Nodes$/ },
-  { path: '/events', name: 'Events', expectTitle: /^Events ·/ },
+  { path: '/nodes', name: '节点', expectTitle: /^节点$/ },
+  { path: '/events', name: '事件', expectTitle: /^事件$/ },
   { path: '/favorites', name: '收藏夹', expectTitle: /^收藏夹$/ },
   { path: '/ai', name: 'AI 模型', expectTitle: /^AI 模型$/ },
   { path: '/settings', name: '设置', expectTitle: /^设置$/ },

@@ -12,11 +12,31 @@ export interface CachedFetchOptions<T> {
   data: Ref<T | null>
   loading: Ref<boolean>
   error: Ref<string | null>
+  /**
+   * Message for a failure the server did not describe.
+   *
+   * The default is the raw axios text ("Network Error", "Request failed
+   * with status code 500"), which is English in a Chinese interface. A
+   * caller that shows this to a reader passes its own localized string.
+   */
+  errorFallback?: string
 }
 
 export interface CachedFetchHandle<T> {
-  load: () => Promise<void>
-  refresh: () => Promise<void>
+  /**
+   * Fetch and write into the bound data ref.
+   *
+   * `silent` keeps a failure OUT of `error`, for background refreshes: a
+   * failed poll must not replace a good snapshot with an error page. The
+   * snapshot on screen is still the last truth, and the caller reports the
+   * failure in its own words (usually "the data is N minutes old").
+   *
+   * Returns whether the fetch succeeded. A superseded load (the user
+   * switched cluster mid-flight) counts as a failure: its data was
+   * discarded, so the caller must not treat it as fresh.
+   */
+  load: (silent?: boolean) => Promise<boolean>
+  refresh: (silent?: boolean) => Promise<boolean>
   /**
    * Point this handle at a different cache slot. Callers whose key depends on
    * reactive state (a selected cluster, say) must rekey before reading —
@@ -80,7 +100,7 @@ export function useCachedFetch<T>(opts: CachedFetchOptions<T>): CachedFetchHandl
     }
   }
 
-  async function load(): Promise<void> {
+  async function load(silent = false): Promise<boolean> {
     // Snapshot the slot BEFORE awaiting. `key` is mutable, so a rekey() that
     // lands while the fetcher is in flight (the user switches cluster) would
     // otherwise store this target's response under the NEW slot — where it
@@ -91,15 +111,22 @@ export function useCachedFetch<T>(opts: CachedFetchOptions<T>): CachedFetchHandl
     opts.error.value = null
     try {
       const value = await opts.fetcher()
-      if (target !== key || mine !== seq) return   // superseded — discard
+      if (target !== key || mine !== seq) return false   // superseded — discard
       opts.data.value = value
       loadedAt.value = Date.now()
       writeCache(target, value, loadedAt.value)
+      return true
     } catch (e: unknown) {
-      if (target === key && mine === seq) {
+      // ponytail: silent = "this is a background poll, don't tear the page
+      // down". The error text still goes to `error` for a normal load.
+      if (target === key && mine === seq && !silent) {
         const err = e as { response?: { data?: { detail?: string } }; message?: string }
-        opts.error.value = err?.response?.data?.detail ?? err?.message ?? 'load failed'
+        opts.error.value = err?.response?.data?.detail
+          ?? opts.errorFallback
+          ?? err?.message
+          ?? 'load failed'
       }
+      return false
     } finally {
       // Only the newest load owns the flag; a discarded one must not clear it
       // out from under a request that is still running.
@@ -118,8 +145,10 @@ export function useCachedFetch<T>(opts: CachedFetchOptions<T>): CachedFetchHandl
   async function loadOrHydrate(): Promise<T | null> {
     // Fast path: fresh cache means no network round-trip.
     if (hydrateFromCache()) return opts.data.value
-    await load()
-    return opts.data.value
+    // A failed load must not report the previous value as if it were fresh —
+    // the caller would then stamp "updated just now" onto stale data.
+    const ok = await load()
+    return ok ? opts.data.value : null
   }
 
   return {

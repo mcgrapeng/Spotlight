@@ -14,7 +14,7 @@ enforces it independently on every route that carries a permission code.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 
 from app.application.dto import (
     MeOut,
@@ -125,8 +125,9 @@ async def create_role(
     dependencies=[Depends(require_permission("roles.manage"))],
 )
 async def update_role(
-    role_id: int,
     payload: RoleIn,
+    # sqlite INTEGER is int64; beyond it the driver overflows (fuzz-found).
+    role_id: int = Path(ge=1, le=2**63 - 1),
     uc: PermissionUseCases = Depends(permission_uc),
 ) -> RoleOut:
     try:
@@ -150,7 +151,7 @@ async def update_role(
     dependencies=[Depends(require_permission("roles.manage"))],
 )
 async def delete_role(
-    role_id: int,
+    role_id: int = Path(ge=1, le=2**63 - 1),
     uc: PermissionUseCases = Depends(permission_uc),
 ) -> None:
     try:

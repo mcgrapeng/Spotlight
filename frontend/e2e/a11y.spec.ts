@@ -21,9 +21,9 @@ import { installApiMocks } from './_fixtures'
 
 const pages = [
   { path: '/', name: '总览' },
-  { path: '/pods', name: 'Pods' },
-  { path: '/nodes', name: 'Nodes' },
-  { path: '/events', name: 'Events' },
+  { path: '/pods', name: 'Pod' },
+  { path: '/nodes', name: '节点' },
+  { path: '/events', name: '事件' },
   { path: '/ai', name: 'AI 模型' },
   { path: '/login', name: '登录' },
   // Pod detail hosts the LogViewer (v-html ANSI spans, dense rows) — the
@@ -32,11 +32,19 @@ const pages = [
 ] as const
 
 for (const p of pages) {
-  test(`a11y: ${p.name} (${p.path}) has no critical/serious axe violations`, async ({ page }) => {
+  // Two passes per page: light and dark. The dark theme is a second set of
+  // token values (main.css `.dark`), so a colour that clears AA on white can
+  // still fail on the dark surfaces — and nothing else would catch it.
+  for (const scheme of ['light', 'dark'] as const) {
+  test(`a11y: ${p.name} (${p.path}) [${scheme}] has no critical/serious axe violations`, async ({ page }) => {
     await installApiMocks(page)
     await page.route('**/api/v1/nodes**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     )
+
+    // Theme mode defaults to 'system', so emulating the OS preference is
+    // enough to flip the whole token set.
+    await page.emulateMedia({ colorScheme: scheme })
 
     await page.goto(p.path, { waitUntil: 'networkidle', timeout: 15_000 })
     await expect(page.locator('.page-title, h1').first()).toBeVisible({ timeout: 5_000 })
@@ -75,4 +83,5 @@ for (const p of pages) {
             .join('\n'),
     ).toEqual([])
   })
+  }
 }
