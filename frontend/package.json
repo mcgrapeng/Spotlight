@@ -38,16 +38,26 @@
     "@playwright/test": "1.63.0",
     "@types/node": "22.20.4",
     "@vitejs/plugin-vue": "^5.2.1",
+    "@vitest/coverage-v8": "4.1.12",
     "@vue/test-utils": "2.5.1",
     "autoprefixer": "^10.4.20",
-    "happy-dom": "20.14.5",
+    "happy-dom": "21.0.4",
     "openapi-typescript": "7.13.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "tailwindcss-animate": "1.0.7",
     "typescript": "~5.7.2",
-    "vite": "^6.0.3",
-    "vitest": "2.1.9",
+    "vite": "^6.4.5",
+    "vitest": "4.1.12",
     "vue-tsc": "^2.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "follow-redirects": ">=1.16.2",
+      "source-map-js": ">=1.2.2",
+      "postcss-selector-parser": ">=6.1.5",
+      "glob": ">=14.0.2",
+      "minimatch": ">=11.0.1"
+    }
   }
 }
