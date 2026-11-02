@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import { Plus, Star, Trash2, Pencil, AlertTriangle } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
 import { useResource } from '@/composables/useResource'
@@ -62,6 +63,7 @@ async function confirmRemove() {
   deleting.value = true
   try {
     await aiApi.deleteProvider(deleteConfirm.value.id)
+    toast.success(t('toast.providerDeleted', { name: deleteConfirm.value.name }))
     await load()  // simplest correct path; refetch from server
   } finally {
     deleting.value = false
@@ -71,6 +73,7 @@ async function confirmRemove() {
 
 async function setDefault(p: AIProviderOut) {
   await aiApi.setDefault(p.id)
+  toast.success(t('toast.providerDefault', { name: p.name }))
   await load()
 }
 </script>
@@ -78,13 +81,13 @@ async function setDefault(p: AIProviderOut) {
 <template>
   <PageHeader :title="t('route.ai')" :subtitle="t('ai.subtitle')">
     <template #actions>
-      <Button @click="openCreate">
+      <Button size="sm" @click="openCreate">
         <Plus :size="14" :stroke-width="1.75" class="mr-1" />
         {{ t('ai.addTitle') }}
       </Button>
     </template>
     <template #extra>
-      <p class="text-2xs text-muted-foreground">
+      <p class="text-xs text-muted-foreground">
         {{ t('ai.oneEnabledHint') }}
       </p>
     </template>
@@ -104,19 +107,19 @@ async function setDefault(p: AIProviderOut) {
         <div class="flex items-center gap-3">
           <span
             v-if="p.enabled"
-            class="inline-flex items-center rounded px-2 py-0.5 text-2xs font-semibold bg-success-bg text-success border border-success-border"
+            class="inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-semibold bg-success-bg text-success border border-success-border"
           >
             {{ t('ai.enabled') }}
           </span>
           <span
             v-if="p.is_default"
-            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold bg-foreground text-background"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-semibold bg-foreground text-background"
           >
-            <Star :size="10" :stroke-width="1.75" fill="currentColor" />
+            <Star :size="12" :stroke-width="1.75" fill="currentColor" />
             {{ t('ai.isDefault') }}
           </span>
           <span class="font-mono text-sm font-semibold">{{ p.name }}</span>
-          <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{{ p.provider }}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground font-mono">{{ p.provider }}</span>
           <span class="text-xs text-muted-foreground font-mono">{{ p.model }}</span>
           <span class="ml-auto text-xs text-muted-foreground font-mono">{{ p.api_key_masked }}</span>
         </div>

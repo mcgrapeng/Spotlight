@@ -3,6 +3,7 @@
 Override DI with fake repositories — no K8s SDK, no DB, no network.
 """
 from dataclasses import replace
+from datetime import datetime, timezone
 from typing import Iterator
 
 import pytest
@@ -37,7 +38,11 @@ class FakeK8s:
         self.events = [
             K8sEvent(name="e1", namespace="default", type="Warning", reason="BackOff",
                      message="oops", involved_kind="Pod", involved_name="p1",
-                     count=2, first_seen="2024-01-01T00:00:00Z", last_seen="2024-01-01T00:00:00Z"),
+                     count=2, first_seen="2024-01-01T00:00:00Z",
+                     # Recent: the dashboard's alert counter is windowed
+                     # (5 minutes) so its number matches the label beside
+                     # it. A pinned date would fall outside the window.
+                     last_seen=datetime.now(timezone.utc).isoformat()),
         ]
         self.log_lines = ["INFO x", "ERROR y", "DEBUG z"]
 
@@ -99,6 +104,11 @@ class FakeAIProviderRepo:
             answer=f"diagnostic for {req.pod_ref.name}",
             model=cfg.model, latency_ms=12, input_tokens=5, output_tokens=3,
         )
+
+    async def stream_analyze(self, cfg, req):
+        # Mirrors a provider's token-by-token delivery.
+        for piece in ("diagnostic ", "for ", req.pod_ref.name or "the cluster"):
+            yield piece
 
 
 class FakeFavRepo:
@@ -243,6 +253,87 @@ def test_ai_provider_create_and_analyze(client):
     out = r2.json()
     assert "diagnostic" in out["answer"]
     assert out["model"] == "gpt-4o-mini"
+
+
+def test_ai_ask_answers_from_the_context(client):
+    """The cluster-level question carries its own snapshot."""
+    r = client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+    })
+    assert r.status_code == 201
+
+    r2 = client.post("/api/v1/ai/ask", json={
+        "provider_id": 1,
+        "question": "which pod is restarting?",
+        "context": "# Cluster: demo\ntotal=287 running=258",
+    })
+    assert r2.status_code == 200
+    out = r2.json()
+    assert "diagnostic" in out["answer"]
+    assert out["model"] == "gpt-4o-mini"
+
+
+def test_ai_ask_stream_emits_the_answer_as_it_arrives(client):
+    """The streaming route delivers the text in pieces, not in one blob.
+
+    A cluster-level question takes the model tens of seconds; a spinner
+    for that long is indistinguishable from a hang.
+    """
+    client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+    })
+
+    with client.stream("POST", "/api/v1/ai/ask/stream", json={
+        "provider_id": 1,
+        "question": "which pod is restarting?",
+        "context": "# Cluster: demo\ntotal=287 running=258",
+    }) as resp:
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+        body = "".join(resp.iter_text())
+
+    assert "event: delta" in body
+    assert "diagnostic" in body
+    assert "event: done" in body
+
+
+def test_ai_ask_stream_rejects_a_disabled_provider_before_the_response(client):
+    """A bad provider is a 400, not a stream that dies halfway through."""
+    r = client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+        "enabled": False,
+    })
+    assert r.status_code == 201
+
+    r2 = client.post("/api/v1/ai/ask/stream", json={
+        "provider_id": 1,
+        "question": "which pod is restarting?",
+        "context": "# Cluster: demo\ntotal=287 running=258",
+    })
+    assert r2.status_code == 400
+
+
+def test_ai_ask_rejects_an_empty_context(client):
+    """An empty context must not reach the model.
+
+    The provider picks its prompt by whether a context is present, so an
+    empty one would fall through to the POD log-analysis prompt and the
+    model would answer a cluster question from zero log lines — a
+    confident, fabricated answer.
+    """
+    r = client.post("/api/v1/ai/providers", json={
+        "name": "OpenAI", "provider": "openai", "model": "gpt-4o-mini",
+        "api_key": "sk-abc", "is_default": True,
+    })
+    assert r.status_code == 201
+
+    r2 = client.post("/api/v1/ai/ask", json={
+        "provider_id": 1, "question": "which pod is restarting?", "context": "",
+    })
+    assert r2.status_code in (400, 422)
 
 
 def test_ai_single_active_enforced(client):

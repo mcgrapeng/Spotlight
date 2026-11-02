@@ -27,6 +27,6 @@ defineEmits<{
     </div>
     <h3 class="text-base font-semibold text-foreground mb-1">{{ heading }}</h3>
     <p v-if="message" class="text-sm text-muted-foreground max-w-md mb-4">{{ message }}</p>
-    <Button @click="$emit('retry')">{{ t('state.retry') }}</Button>
+    <Button size="sm" @click="$emit('retry')">{{ t('state.retry') }}</Button>
   </div>
 </template>

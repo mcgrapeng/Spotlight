@@ -6,7 +6,26 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatNumber(n: number): string {
-  return new Intl.NumberFormat('zh-CN').format(n)
+  // ponytail: 之前写死 'zh-CN'，英文界面里 21,320 还是千分位逗号 ——
+  // en-US 应该是 21,320 也用逗号，但 4 位以上用不同分组符。跟随当前语言。
+  return new Intl.NumberFormat(currentLocale()).format(n)
+}
+
+/**
+ * The active locale, read from the global i18n composer.
+ *
+ * Resolved lazily through a getter registered by the i18n module, so
+ * `lib/utils` stays free of an import cycle (i18n → utils → i18n) and can
+ * still be unit-tested without mounting the app.
+ */
+let localeGetter: () => string = () => 'zh-CN'
+
+export function setLocaleGetter(getter: () => string): void {
+  localeGetter = getter
+}
+
+function currentLocale(): string {
+  return localeGetter()
 }
 
 export function formatPercent(value: number, total: number, decimals = 1): string {

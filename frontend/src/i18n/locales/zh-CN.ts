@@ -19,17 +19,42 @@ export default {
     relogin: '重新登录',
     failed: '登录失败',
     clusterFailed: '选择集群失败',
+    // ponytail: 动态字段的标签归前端管。
+    //
+    // 这些标签以前是后端 auth plugin 写死的中文（「访问令牌」「密码」
+    // 「MFA 一次性码」），英文界面里也显示中文 —— 一个英文界面上写着
+    // 「MFA 一次性码（6 位 TOTP）」的登录框，看起来像没做完。
+    //
+    // 后端仍然发 label（那是它对字段的理解，第三方 plugin 也可能用），
+    // 但前端有同名字段的翻译时用自己的，没有才退回后端那个。key 用的是
+    // 字段的 name（token / password / otp），那是稳定的机器名。
+    field: {
+      token: '访问令牌',
+      password: '密码',
+      otp: 'MFA 一次性码（6 位 TOTP）',
+    },
   },
   dashboard: {
+    // ponytail: 可见的是绝对时刻，相对时间做 title。
+    // 相对时间是一句关于「现在」的话，读者要信浏览器的时钟；绝对时刻是
+    // 一个能复述的事实 —— 凌晨三点跟人确认「你看到的是哪一版」的时候，
+    // 要的是后者。
     updatedAt: '更新于 {time}',
-    compactStats: '{total} 个 Pod · {running} 运行中 · {failed} 失败 · {nodesReady}/{nodesTotal} 节点 · {warnings} 警告',
+    updatedTitle: '{stamp} · {rel}',
+    // ponytail: 只留规模，不留结论。
+    // 原来这一行是「287 个 Pod · 258 运行中 · 0 失败 · 3/3 节点 · 25 警告」，
+    // 而这五个数字在下面各出现一次（阶段图例、行动卡）。首屏 22 个数字里
+    // 有 8 个是重复的，重复的那部分全在这一行。
+    compactStats: '{total} 个 Pod · {nodesReady}/{nodesTotal} 节点就绪',
     refresh: '刷新',
-    actionRequired: '需要处理 · {count} 项',
+    refreshFailed: '刷新失败，仍是上一次的数据',
+    actionRequired: '还有 {count} 项需要处理',
     actionHint: '点链接去查',
     actionFailedPods: '{count} 个 Failed Pod',
     actionFailedPodsDetail: 'Pods 页已自动过滤 Failed',
     actionWarningEvents: '{count} 个 Warning 事件',
     actionWarningEventsDetail: 'Events 页已自动过滤 Warning',
+    actionWarningEventsRepeated: '同一告警已重复 {count} 次',
     actionNodesNotReady: '{count} 个 Node 未就绪',
     actionNodesNotReadyDetail: '节点就绪 {ready}/{total}',
     actionFrequentRestarts: '{count} 个 Pod 频繁重启',
@@ -40,11 +65,46 @@ export default {
     statAlertsHint: '5min 内最近',
     statNodes: '节点',
     nodesReady: '就绪',
+    heroEyebrow: '最该管的一件事',
+    heroAllClear: '一切正常',
+    heroAllClearHint: '没有需要你处理的事',
+    heroRunningFact: '{running} / {total} 个 Pod 处于 Running',
+    heroOpen: '去看看',
+    phaseDistribution: 'Pod 阶段分布',
+    actionFrequentRestartsDetail: '按重启次数倒序，罪魁在前',
+    // ponytail: 那张表原来是一张条形图，每根条的长度是 restarts/max ——
+    // 真实集群上的前三名是 21,302 / 21,320 / 21,320，画出来是三条一样长
+    // 的满格线。条形图的全部意义是相对大小，相对大小恒等于 1 的时候它
+    // 什么也没说。现在它是一份名次表，比较的那句话写在这里。
+    restartLeadGap: '比第 2 名多 {count} 次',
+    restartLeadTie: '与第 2 名持平',
+    // ponytail: 主位那 48px 放的是数字，数字后面跟一个单位。
+    unitFailedPods: '个失败 Pod',
+    unitNotReadyNodes: '个节点未就绪',
+    unitRestarts: '次重启',
+    unitWarningEvents: '个告警事件',
     recentActivity: '最近活动',
     recentActivityWindow: '最近 1h',
     recentActivityEmpty: '安静 — 1 小时内没有事件',
     frequentRestarts: '频繁重启',
     frequentRestartsEmpty: '无',
+  },
+  // ponytail: phase 是 K8s API 的字段值，kubectl 的 STATUS 列写的就是
+  // Running / Pending / Failed / Succeeded。值班的人同时盯着 kubectl 面板和
+  // Spotlight 面板，术语对不上是真实的认知成本；但全中文又让他在 kubectl
+  // 里找不到对应词。所以首次出现的地方并列一次，之后一律用中文。
+  phase: {
+    Running: '运行中 Running',
+    Pending: '等待中 Pending',
+    Failed: '失败 Failed',
+    Succeeded: '已成功 Succeeded',
+    Unknown: '未知 Unknown',
+  },
+  // ponytail: 事件类型和 phase 是同一类东西 —— K8s API 的字段值，kubectl
+  // 打印的就是 Warning / Normal。术语首次出现的地方并列一次。
+  eventType: {
+    Warning: '告警 Warning',
+    Normal: '正常 Normal',
   },
   pods: {
     subtitle: '{count} 个 · {namespace}',
@@ -64,11 +124,18 @@ export default {
     filterStatus: '状态 {status}',
     clearFilters: '清除过滤',
     refresh: '刷新',
-    colNamespace: 'Namespace',
+    colName: '名称',
+    colNamespace: '命名空间',
     colStatus: '状态',
     colContainers: '容器',
     colRestarts: '重启',
+    colNode: '节点',
     colAge: '存在时间',
+    densityCompact: '紧凑',
+    densityStandard: '标准',
+    densityLoose: '宽松',
+    densityLabel: '行密度',
+    largeListHint: '本次拉取了 {count} 个 Pod（当前是前端全量加载，排序和筛选都在本地完成）',
     viewDetail: '查看 {name} 详情',
     containersReady: '{total} 个容器中 {ready} 个就绪',
     containerReady: 'ready',
@@ -89,6 +156,7 @@ export default {
     issueCpuHeadroom: 'CPU 预留过高 · 可分配仅 {pct}%',
     issueMemoryHeadroom: '内存预留过高 · 可分配仅 {pct}%',
     statTotal: '节点总数',
+    statReady: '就绪 Ready',
     statReadyHint: '{count} 未就绪',
     statPods: 'Pod 总数',
     podsRunning: '当前运行',
@@ -107,7 +175,6 @@ export default {
     refresh: '刷新',
     filterByType: '按类型过滤',
     filterAll: '全部',
-    warningSources: '{count} 个告警源',
     showingLatest: '仅显示最近 {count} 条事件',
     nsCurrent: '当前筛选 namespace: {namespace} · 切换到',
     nsAllHint: '查看全集群事件',
@@ -129,7 +196,7 @@ export default {
     delete: '删除',
   },
   pod: {
-    backToPods: '返回 Pods',
+    backToPods: '返回 Pod 列表',
     refresh: '刷新',
     unscheduled: '未调度',
     meta: '元数据',
@@ -140,12 +207,16 @@ export default {
     metaRestarts: '重启',
     metaAge: '存在时间',
     metaOwner: '属主',
+    metaIp: 'Pod IP',
+    metaNode: '节点',
+    metaNamespace: '命名空间',
+    metaContainers: '容器',
+    tabLogs: '日志',
+    tabEvents: '事件',
+    tabDetails: '详情',
     containers: '容器 ({count})',
     containerLogs: '容器日志',
     aiAnalyze: 'AI 分析',
-    aiNoProvider: '请先在「AI 设置」中配置并启用一个模型',
-    aiPrompt: '请分析这些日志的根因、异常点和建议',
-    aiFailed: '分析失败',
     loadingEvents: '加载事件…',
     noEventsTitle: '该 Pod 无相关事件',
     noEventsDescription: 'Kubernetes 集群里没有报告与该 Pod 相关的事件。事件保留时间有限，短暂的事件（如调度成功）可能已过期。',
@@ -171,8 +242,36 @@ export default {
     save: '保存',
     fieldName: '名称',
     fieldNamePlaceholder: '默认',
+    fieldProvider: '服务商',
+    fieldModel: '模型',
+    fieldApiKey: 'API 密钥',
     fieldBaseUrl: 'Base URL（可选）',
     formSetDefault: '设为默认 provider',
+    askTitle: '问 Spotlight',
+    askDescription: '带上当前集群的上下文提问',
+    askContextLabel: '上下文',
+    askContextLoading: '正在收集集群状态…',
+    askContextFailed: '收集集群上下文失败',
+    // ponytail: 面板原来把整份机器快照（英文 markdown，给模型看的）直接
+    // 糊在面板上，占掉四成高度，读者一句都用不上。先给一句人话摘要，
+    // 原始快照收进一个折叠里。
+    askContextSummary: '集群 {cluster} · 命名空间 {namespace} · {total} 个 Pod（{running} 运行中 / {failed} 失败）· 节点 {nodesReady}/{nodesTotal} 就绪 · {warnings} 个告警',
+    askContextShow: '查看原始上下文',
+    askContextHide: '收起原始上下文',
+    askQuestionLabel: '问题',
+    askQuestionPlaceholder: '例如：哪个 Pod 在反复重启？',
+    askSubmitHint: '回车换行 · ⌘/Ctrl + 回车提问',
+    askSubmit: '提问',
+    askConfigure: '去配置模型',
+    answerLabel: '回答',
+    answerMeta: '{model} · {seconds} 秒',
+    answerCopy: '复制',
+    answerCopied: '已复制',
+    analyzePrompt: '请分析这些日志的根因、异常点和建议',
+    analyzeFailed: '分析失败',
+    noProvider: '请先在「AI 设置」中配置并启用一个模型',
+    askTimeout: '请求超时，模型没有在时限内返回',
+    askNoActiveCluster: '还没有选中的集群',
     logAnalysisTitle: 'AI 日志分析',
     logAnalysisDescription: '把日志片段发给 AI 模型分析根因',
     logExcerpt: '日志片段（{count} 字符）',
@@ -195,7 +294,6 @@ export default {
     aboutHeading: '关于',
     aboutApp: '应用',
     aboutTheme: '模式',
-    aboutThemeValue: '仅亮色（设计固定）',
     aboutStorage: '存储',
     aboutStorageValue: '侧边栏折叠 + 当前集群 / namespace（localStorage）',
     logoutConfirmTitle: '确认登出？',
@@ -204,9 +302,14 @@ export default {
   },
   nav: {
     dashboard: '总览',
-    pods: 'Pods',
-    nodes: 'Nodes',
-    events: 'Events',
+    // ponytail: 中文界面里不夹英文。
+    //
+    // 「总览 / Pods / Nodes / Events / 收藏夹」—— 三个英文夹在两个中文
+    // 中间，读起来像翻译没做完。规则定成：Kubernetes 的资源名保留原样
+    // （Pod 是专有名词，中文工程师也说 Pod），其余一律中文。
+    pods: 'Pod',
+    nodes: '节点',
+    events: '事件',
     favorites: '收藏夹',
     ai: 'AI 模型',
     settings: '设置',
@@ -223,13 +326,18 @@ export default {
   route: {
     login: '登录',
     dashboard: '总览',
-    pods: 'Pods',
+    pods: 'Pod',
     podDetail: 'Pod 详情',
-    nodes: 'Nodes',
-    events: 'Events',
+    nodes: '节点',
+    events: '事件',
     favorites: '收藏夹',
     ai: 'AI 模型',
     settings: '设置',
+  },
+  notFound: {
+    title: '页面不存在',
+    description: '这个地址没有对应的页面。',
+    backHome: '回到总览',
   },
   state: {
     empty: '暂无数据',
@@ -244,10 +352,31 @@ export default {
     hintCurrent: '当前',
   },
   namespace: {
-    select: '选择 namespace',
-    search: '搜索 namespace…',
-    empty: '没有匹配的 namespace',
-    all: '所有 namespace',
+    select: '选择命名空间',
+    search: '搜索命名空间…',
+    empty: '没有匹配的命名空间',
+    all: '所有命名空间',
+  },
+  // ponytail: vue-sonner 早就装好并挂载了 Toaster，但全项目 0 次调用 toast() ——
+  // 删除 Provider、删除收藏、复制日志、清空日志全靠页面重渲染表达结果，
+  // 用户拿不到任何确认。toast 段把「操作结果」和「界面语言」绑在一起。
+  toast: {
+    providerDeleted: '已删除 Provider「{name}」',
+    providerSaved: '已保存 Provider「{name}」',
+    providerDefault: '已把「{name}」设为默认',
+    favoriteDeleted: '已删除收藏',
+    logsCopied: '已复制 {count} 行日志到剪贴板',
+    logsCopyFailed: '复制失败，请检查剪贴板权限',
+    logsDownloaded: '已下载 {count} 行日志',
+    logsCleared: '已清空日志视图',
+    aiAnswerCopied: '已复制回答',
+    aiAnswerCopyFailed: '复制失败，请检查剪贴板权限',
+  },
+  theme: {
+    label: '主题',
+    light: '亮色',
+    dark: '暗色',
+    system: '跟随系统',
   },
   select: {
     placeholder: '请选择',
@@ -257,6 +386,10 @@ export default {
   log: {
     filterAll: '全部',
     severityLines: '{bucket} · {count} 行',
+    // ponytail: 分类器认不出来的行单独一档。它们以前被算进 INFO，
+    // 于是「INFO+ 513」说的是 513 行都没被读懂。
+    severityUnknown: '未识别',
+    severityUnknownLines: '未识别 · {count} 行',
     containerTabsLabel: '容器选择',
     container: '容器',
     searchPlaceholder: '过滤（内容 / 容器） · / 聚焦搜索',
@@ -281,9 +414,11 @@ export default {
     field: '字段',
     filterField: '过滤 {field}=',
     clearFieldFilter: '清除字段过滤',
-    outputLabel: '日志输出（最新在上）',
+    outputLabel: '日志输出（最新在下）',
     newLines: '{count} 条新 · 跳转',
     emptyTitle: '暂无日志',
+    // ponytail: 读取失败和「暂无日志」是两件事。之前它们同时出现，
+    // 互相矛盾：上面一条红条说读取失败，下面说等待容器输出。
     emptyWaiting: '等待容器输出…',
     emptyPaused: '日志已暂停',
     emptyFilteredTitle: '当前过滤无匹配',
@@ -299,13 +434,25 @@ export default {
     collapse: '收起',
     expandRemaining: '展开剩余 {count} 字',
     moreChars: '+{count} 字',
+    moreActions: '更多',
+    menuToggleWrap: '切换自动换行',
+    menuClear: '清空当前屏幕',
+    menuShortcuts: '快捷键',
+    clearConfirmTitle: '清空当前日志？',
+    clearConfirmBody: '这一屏的内容会被清掉，集群里的日志不受影响。',
+    clearConfirmOk: '清空',
+    clearConfirmCancel: '取消',
+    wrapStateOn: '已开启',
+    wrapStateOff: '已关闭',
     foldTooltip: '本组 ×{count}（点击展开全部）',
     foldMore: '… 共 {count} 条',
     foldTitle: '本组 {count} 条相同的日志 · 点击展开',
     linesUnit: '行',
+    localTime: '本地时间 {tz}',
+    localTimeHint: '时间列显示的是本机时区的时间',
     live: '实时',
     paused: '已暂停',
-    scrollHint: '滚动到顶部查看最新',
+    scrollHint: '滚动到底部查看最新',
     autoFollow: '自动跟随',
     help: {
       focusSearch: '聚焦搜索',
@@ -321,6 +468,9 @@ export default {
     placeholder: '输入命令、页面或操作…',
     noResults: '未找到结果。',
     navGroup: '导航',
+    resourcesGroup: '资源',
+    resourcesEmpty: '没有匹配的 Pod 或节点',
+    resourcesTypeToSearch: '输入至少 2 个字符以搜索 Pod',
     actionsGroup: '操作',
     shortcutsTitle: '快捷键',
     footer: {
@@ -331,17 +481,15 @@ export default {
     },
     shortcuts: {
       openPalette: '打开命令面板',
-      quickNav: '快速跳转（总览/Pods/Nodes/Events/Favorites/AI）',
+      quickNav: '快速跳转：先按 g，再按 d 总览 / p Pod / n 节点 / e 事件 / f 收藏夹',
       showPanel: '显示快捷键面板',
-      focusSearch: 'LogViewer 聚焦搜索',
-      pauseStream: 'LogViewer 暂停/继续流',
-      toggleFollow: 'LogViewer 切换自动跟随',
-      copyAll: 'LogViewer 复制全部',
+      openAi: '打开 AI 助手',
       searchNative: 'LogViewer 搜索（保留原生行为）',
     },
     actions: {
       refresh: '刷新当前页面',
       ai: '打开 AI 助手',
+      jumpToPod: '跳到 Pod',
       shortcuts: '显示快捷键面板',
     },
   },

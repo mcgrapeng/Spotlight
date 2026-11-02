@@ -62,6 +62,18 @@ class AIRepositoryPort(Protocol):
 
     async def analyze(self, cfg: AIProviderConfig, req: AIAnalysisRequest) -> AIAnalysisResult: ...
 
+    def stream_analyze(
+        self, cfg: AIProviderConfig, req: AIAnalysisRequest,
+    ) -> AsyncIterator[str]:
+        """Yield the answer as it is produced, token by token.
+
+        The whole point is the wait: a cluster-level question takes the
+        model tens of seconds, and a reader staring at a spinner for that
+        long has no way to tell "working" from "stuck". The streaming
+        variant lets the panel render the answer as it arrives.
+        """
+        ...
+
 
 @runtime_checkable
 class PermissionRepositoryPort(Protocol):

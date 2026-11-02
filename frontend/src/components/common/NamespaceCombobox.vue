@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, ChevronsUpDown, Layers } from '@lucide/vue'
+import { Layers } from '@lucide/vue'
 import { cn } from '@/lib/utils'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from '@/components/ui/command'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { useClusterStore } from '@/stores/cluster'
 
+// ponytail: 见 ClusterCombobox —— 这一层只负责选项和选中行为，控件是 AppSelect。
 const { t } = useI18n()
 const cluster = useClusterStore()
-const open = ref(false)
+
+// ponytail: 见 ClusterCombobox —— 调用方控制宽度。
+const props = defineProps<{ class?: string }>()
 
 const value = computed(() => cluster.activeNamespace)
 const disabled = computed(() => cluster.namespaces.length === 0)
@@ -32,61 +34,21 @@ const options = computed(() => [
 
 function selectNamespace(name: string) {
   cluster.setNamespace(name)
-  open.value = false
 }
 </script>
 
 <template>
-  <Popover v-model:open="open">
-    <PopoverTrigger as-child>
-      <button
-        type="button"
-        role="combobox"
-        :aria-expanded="open"
-        :aria-label="t('namespace.select')"
-        :disabled="disabled"
-        :class="cn(
-          'inline-flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm',
-          'hover:bg-accent hover:text-accent-foreground transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          'min-w-[160px] justify-between',
-          'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background',
-        )"
-      >
-        <Layers :size="14" :stroke-width="1.75" class="shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span class="truncate">{{ label }}</span>
-        <ChevronsUpDown :size="14" :stroke-width="1.75" class="shrink-0 opacity-50" aria-hidden="true" />
-      </button>
-    </PopoverTrigger>
-    <PopoverContent class="w-[260px] p-0" align="start">
-      <Command :model-value="value">
-        <CommandInput :placeholder="t('namespace.search')" />
-        <CommandList>
-          <CommandEmpty>{{ t('namespace.empty') }}</CommandEmpty>
-          <CommandGroup>
-            <CommandItem
-              v-for="opt in options"
-              :key="opt.value"
-              :value="opt.value"
-              @select="selectNamespace(opt.value)"
-            >
-              <Check
-                :size="14"
-                :stroke-width="2"
-                :class="cn('shrink-0', value === opt.value ? 'opacity-100' : 'opacity-0')"
-                aria-hidden="true"
-              />
-              <span class="truncate flex-1">{{ opt.label }}</span>
-              <span
-                v-if="opt.hint"
-                class="text-2xs uppercase tracking-wide text-muted-foreground"
-              >
-                {{ opt.hint }}
-              </span>
-            </CommandItem>
-          </CommandGroup>
-        </CommandList>
-      </Command>
-    </PopoverContent>
-  </Popover>
+  <AppSelect
+    :model-value="value"
+    :options="options"
+    :placeholder="label"
+    :disabled="disabled"
+    :aria-label="t('namespace.select')"
+    :search-placeholder="t('namespace.search')"
+    :empty-text="t('namespace.empty')"
+    popover-width="260px"
+    :leading-icon="Layers"
+    :class="cn(props.class, 'md:min-w-[160px]')"
+    @update:model-value="selectNamespace"
+  />
 </template>

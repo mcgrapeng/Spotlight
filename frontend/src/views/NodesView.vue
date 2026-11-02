@@ -7,6 +7,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatCard from '@/components/common/StatCard.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, parseCPU, parseMemory, formatMillicores, formatMiB } from '@/lib/utils'
@@ -41,7 +42,7 @@ async function load() {
   try {
     nodes.value = await nodesApi.list(cluster.activeCluster)
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? t('state.error')
+    error.value = e?.response?.data?.detail ?? t('state.error')
   } finally {
     loading.value = false
   }
@@ -130,8 +131,10 @@ function podOverloaded(n: NodeOut): boolean {
   <div class="space-y-5">
     <PageHeader :title="t('route.nodes')" :subtitle="subtitle">
       <template #actions>
-        <Button variant="outline" size="sm" :disabled="loading" @click="load" :aria-label="t('nodes.refresh')">
-          <RefreshCw :size="14" :stroke-width="1.75" :class="cn(loading && 'animate-spin')" />
+        <Button variant="outline" size="sm" :loading="loading" @click="load" :aria-label="t('nodes.refresh')">
+          <template #icon>
+            <RefreshCw :size="14" :stroke-width="1.75" />
+          </template>
           {{ t('nodes.refresh') }}
         </Button>
       </template>
@@ -140,10 +143,13 @@ function podOverloaded(n: NodeOut): boolean {
     <!-- Gated on the data, not on `loading`: `!loading &&` made the whole
          stat row vanish on every cluster / namespace refetch and pop back.
          Same flash as the pods table and the log panel. -->
-    <div v-if="nodes.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <!-- ponytail: 四张卡变三张。NotReady = total - Ready，从 Ready 就能推
+         出来，而它自己那张卡又把同一个数写了一遍（Ready 卡的 hint 里也是
+         这个数）。剩下的「Pod 总数」是数字聚合，说明不了分布，但那是
+         这一页唯一的整体量，留着。 -->
+    <div v-if="nodes.length" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <StatCard :label="t('nodes.statTotal')" :value="nodes.length" />
-      <StatCard label="Ready" :value="ready" :hint="t('nodes.statReadyHint', { count: notReady })" />
-      <StatCard label="NotReady" :value="notReady" />
+      <StatCard :label="t('nodes.statReady')" :value="ready" :hint="t('nodes.statReadyHint', { count: notReady })" />
       <StatCard :label="t('nodes.statPods')" :value="totalPods" />
     </div>
 
@@ -190,7 +196,7 @@ function podOverloaded(n: NodeOut): boolean {
                 <Server :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
                 <h3 class="text-base font-semibold font-mono truncate">{{ d.node.name }}</h3>
               </div>
-              <div class="mt-1 flex items-center gap-2 text-2xs text-muted-foreground">
+              <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <span v-if="d.node.roles.length" class="font-mono">{{ d.node.roles.join(', ') }}</span>
                 <span v-if="d.node.roles.length" class="opacity-30">·</span>
                 <span class="font-mono">v{{ d.node.kubelet_version }}</span>
@@ -198,18 +204,12 @@ function podOverloaded(n: NodeOut): boolean {
                 <span class="tabular-nums">{{ d.node.age ?? '—' }}</span>
               </div>
             </div>
-            <span :class="cn(
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium border shrink-0',
-              d.node.status === 'Ready'
-                ? 'bg-success-bg text-success border-success-border'
-                : 'bg-error-bg text-error border-error-border',
-            )">
-              <span :class="cn(
-                'inline-block w-1.5 h-1.5 rounded-full',
-                d.node.status === 'Ready' ? 'bg-success' : 'bg-error',
-              )"></span>
-              {{ d.node.status }}
-            </span>
+            <StatusChip
+              :tone="d.node.status === 'Ready' ? 'success' : 'error'"
+              :label="d.node.status"
+              dot
+              class="shrink-0"
+            />
           </div>
 
           <!-- Pod 数：核心指标，放大显示 -->
@@ -217,7 +217,7 @@ function podOverloaded(n: NodeOut): boolean {
             <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Box :size="12" :stroke-width="1.75" />
               Pods
-              <span class="text-2xs opacity-70">{{ t('nodes.podsRunning') }}</span>
+              <span class="text-xs opacity-70">{{ t('nodes.podsRunning') }}</span>
             </div>
             <div class="mt-1 flex items-baseline gap-2">
               <span :class="cn(
@@ -231,14 +231,21 @@ function podOverloaded(n: NodeOut): boolean {
                 :title="t('nodes.podCapTitle', { max: MAX_PODS_PER_NODE })"
               >/ {{ MAX_PODS_PER_NODE }} {{ t('nodes.podCap') }}</span>
             </div>
-            <div v-if="podOverloaded(d.node)" class="mt-1 text-2xs text-warning">
+            <div v-if="podOverloaded(d.node)" class="mt-1 text-xs text-warning">
               {{ t('nodes.podOverCap', { count: d.node.pod_count - MAX_PODS_PER_NODE }) }}
             </div>
             <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
               <div
                 :class="cn(
-                  'h-full transition-all rounded-full',
-                  podOverloaded(d.node) ? 'bg-warning' : 'bg-foreground',
+                  // ponytail: 正常容量走中性灰，超限走琥珀。
+                  //
+                  // 之前正常的那根是 bg-foreground —— 亮色下是一块实心黑
+                  // 条，暗色下是一块接近白的实心条。而这块「一切正常」的
+                  // 条是全页最重的形状，真出问题的那张卡反而更轻：优先级
+                  // 整个反了。超限的判断已经由琥珀色和下面那句「超出节点
+                  // 上限 N 个」承担了，条本身不用再抢戏。
+                  'h-full transition-[width] ease-app dur-base rounded-full',
+                  podOverloaded(d.node) ? 'bg-warning' : 'bg-muted-foreground/40',
                 )"
                 :style="{ width: `${podPct(d.node)}%` }"
               />
@@ -247,37 +254,51 @@ function podOverloaded(n: NodeOut): boolean {
 
           <!-- 规格表：纯文字展示，没有 bar 也不会有歧义 -->
           <div class="pt-3 border-t border-border space-y-2">
+            <!--
+              ponytail: 那个百分比删掉了。
+
+              原来这一行右边挂着一个「100%」，它是「可分配 / 总量」
+              （allocatable ÷ capacity）—— 一个预留比例，不是使用率。
+              真实集群上三个节点全是 100%：CPU 32 / 32，内存
+              60.36Gi / 60.36Gi。健康节点写着 100%，读起来像一块烧到底
+              的仪表；更糟的是内存那个 63364680Ki / 63262280Ki 四舍五入
+              之后也是 100%，而两个数其实不相等 —— 百分比在骗人。
+
+              左边那行「32 可分配 / 32 总」已经把同样的比例说清楚了，
+              而且说对：它写的是「可分配」和「总」，不是「已用」。
+              一个数字只出现一次，而这一次是真的。
+            -->
             <div class="flex items-center gap-2 text-xs">
               <Cpu :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="text-muted-foreground w-14 shrink-0">CPU</span>
-              <span class="font-mono tabular-nums">
+              <!--
+                数字和单位之间要有空格。原来的写法是
+                `<span> {{ t('nodes.allocatable') }}</span>` —— 那个前导
+                空格是 span 的第一个子节点，Vue 编译时把「只有空白、且是
+                首个子节点」的文本节点删掉了，于是屏幕上贴着「32可分配」。
+                中文和数字之间挤在一起，密度就不对了。改成 flex + gap，
+                间距由布局决定，不依赖文本节点里那个看不见的空格。
+              -->
+              <span class="inline-flex items-baseline gap-1 font-mono tabular-nums">
                 <span :class="d.cpu.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
                   {{ d.cpu.alloc }}
                 </span>
-                <span class="text-muted-foreground"> {{ t('nodes.allocatable') }}</span>
-                <span class="text-muted-foreground"> / </span>
+                <span class="text-muted-foreground">{{ t('nodes.allocatable') }}</span>
+                <span class="text-muted-foreground">/</span>
                 <span class="text-muted-foreground">{{ d.cpu.cap }} {{ t('nodes.total') }}</span>
               </span>
-              <span :class="cn(
-                'ml-auto tabular-nums text-2xs',
-                d.cpu.allocRatio < 20 ? 'text-warning' : 'text-muted-foreground',
-              )">{{ d.cpu.allocRatio }}%</span>
             </div>
             <div class="flex items-center gap-2 text-xs">
               <MemoryStick :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="text-muted-foreground w-14 shrink-0">{{ t('nodes.memory') }}</span>
-              <span class="font-mono tabular-nums">
+              <span class="inline-flex items-baseline gap-1 font-mono tabular-nums">
                 <span :class="d.mem.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
                   {{ d.mem.alloc }}
                 </span>
-                <span class="text-muted-foreground"> {{ t('nodes.allocatable') }}</span>
-                <span class="text-muted-foreground"> / </span>
+                <span class="text-muted-foreground">{{ t('nodes.allocatable') }}</span>
+                <span class="text-muted-foreground">/</span>
                 <span class="text-muted-foreground">{{ d.mem.cap }} {{ t('nodes.total') }}</span>
               </span>
-              <span :class="cn(
-                'ml-auto tabular-nums text-2xs',
-                d.mem.allocRatio < 20 ? 'text-warning' : 'text-muted-foreground',
-              )">{{ d.mem.allocRatio }}%</span>
             </div>
           </div>
         </CardContent>
@@ -287,7 +308,7 @@ function podOverloaded(n: NodeOut): boolean {
     <LoadingState v-else-if="!nodes.length && loading" :message="t('nodes.loading')" />
     <EmptyState v-else :title="t('nodes.emptyTitle')" :description="t('nodes.emptyDescription')">
       <template #icon>
-        <Server :size="40" :stroke-width="1.5" class="text-muted-foreground" />
+        <Server :size="32" :stroke-width="1.5" class="text-muted-foreground" />
       </template>
     </EmptyState>
   </div>

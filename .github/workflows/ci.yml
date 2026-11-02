@@ -73,7 +73,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Unit tests
         working-directory: frontend
-        run: pnpm run test
+        # --coverage runs the vitest coverage thresholds (vitest.config.ts)
+        # as a gate; the plain `pnpm run test` form skips them.
+        run: pnpm exec vitest run --coverage
       - name: Type check
         working-directory: frontend
         # Split out from `pnpm run build`, which also runs `types:check`

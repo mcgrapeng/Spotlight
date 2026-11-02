@@ -9,6 +9,7 @@ After the god-class split:
 No K8s SDK calls → fast, deterministic.
 """
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from app.application.use_cases.dashboard import DashboardUseCases
 from app.application.use_cases.events import EventUseCases
@@ -23,6 +24,16 @@ from app.domain.entities.resources import (
 )
 from app.domain.value_objects.primitives import ResourceRef
 
+
+def _ago(**kw) -> str:
+    """A recent timestamp, in the shape the event mapper produces.
+
+    The dashboard's alert counter is windowed (5 minutes) so that its
+    number agrees with the label next to it — see
+    test_dashboard_windows.py. A fixture pinned to a fixed date would
+    count as "not recent" and quietly stop exercising that path.
+    """
+    return (datetime.now(timezone.utc) - timedelta(**kw)).isoformat()
 
 class FakeK8sRepo:
     """In-memory implementation of K8sRepositoryPort for testing."""
@@ -99,13 +110,13 @@ def repo() -> FakeK8sRepo:
     repo.events = [
         K8sEvent(name="e1", namespace="default", type="Warning", reason="BackOff",
                  message="Back-off restarting", involved_kind="Pod", involved_name="p-crash",
-                 count=5, first_seen=None, last_seen="2024-01-01T00:00:00Z"),
+                 count=5, first_seen=None, last_seen=_ago(seconds=30)),
         K8sEvent(name="e2", namespace="default", type="Normal", reason="Started",
                  message="started", involved_kind="Pod", involved_name="p-ok",
-                 count=1, first_seen=None, last_seen="2024-01-01T00:00:01Z"),
+                 count=1, first_seen=None, last_seen=_ago(seconds=20)),
         K8sEvent(name="e3", namespace="kube-system", type="Warning", reason="FailedMount",
                  message="Unable to attach volumes", involved_kind="Pod", involved_name="p-search",
-                 count=3, first_seen=None, last_seen="2024-01-01T00:00:00Z"),
+                 count=3, first_seen=None, last_seen=_ago(seconds=40)),
     ]
     return repo
 

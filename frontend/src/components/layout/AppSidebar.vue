@@ -3,14 +3,17 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
-  LayoutDashboard, Box, Server, Activity, Star, Sparkles, Settings,
+  LayoutDashboard, Box, Server, Activity, Star, Settings,
   PanelLeftClose, PanelLeftOpen,
 } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { eventsApi } from '@/api/endpoints'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import { STORAGE_KEYS } from '@/storage-keys'
+import dayjs from '@/utils/dayjs'
 
 const props = withDefaults(defineProps<{
   collapsed?: boolean
@@ -38,7 +41,19 @@ const badgeFetch = useCachedFetch<number>({
       namespace: cluster.activeNamespace || '_all',
       limit: 500,
     })
-    return events.filter(e => e.type === 'Warning').length
+    // ponytail: 徽标数的是「最近 5 分钟里的告警」，和仪表盘那张卡的
+    // 口径一样（后端 dashboard 的 warning_events 也是 5 分钟窗口）。
+    //
+    // 之前这里数的是「最近 500 条事件里有几条 Warning」—— 没有时间窗口。
+    // 于是徽标可能显示 1，而仪表盘显示 0（或者反过来），两个数字在同一
+    // 屏上打架，读者只能猜哪个是真的。
+    //
+    // 5 分钟这个窗口也是「需要处理」的时间尺度：一个 20 分钟前烧完就
+    // 停了的问题，不该在侧边栏继续闪。
+    const cutoff = dayjs().subtract(5, 'minute')
+    return events.filter(
+      (e) => e.type === 'Warning' && !!e.last_seen && dayjs(e.last_seen).isAfter(cutoff),
+    ).length
   },
   data: ref<number | null>(null) as unknown as import('vue').Ref<number | null>,
   loading: ref(false) as unknown as import('vue').Ref<boolean>,
@@ -68,9 +83,11 @@ async function refreshEventBadge() {
 
 onMounted(() => {
   refreshEventBadge()
-  // 5min — the page-level events view is the source of truth; the sidebar
-  // badge is a "there's something to look at" hint, not a real-time counter.
-  badgeTimer = setInterval(refreshEventBadge, 5 * 60_000)
+  // 60s — the same cadence as the dashboard's own poll, so the badge and
+  // the dashboard never disagree about how many warnings there are. The
+  // page-level events view is still the source of truth; the badge is a
+  // "there's something to look at" hint.
+  badgeTimer = setInterval(refreshEventBadge, 60_000)
 })
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
@@ -78,13 +95,29 @@ onUnmounted(() => {
 watch(() => cluster.activeCluster, refreshEventBadge)
 watch(() => cluster.activeNamespace, refreshEventBadge)
 
+// ponytail: 导航只放「工作面」。AI 模型是配置页，住在设置里（`/ai` 路径不动，
+// 书签不失效），不跟总览 / Pods 这类每天干活的面并排。
 const navItems = computed(() => [
   { path: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, badge: 0 },
   { path: '/pods',      label: t('nav.pods'),      icon: Box,        badge: 0 },
   { path: '/nodes',     label: t('nav.nodes'),     icon: Server,     badge: 0 },
-  { path: '/events',    label: t('nav.events'),    icon: Activity,   badge: eventBadge.value },
+  {
+    path: '/events',
+    label: t('nav.events'),
+    icon: Activity,
+    badge: eventBadge.value,
+    // ponytail: 徽标点进去就该是告警。
+    //
+    // 徽标写着「1」，读者点它的心理预期是「带我去看那 1 条」。之前跳转
+    // 到 /events，而那一页默认列 500 条事件（真实集群：498 条 Normal、
+    // 2 条 Warning），告警排在很后面。于是徽标说的是「有 1 条告警」，
+    // 点进去看到的却是一屏调度完成的流水账。
+    //
+    // 没有徽标（没有告警）的时候还是普通的一页 —— 那时候读者要的就是
+    // 全部事件。
+    query: eventBadge.value > 0 ? { type: 'Warning' } : undefined,
+  },
   { path: '/favorites', label: t('nav.favorites'), icon: Star,       badge: 0 },
-  { path: '/ai',        label: t('nav.ai'),        icon: Sparkles,   badge: 0 },
 ])
 
 const isActive = (path: string) =>
@@ -97,21 +130,37 @@ const isActive = (path: string) =>
       <router-link
         v-for="item in navItems"
         :key="item.path"
-        :to="item.path"
+        :to="{ path: item.path, query: item.query }"
         :class="cn(
-          'relative flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
+          'relative flex items-center gap-3 rounded-md text-sm transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          // ponytail: 激活项从纯黑药丸改成「更深的字 + 一条竖线」。
+          // 纯反色让侧栏里最亮的色块是当前项，而读者的视线应该在内容上；
+          // 夜里 3 点，屏幕上一块纯黑比一段文字重得多。
+          //
+          // 但也不能只是换个浅灰底：--accent 和 --sidebar-accent 在亮色下
+          // 是同一个值（#F4F4F5），而 --accent-foreground 和
+          // --sidebar-foreground 也是同一个值 —— 那样「当前项」和「鼠标
+          // 悬停的那一项」长得一模一样，而当前项和普通项只差 1.03:1 的
+          // 对比，等于没有标记。所以标记由竖线和字重承担：颜色最深的
+          // 那一项是当前页，悬停只是一层很淡的底。
           isActive(item.path)
-            ? 'bg-foreground text-background hover:bg-foreground/90'
-            : 'text-sidebar-foreground',
+            ? 'text-sidebar-foreground font-semibold'
+            : 'text-muted-foreground font-medium',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
         :aria-current="isActive(item.path) ? 'page' : undefined"
         @click="$emit('navigate')"
       >
+        <span
+          v-if="isActive(item.path)"
+          class="absolute -left-0.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-foreground"
+          aria-hidden="true"
+        />
         <component
           :is="item.icon"
-          :size="18"
+          :size="20"
           :stroke-width="1.75"
           class="shrink-0"
           aria-hidden="true"
@@ -119,7 +168,7 @@ const isActive = (path: string) =>
         <span v-if="!props.collapsed" class="flex-1 truncate">{{ item.label }}</span>
         <span
           v-if="!props.collapsed && item.badge"
-          class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-warning text-warning-foreground text-2xs font-semibold"
+          class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-warning text-warning-foreground text-xs font-semibold"
         >
           {{ item.badge }}
         </span>
@@ -132,35 +181,56 @@ const isActive = (path: string) =>
     </div>
 
     <div class="px-2 pt-2 border-t border-sidebar-border flex flex-col gap-0.5">
+      <!--
+        ponytail: 偏好（主题 + 语言）挨着设置放在侧边栏底部。
+        这两样一天用一次，顶栏最好的位置应该留给「范围」（集群 + 命名空间）。
+        折叠态整行不渲染：侧边栏折叠后只剩 64px，内容盒 48px，而主题切换
+        本身就有 78px —— 塞进去会被 aside 的 overflow-hidden 切掉一截，
+        「跟随系统」那个按钮既看不全也点不到。折叠态去设置页改主题。
+      -->
+      <div
+        v-if="!props.collapsed"
+        class="flex items-center gap-1 shrink-0 px-3 h-9"
+      >
+        <ThemeToggle />
+        <LocaleSwitcher class="ml-auto" />
+      </div>
       <router-link
         to="/settings"
         :class="cn(
-          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
+          'relative flex items-center gap-3 rounded-md text-sm transition-colors ease-app dur-fast',
           'hover:bg-sidebar-accent',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           isActive('/settings')
-            ? 'bg-foreground text-background hover:bg-foreground/90'
-            : 'text-sidebar-foreground',
+            ? 'text-sidebar-foreground font-semibold'
+            : 'text-muted-foreground font-medium',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
         :aria-current="isActive('/settings') ? 'page' : undefined"
       >
-        <Settings :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <span
+          v-if="isActive('/settings')"
+          class="absolute -left-0.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-foreground"
+          aria-hidden="true"
+        />
+        <Settings :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">{{ t('nav.settings') }}</span>
       </router-link>
       <!-- ponytail: 折叠按钮贴在 sidebar 自己身上 —— 视觉归属清晰，logo 不被抢位 -->
       <button
         type="button"
         :class="cn(
-          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
-          'hover:bg-sidebar-accent text-sidebar-foreground',
+          'flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
+          'hover:bg-sidebar-accent text-muted-foreground',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
         )"
         :aria-label="props.collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
         :title="props.collapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')"
         @click="$emit('toggle-sidebar')"
       >
-        <PanelLeftOpen v-if="props.collapsed" :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
-        <PanelLeftClose v-else :size="18" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <PanelLeftOpen v-if="props.collapsed" :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <PanelLeftClose v-else :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
         <span v-if="!props.collapsed">{{ t('nav.collapseSidebar') }}</span>
       </button>
     </div>

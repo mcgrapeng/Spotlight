@@ -7,7 +7,7 @@ from typing import Iterator
 from app.application.dto import LogStreamParams
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.services.log_classifier import get_classifier
-from app.domain.services.log_parser import parse_log_line
+from app.domain.services.log_parser import parse_timestamp
 from app.domain.value_objects.enums import LogSeverity
 from app.domain.value_objects.primitives import LogFilter, ResourceRef
 
@@ -29,13 +29,26 @@ class LogUseCases:
         stop_event=None,
     ) -> Iterator[LogStreamParams]:
         for entry in self._repo.stream_logs(ref, container, tail, stop_event=stop_event):
+            # `None` is the repo's poll-boundary marker (this poll is done,
+            # flush what it produced). It carries no content and must not be
+            # classified or enriched.
+            if entry is None:
+                yield None  # type: ignore[misc]
+                continue
             yield self._enrich(entry)
 
     def _enrich(self, entry) -> LogStreamParams:
-        ts, content = parse_log_line(entry.content, entry.container)
+        # The repository already split the apiserver's timestamp off the
+        # line: `entry.timestamp` is the line's real time and `entry.content`
+        # is the line itself. This used to re-parse the content, which no
+        # longer carried a timestamp, and fall back to "now" — so every row
+        # of the history showed the moment the log was fetched, and the
+        # follow-stream showed the real per-line times. The two paths
+        # disagreed, and neither one was right.
         return LogStreamParams(
-            timestamp=ts, content=content, container=entry.container,
-            severity=self._classifier.classify(content).value,
+            timestamp=entry.timestamp, content=entry.content,
+            container=entry.container,
+            severity=self._classifier.classify(entry.content).value,
         )
 
 
@@ -53,8 +66,15 @@ def apply_filter(entry: LogStreamParams, flt: LogFilter) -> bool:
         entry_sev = LogSeverity(entry.severity)
         if not entry_sev.is_at_least(threshold):
             return False
-    if flt.since and entry.timestamp < flt.since:
-        return False
+    if flt.since:
+        # Compare instants, not strings. The client sends its own ISO shape
+        # ("2026-10-20T10:00:00Z") while the entries carry milliseconds
+        # ("2026-10-20T10:00:00.000Z"), and a lexicographic comparison of
+        # the two drops or keeps the wrong lines around the boundary.
+        cutoff = parse_timestamp(flt.since)
+        moment = parse_timestamp(entry.timestamp)
+        if cutoff is not None and moment is not None and moment < cutoff:
+            return False
     if flt.keyword:
         haystack = entry.content.lower() if flt.case_insensitive else entry.content
         needle = flt.keyword.lower() if flt.case_insensitive else flt.keyword

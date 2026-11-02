@@ -5,6 +5,9 @@ import { cn } from '@/lib/utils'
 
 const { locale } = useI18n()
 
+// ponytail: 调用方（AppHeader）需要把它放到 grid 的指定单元格里。
+const props = defineProps<{ class?: string }>()
+
 // Deliberately untranslated: `中文` and `EN` read the same in both locales, so
 // the control never relabels itself and there is no chicken-and-egg problem.
 const LABELS: Record<Locale, string> = {
@@ -28,7 +31,7 @@ async function pick(l: Locale) {
   <div
     role="group"
     :aria-label="'Language / 语言'"
-    class="inline-flex items-center rounded-md border border-border p-0.5"
+    :class="cn('inline-flex items-center rounded-md border border-border p-0.5 shrink-0', props.class)"
   >
     <button
       v-for="l in LOCALES"
@@ -36,9 +39,11 @@ async function pick(l: Locale) {
       type="button"
       :aria-pressed="locale === l"
       :class="cn(
-        'px-2 h-6 text-2xs font-medium rounded transition-colors',
+        // ponytail: h-6 → h-7，和侧边栏里另两个分段控件一致。
+        // 这个切换也在侧边栏（主导航区），24px 高的按钮点不准。
+        'px-2 h-7 text-xs font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ease-app dur-fast',
         locale === l
-          ? 'bg-foreground text-background'
+          ? 'bg-foreground text-background dark:bg-accent dark:text-accent-foreground'
           : 'text-muted-foreground hover:text-foreground',
       )"
       @click="pick(l)"

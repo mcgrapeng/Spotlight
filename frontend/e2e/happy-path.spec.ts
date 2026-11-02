@@ -12,7 +12,7 @@ test.describe('Happy path — login → dashboard → pods → log filter → AI
     await expect(page.locator('h1').first()).toContainText('总览')
   })
 
-  test('dashboard renders health hero + restart leaderboard', async ({ page }) => {
+  test('dashboard renders the action hero + restart leaderboard', async ({ page }) => {
     const statsResponse = page.waitForResponse(/api\/v1\/pods\/stats/, { timeout: 10_000 })
     await page.goto('/dashboard')
     const statsRes = await statsResponse
@@ -21,8 +21,8 @@ test.describe('Happy path — login → dashboard → pods → log filter → AI
     // Wait for the stats response body to be parsed and rendered. The mock
     // returns total_pods=287, so 287 must appear after Vue's render cycle.
     await expect(page.getByText('287').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText('健康', { exact: true }).first()).toBeVisible()
-    await expect(page.getByRole('heading', { name: '频繁重启' })).toBeVisible()
+    await expect(page.getByText('最该管的一件事', { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '频繁重启', exact: true })).toBeVisible()
   })
 test('navigate to Pods → Pod detail → log history loads', async ({ page }) => {
     const podDetailReqs: string[] = []
@@ -31,7 +31,7 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
     })
 
     await page.goto('/pods')
-    await expect(page.locator('h1').first()).toContainText('Pods')
+    await expect(page.locator('h1').first()).toContainText('Pod')
 
     const webappLink = page.getByRole('link', { name: '查看 webapp-001 详情' })
     await expect(webappLink).toBeVisible()
@@ -93,6 +93,27 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
     await expect(page.getByText('检测到 3 次连接重试')).toBeVisible({ timeout: 10_000 })
   })
 
+  test('the global AI panel answers a cluster question', async ({ page }) => {
+    await page.goto('/dashboard')
+    // ⌘J opens the panel from any page: the AI is something you call up,
+    // not a page you go to.
+    await page.keyboard.press('Meta+j')
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(page.getByText('问 Spotlight')).toBeVisible()
+
+    // The context is a live snapshot of the cluster, not a static blurb.
+    // It is shown as a sentence first — the raw snapshot is addressed to the
+    // model, not to the reader, so it lives behind a disclosure.
+    await expect(page.getByText(/集群 demo-cluster/)).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: '查看原始上下文' }).click()
+    await expect(page.getByText(/total=\d+ running=/)).toBeVisible()
+
+    await page.getByLabel('问题').fill('哪个 Pod 在反复重启？')
+    await page.getByRole('button', { name: '提问' }).click()
+    await expect(page.getByText('集群级回答')).toBeVisible({ timeout: 10_000 })
+  })
+
   test('AI Settings page surfaces the single-active constraint', async ({ page }) => {
     await page.goto('/ai')
     await expect(page.locator('h1').first()).toContainText('AI 模型')
@@ -103,7 +124,7 @@ test('navigate to Pods → Pod detail → log history loads', async ({ page }) =
 
   test('Events page renders the warning row', async ({ page }) => {
     await page.goto('/events')
-    await expect(page.locator('h1').first()).toContainText('Events')
+    await expect(page.locator('h1').first()).toContainText('事件')
     await expect(page.getByText('BackOff')).toBeVisible()
     await expect(page.getByText('cache-001')).toBeVisible()
   })

@@ -7,6 +7,7 @@ import { createI18n } from 'vue-i18n'
 import type { I18n } from 'vue-i18n'
 import { STORAGE_KEYS } from '@/storage-keys'
 import { setDayjsLocale } from '@/utils/dayjs'
+import { setLocaleGetter } from '@/lib/utils'
 import { isLocale, type Locale } from './types'
 import zhCN from './locales/zh-CN'
 import en from './locales/en'
@@ -75,6 +76,10 @@ export function getI18n(): SpotlightI18n {
   if (!instance) instance = createSpotlightI18n()
   return instance
 }
+
+// ponytail: 让 lib/utils 的 formatNumber 知道当前语言。注册动作放在这里，
+// 而不是让 utils 反向 import i18n —— 那会形成循环依赖。
+setLocaleGetter(() => getI18n().global.locale.value)
 
 /** Switch locale, persist it, and hand off to dayjs. */
 export async function setLocale(l: Locale): Promise<void> {

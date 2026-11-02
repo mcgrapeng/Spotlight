@@ -1,7 +1,8 @@
 """Routes: thin HTTP handlers. Each delegates to a focused use case."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from kubernetes.config import ConfigException
 
 from app.application.use_cases.clusters import ClusterUseCases
 from app.application.use_cases.namespaces import NamespaceUseCases
@@ -23,7 +24,12 @@ router = APIRouter(tags=["clusters"])
     dependencies=[Depends(require_permission("clusters.read"))],
 )
 async def list_clusters(uc: ClusterUseCases = Depends(cluster_uc)):
-    return await uc.list_clusters()
+    try:
+        return await uc.list_clusters()
+    except ConfigException as e:
+        # An empty/corrupt kubeconfig is an unusable dependency, not a crash:
+        # report it as unavailable instead of a bare 500 (fuzz-found).
+        raise HTTPException(status_code=503, detail=f"kubeconfig 无效：{e}") from e
 
 
 @router.get(

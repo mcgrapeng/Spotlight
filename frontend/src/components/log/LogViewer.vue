@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
-  Copy, X, Terminal, Filter, Clock, WrapText, Download, AlertCircle, HelpCircle,
+  Copy, X, Terminal, Filter, WrapText, Download, AlertCircle, HelpCircle,
+  MoreHorizontal, Trash2, Info, TriangleAlert, CircleX,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { chipClasses } from '@/lib/chip'
 import { useLogFilters } from '@/composables/useLogFilters'
-import { useLogSeverityCounts, SEVERITY_CHIP_THRESHOLDS } from '@/composables/useLogSeverityCounts'
+import { useLogSeverityCounts, SEVERITY_FILTER_CHIPS, cumulativeSeverityCounts } from '@/composables/useLogSeverityCounts'
 import { useLogKeyboardShortcuts } from '@/composables/useLogKeyboardShortcuts'
 import { ansiToHtml, getAnsiFor } from '@/utils/ansiToHtml'
 import { stripAnsi } from '@/domain/services/logFormat'
@@ -152,11 +156,18 @@ function restoreScrollMemory(): void {
 
 // === Filtering ===
 const minSeverity = ref(0)
+// ponytail: 「未识别」是一个筛选，不是档位。
+//
+// 档位（INFO+/WARN+/ERROR+）是「severity >= rank」，而未识别的行没有
+// severity 可比 —— 它们只能被单独挑出来。所以这是一个独立开关，不是
+// 第五个 rank。
+const unknownOnly = ref(false)
 
 const { filtered } = useLogFilters({
   lines: toRef(props, 'lines'),
   search,
   minSeverity,
+  unknownOnly,
 })
 
 defineExpose({})
@@ -327,10 +338,18 @@ const groups = computed<Group[]>(() => {
       i = j
     }
   }
-  return out
+  // ponytail: 日志按时间正序渲染，最新的在最后。
+  // props.lines 是最新在前（SSE 层把新批次 prepend 到数组头），而渲染按
+  // `kubectl logs -f` 的约定来：新的在底部。这样新行追加在视口下方，
+  // 你正在读的那一行不会因为每来一条日志就整体下移一行 —— 追一个
+  // stack trace 时这是持续的干扰。
+  //
+  // 组内的行保持最新在前：折叠行显示的是这一组里最新一条的时间戳，
+  // 那是「它还在发生吗」的信号。
+  return out.reverse()
 })
 
-// === Virtual scroll (NEWEST AT TOP, scrollTop=0) ===
+// === Virtual scroll (NEWEST AT BOTTOM, the tail is the bottom) ===
 //
 // Virtualizing with a spacer above and below the rendered window is a
 // promise: "the pixels outside the window are represented by that spacer".
@@ -454,6 +473,27 @@ function recomputeVirtualRange(): void {
   }
   const top = el.scrollTop
   const viewH = el.clientHeight
+  // While the reader is FOLLOWING the tail, the window MUST include the
+  // last group: the model cannot know how tall a group really is until it
+  // has been rendered, and the tail is exactly the part it has not seen.
+  // A window that stops short of the last group leaves the reader a
+  // screenful of the wrong thing — a folded run of forty identical lines
+  // is estimated at one row and is really forty, so the reader lands
+  // hundreds of pixels above the newest line.
+  //
+  // The test is the FOLLOW STATE, not the geometric position: a reader
+  // who is following sits at the model's end, but the model's end moves
+  // as the tail gets measured, so the geometric test would fail the
+  // moment the model corrects itself and the reader would be stranded.
+  if (autoFollow.value) {
+    const end = n
+    const start = Math.max(0, n - Math.max(1, Math.ceil(viewH / LINE_HEIGHT) + BUFFER * 2))
+    if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
+      virtualRange.value = { start, end }
+    }
+    syncSpacers()
+    return
+  }
   // The offset table is a prefix sum, so the boundary rows are a binary
   // search away. Using it keeps the window on real group boundaries
   // instead of drifting further off the more the estimate is wrong.
@@ -589,15 +629,14 @@ function captureAnchor(): Anchor | null {
   const el = scrollEl.value
   if (!el) return null
   const top = el.scrollTop
-  // At the very top the follower owns the position (jumpToTop); anchoring
-  // there would fight it.
-  if (autoFollow.value && top <= FOLLOW_EPSILON) return null
   if (groups.value.length === 0) return null
-  // A reader who asked for the END of the log should still be at the end of
-  // it. The end moves whenever the last groups are measured and turn out to
-  // be taller than their estimate, and a plain anchor would leave the
-  // reader short of it by exactly that much.
-  if (top >= el.scrollHeight - el.clientHeight - 1) {
+  // A follower is anchored to the tail BY DEFINITION. The geometric test
+  // cannot be used here: the model's end and the DOM's end disagree for a
+  // frame while the tail is being measured (the last group may be a folded
+  // run of forty identical lines, estimated at one row and really forty),
+  // so a follower would look like they had scrolled away and would be
+  // stranded above the newest line.
+  if (autoFollow.value) {
     return { idx: groups.value.length - 1, delta: 0, atBottom: true }
   }
   const idx = indexAt(top)
@@ -609,9 +648,12 @@ function applyAnchor(a: Anchor | null): void {
   if (!el || !a) return
   let next: number
   if (a.atBottom) {
-    // The model's total IS the content height the DOM is about to take:
-    // the spacers are the model, and every rendered group is measured.
-    next = Math.max(0, (offsetsBuf[groups.value.length] ?? 0) - el.clientHeight)
+    // The DOM's own bottom, not the model's. The spacers are the model,
+    // but the model and the DOM disagree for a frame while the tail is
+    // being measured, and a target past the DOM's scrollable height is
+    // silently clamped to it — which is how a follower ends up a screenful
+    // above the newest line.
+    next = Math.max(0, el.scrollHeight - el.clientHeight)
   } else {
     next = (offsetsBuf[a.idx] ?? 0) + a.delta
   }
@@ -619,6 +661,7 @@ function applyAnchor(a: Anchor | null): void {
   // towards the corrected position and read as the content sliding around
   // under the cursor, which is the very thing being corrected.
   if (Math.abs(next - el.scrollTop) > 0.5) {
+    anchorAppliedAt = next
     el.scrollTo({ top: next, behavior: 'instant' as ScrollBehavior })
   }
 }
@@ -651,6 +694,13 @@ function scheduleSettle(anchor: Anchor | null): void {
 // restore is replayed after every model change until the reader takes
 // over.
 let pendingRestore: { idx: number; offset: number } | null = null
+// Where the reader was, last time the scroller reported a position. A
+// scroll event fires for two reasons: the reader moved, or the content
+// changed size under them. Only the first ends the follow.
+let lastScrollTop = 0
+// Where the anchor correction last put the reader. A scroll event at that
+// exact position is the correction's own echo, not the reader.
+let anchorAppliedAt = -1
 // Where the restore last put the reader. A scroll that lands somewhere
 // else is the reader taking over, and the restore stops replaying.
 let restoreAppliedAt = -1
@@ -706,6 +756,8 @@ function toggleExpand(key: string) {
 
 // === Severity counts (4 aggregated buckets, over full unfiltered set) ===
 const counts = useLogSeverityCounts(toRef(props, 'lines'))
+// 芯片显示的是「点了之后会看到几行」，不是该档位自己的行数。
+const chipCounts = computed(() => cumulativeSeverityCounts(counts.value))
 
 // === Additional filter pipeline: container ===
 const selectedContainer = ref<string | null>(null)
@@ -730,7 +782,7 @@ const displayedLines = computed(() => {
   return lines
 })
 
-// === Auto-scroll (NEWEST AT TOP → scrollTop=0 is newest) ===
+// === Auto-scroll (NEWEST AT BOTTOM → the tail is the bottom) ===
 //
 // The app owns scrollTop. The container carries no CSS scroll-behavior and
 // native scroll anchoring is off, so nothing moves the scroll position
@@ -757,24 +809,20 @@ function scrollToPosition(top: number, kind: 'command' | 'correction' = 'command
   })
 }
 
-function jumpToTop() {
-  scrollToPosition(0)
-}
-
-/**
- * Re-pin the panel to the newest line when the reader is following.
- *
- * There is no interaction timer here any more. The old code also required
- * "something happened in the last three seconds", which meant a reader who
- * parked the mouse over the panel stopped receiving the tail exactly when
- * they were watching it. What protects a reader is that they are no longer
- * at the top, and the scroll position says exactly that.
- */
-function followTopIfFollowing(): void {
+function jumpToBottom(instant = false) {
   const el = scrollEl.value
-  if (!el || !autoFollow.value) return
-  if (el.scrollTop > FOLLOW_EPSILON) return
-  if (el.scrollTop > 0) scrollToPosition(0)
+  if (!el) return
+  scrollToPosition(
+    Math.max(0, el.scrollHeight - el.clientHeight),
+    instant ? 'correction' : 'command',
+  )
+  if (instant) {
+    // The virtual window is chosen from the scroll position, so it has to
+    // be recomputed after the jump. Without this the reader lands on the
+    // spacer below the last rendered group instead of on the tail — the
+    // panel would be at the bottom and still showing the oldest lines.
+    recomputeVirtualRange()
+  }
 }
 
 watch(displayedLines, (v) => {
@@ -784,13 +832,14 @@ watch(displayedLines, (v) => {
   // from stale offsets.
   rebuildOffsets()
   recomputeVirtualRange()
-  followTopIfFollowing()
   scheduleSettle(captureAnchor())
 }, { immediate: true })
 
-watch(() => props.lines.length, () => {
-  followTopIfFollowing()
-})
+// New lines arriving re-pin a follower through the anchor path
+// (captureAnchor -> atBottom -> applyAnchor), which runs after the DOM has
+// settled and knows the real bottom. An earlier version of this file also
+// watched props.lines.length here, but the DOM had not re-rendered yet, so
+// it resolved to the reader's current position and did nothing.
 
 // === Live region ===
 // The virtualized region is aria-live="off" (a scroll re-renders a window
@@ -805,12 +854,6 @@ watch(() => props.lines.length, (n) => {
 })
 
 function onScroll() {
-  const anchor = captureAnchor()
-  recomputeVirtualRange()
-  // The groups that just scrolled in have never been measured. Measure
-  // them once the DOM has settled, then put the reader back where the
-  // measurement moved them.
-  scheduleSettle(anchor)
   if (!scrollEl.value) return
   const top = scrollEl.value.scrollTop
   // A pending restore is the position the reader was last at. As soon as
@@ -833,15 +876,28 @@ function onScroll() {
       saveScrollMemory()
     })
   }
-  // Newest-at-top: scrollTop=0 means we're at the newest line.
-  if (top <= FOLLOW_EPSILON) {
-    // User is back at the top — re-engage auto-follow and clear unread.
+  // Newest-at-bottom: the tail is the bottom of the scroller, so "how far
+  // from the newest line am I" is the distance from the bottom.
+  const distFromBottom = scrollEl.value.scrollHeight - scrollEl.value.clientHeight - top
+  // Did the READER move, or did the content change size under them? The
+  // tail growing (a new log line, a fold they opened) moves the bottom
+  // away from a reader who is standing still, and the anchor correction
+  // carries them along — that is not them leaving.
+  const movedUp = top < lastScrollTop - 1
+  // One-shot: the correction's own echo is consumed here, so a later
+  // genuine scroll that happens to pass the same pixel is not mistaken for
+  // one — and the reader is not yanked back to the tail.
+  const corrected = anchorAppliedAt >= 0 && Math.abs(top - anchorAppliedAt) <= 1
+  if (corrected) anchorAppliedAt = -1
+  lastScrollTop = top
+  if (distFromBottom <= FOLLOW_EPSILON) {
+    // User is back at the tail — re-engage auto-follow and clear unread.
     if (!autoFollow.value) {
       autoFollow.value = true
       emit('update:autoFollow', true)
       emit('consume-unread')
     }
-  } else if (top > FOLLOW_BREAK && autoFollow.value) {
+  } else if (movedUp && !corrected && distFromBottom > FOLLOW_BREAK && autoFollow.value) {
     // User scrolled away from top — disable auto-follow, show unread pill.
     // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
     // mirror of the ref PodDetailView shares with usePodLogs, and flush()
@@ -853,6 +909,14 @@ function onScroll() {
     autoFollow.value = false
     emit('update:autoFollow', false)
   }
+  // The anchor's shape depends on the follow state, and the window is
+  // chosen from it, so both come after the detection above.
+  const anchor = captureAnchor()
+  recomputeVirtualRange()
+  // The groups that just scrolled in have never been measured. Measure
+  // them once the DOM has settled, then put the reader back where the
+  // measurement moved them.
+  scheduleSettle(anchor)
 }
 
 function toggleAutoFollow() {
@@ -860,7 +924,7 @@ function toggleAutoFollow() {
   emit('update:autoFollow', autoFollow.value)
   if (autoFollow.value) {
     emit('consume-unread')
-    jumpToTop()
+    jumpToBottom()
   }
 }
 
@@ -874,6 +938,7 @@ function focusSearchInput() {
 function toggleErrorsOnly() {
   // 3 = error rank (matches useLogFilters SEVERITY_RANK).
   minSeverity.value = minSeverity.value === 3 ? 0 : 3
+  unknownOnly.value = false
 }
 function jumpToError(dir: 1 | -1) {
   const el = scrollEl.value
@@ -882,16 +947,16 @@ function jumpToError(dir: 1 | -1) {
   if (gs.length === 0) return
   const cur = indexAt(el.scrollTop)
   let target = -1
-  // displayedLines is newest-first, so "newer" is a SMALLER group index.
+  // The groups are oldest-first, so "newer" is a LARGER group index.
   // The previous implementation compared a LINE index against a pixel
   // offset computed from a flat 22px row, so it landed on an unrelated line
   // whenever the rows were not uniform.
   if (dir === 1) {
-    for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
-    if (target < 0) for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
-  } else {
     for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
     if (target < 0) for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
+  } else {
+    for (let i = cur - 1; i >= 0; i--) if (groupHasError(gs[i])) { target = i; break }
+    if (target < 0) for (let i = cur + 1; i < gs.length; i++) if (groupHasError(gs[i])) { target = i; break }
   }
   if (target < 0) return
   revealGroup(gs[target], target)
@@ -962,10 +1027,21 @@ function onRegionLeave() {
 }
 
 async function copyAll() {
-  const text = displayedLines.value
+  // ponytail: 复制出来的是时间正序 —— 粘进 issue 的时候，第一行就该是
+  // 最早的那条。displayedLines 是最新在前，所以这里反过来。
+  const text = [...displayedLines.value]
+    .reverse()
     .map(l => `${l.raw.timestamp} [${l.raw.severity.toUpperCase()}] [${l.raw.container}] ${l.raw.content}`)
     .join('\n')
-  try { await navigator.clipboard.writeText(text) } catch (err) { console.error('clipboard', err) }
+  try {
+    await navigator.clipboard.writeText(text)
+    // ponytail: 复制是静默的 —— 用户按了 C 键，什么都没发生，只能自己
+    // 去别的窗口粘贴才知道成没成。给一个瞬时确认。
+    toast.success(t('toast.logsCopied', { count: displayedLines.value.length }))
+  } catch (err) {
+    console.error('clipboard', err)
+    toast.error(t('toast.logsCopyFailed'))
+  }
 }
 
 onMounted(() => {
@@ -994,7 +1070,7 @@ onMounted(() => {
   // Followers land on the newest line; readers resume their saved position
   // (tab switches remount this component and used to reset scrollTop to 0).
   if (autoFollow.value) {
-    nextTick(jumpToTop)
+    nextTick(() => jumpToBottom(true))
   } else {
     // The restore is replayed by settle() as the model is corrected, so it
     // lands on the same GROUP the reader left rather than on the same
@@ -1020,19 +1096,22 @@ onUnmounted(() => {
 })
 
 // === Visual helpers ===
-const SEV_ICON: Record<string, string> = {
-  trace: '·', debug: '·', info: 'i', notice: 'i',
-  warn: '!', warning: '!', error: '▲', err: '▲',
-  critical: '▲', fatal: '▲', alert: '▲', emergency: '▲',
-  unknown: '?',
+// ponytail: 过滤器芯片上的图标原来是 ASCII 字符（`i` `!` `▲` `?`）——
+// 那是等宽字体里的裸字形，不是图标：左边「全部」用的是 Lucide 的漏斗，
+// 右边三个是字符，两种视觉语言并排。`▲` 在多数图标字体里是「上三角／
+// 插入」的意思，拿它表示 ERROR 语义是反的。换成 Lucide 图标。
+const SEV_ICON_COMPONENT: Record<string, Component> = {
+  info: Info,
+  warn: TriangleAlert,
+  error: CircleX,
 }
 const SEV_CLASS: Record<string, string> = {
   trace: 'text-muted-foreground', debug: 'text-muted-foreground',
   info: 'text-foreground', notice: 'text-foreground',
   warn: 'text-warning', warning: 'text-warning',
-  error: 'text-red-700', err: 'text-red-700',
-  critical: 'text-red-700 font-semibold', fatal: 'text-red-700 font-bold',
-  alert: 'text-red-700 font-bold', emergency: 'text-red-700 font-bold',
+  error: 'text-error', err: 'text-error',
+  critical: 'text-error font-semibold', fatal: 'text-error font-bold',
+  alert: 'text-error font-bold', emergency: 'text-error font-bold',
   unknown: 'text-foreground',
 }
 const SEV_ERROR_KEYS = new Set(['error', 'err', 'critical', 'fatal', 'alert', 'emergency'])
@@ -1040,10 +1119,10 @@ const SEV_FATAL_KEYS = new Set(['critical', 'fatal', 'alert', 'emergency'])
 
 function severityBorderFor(s: string): string {
   const k = s.toLowerCase()
-  if (SEV_FATAL_KEYS.has(k)) return 'border-l-red-500'
-  if (SEV_ERROR_KEYS.has(k)) return 'border-l-red-500/70'
-  if (k === 'warn' || k === 'warning') return 'border-l-amber-500/60'
-  if (k === 'info' || k === 'notice') return 'border-l-blue-500/30'
+  if (SEV_FATAL_KEYS.has(k)) return 'border-l-error'
+  if (SEV_ERROR_KEYS.has(k)) return 'border-l-error/70'
+  if (k === 'warn' || k === 'warning') return 'border-l-warning/60'
+  if (k === 'info' || k === 'notice') return 'border-l-info/30'
   return 'border-l-transparent'
 }
 
@@ -1052,28 +1131,148 @@ function severityBorderFor(s: string): string {
 // to 30% opacity made history look like a veil. The timestamp column already
 // communicates recency.
 
+/**
+ * The newest line is the one that just arrived, so its pulse is the
+ * product's only "something just happened" signal. Red when the line that
+ * arrived is an error: at 3am that is the one thing worth interrupting
+ * for.
+ */
+function isNewestLineError(group: Group): boolean {
+  // Group.lines is newest-first, so lines[0] is the line that just arrived
+  // — the same line the collapsed row renders.
+  return isErrorLine(group.lines[0])
+}
+
 function isNewestLine(group: Group): boolean {
   // ponytail: under virtualization, v-for idx is local to the rendered slice —
   // compare against the head of the FULL group list so the pulse follows the
   // actual newest line, not "first row currently in viewport".
-  return props.streaming && groups.value[0]?.key === group.key
+  return props.streaming && groups.value[groups.value.length - 1]?.key === group.key
+}
+
+// === 新到的错误行闪一次 ===
+//
+// 这一轮方向文档写的规则是「动效只在数据到达时发生：新 ERROR 行到达时
+// severity chip 闪一次（200ms 内）」。这是整个产品承诺过的唯一一个动效
+// 时刻，之前没有实现 —— SSE 推来一条新 ERROR，它就直接出现在列表里，
+// 和历史行长得一模一样。
+//
+// 怎么知道哪些行是「新到的」？SSE 层把新批次 prepend 到 props.lines 的
+// 数组头，所以新行在前面。用上一批的头做锚点：这一批的头变了，就从
+// 头往后找到上一批的头，中间那些就是新到的。
+const flashing = ref<Set<string>>(new Set())
+const flashTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let seenHeadId: string | null = null
+/** How long a newly arrived error row stays tinted. The animation itself is
+ *  400ms; the class lives slightly longer so the animation can finish. */
+const FLASH_MS = 450
+/** Above this many new lines at once, it is a backlog flush, not an arrival. */
+const FLASH_BATCH_LIMIT = 10
+
+function flashErrors(ids: string[]) {
+  if (!ids.length) return
+  for (const id of ids) {
+    const old = flashTimers.get(id)
+    if (old) clearTimeout(old)
+    flashTimers.set(id, setTimeout(() => {
+      flashTimers.delete(id)
+      const next = new Set(flashing.value)
+      next.delete(id)
+      flashing.value = next
+    }, FLASH_MS))
+  }
+  flashing.value = new Set([...flashing.value, ...ids])
+}
+
+// ponytail: 「实时」那个点只在真的有新行到达时闪。
+//
+// 之前它跟着 streaming 状态永远在呼吸 —— 连接开着就闪，30 秒没有一行
+// 日志也闪。凌晨三点一块屏幕上有个一直在闪的绿点，是纯粹的注意力税，
+// 而且它不携带任何信息（它一直在闪，所以「闪」本身说明不了什么）。
+//
+// 现在它只在收到新行之后的 2 秒里闪：闪 = 刚刚有东西进来了。
+const livePulse = ref(false)
+let liveTimer: ReturnType<typeof setTimeout> | null = null
+function markLive() {
+  livePulse.value = true
+  if (liveTimer) clearTimeout(liveTimer)
+  liveTimer = setTimeout(() => { livePulse.value = false }, 2000)
+}
+
+watch(() => props.lines, (next) => {
+  if (!next.length) {
+    seenHeadId = null
+    return
+  }
+  const headId = lineId(next[0]!)
+  if (seenHeadId === null) {
+    seenHeadId = headId
+    return
+  }
+  if (headId === seenHeadId) return
+  // 上一批的头现在排在新行之后，它的位置就是新行的数量。
+  // 只扫前面 200 行：缓冲区满了以后旧行会被挤掉，找不到锚点就干脆不闪，
+  // 总比把整个缓冲区都闪一遍好。
+  let addedCount = 0
+  const limit = Math.min(next.length, 200)
+  for (let i = 0; i < limit; i++) {
+    if (lineId(next[i]!) === seenHeadId) {
+      addedCount = i
+      break
+    }
+  }
+  seenHeadId = headId
+  if (!addedCount) return
+  markLive()
+  // ponytail: 一次只闪一条。
+  // 读者翻完历史回到顶部时，SSE 层会把攒着的整个 backlog 一次性 prepend
+  // 进来 —— 那时候 addedCount 是几百，「新到的」是几百行，整个面板一起
+  // 闪红半秒，和「一条错误刚到」是两回事。所以超过阈值就不闪，闪也只闪
+  // 头几条。
+  if (addedCount > FLASH_BATCH_LIMIT) return
+  const errorIds: string[] = []
+  for (let i = 0; i < addedCount; i++) {
+    const line = next[i]!
+    // 只闪错误，不闪 warn：集群里 warn 的量级通常是 error 的十倍，
+    // 每一行都闪一次等于什么都没闪。
+    if (SEV_ERROR_KEYS.has(line.severity.toLowerCase())) errorIds.push(lineId(line))
+  }
+  flashErrors(errorIds.slice(0, FLASH_BATCH_LIMIT))
+}, { immediate: true })
+
+onUnmounted(() => {
+  for (const timer of flashTimers.values()) clearTimeout(timer)
+  flashTimers.clear()
+  if (liveTimer) clearTimeout(liveTimer)
+})
+
+/** True when this group contains a line that just arrived as an error. */
+function groupFlashes(group: Group): boolean {
+  if (!flashing.value.size) return false
+  for (const l of group.lines) {
+    if (flashing.value.has(lineId(l.raw))) return true
+  }
+  return false
 }
 
 // === Severity badge (per-row label, replaces single-char icon) ===
+// ponytail: 走 @/lib/chip 的统一外观。之前这里自己写了一套 class：
+// border-error/40 的 alpha 边框（别处用的是 border-error-border token），
+// 同一个 ERROR 在日志里和在别处渲染成两种颜色。现在全站一个来源。
 const SEV_BADGE_CLASS: Record<string, string> = {
-  critical: 'bg-error text-background border-error font-bold',
-  fatal: 'bg-error text-background border-error font-bold',
-  alert: 'bg-error text-background border-error font-bold',
-  emergency: 'bg-error text-background border-error font-bold',
-  error: 'bg-error/15 text-red-700 border-error/40 font-semibold',
-  err: 'bg-error/15 text-red-700 border-error/40 font-semibold',
-  warn: 'bg-warning/15 text-warning border-warning/40 font-medium',
-  warning: 'bg-warning/15 text-warning border-warning/40 font-medium',
-  info: 'bg-muted text-foreground border-border font-medium',
-  notice: 'bg-muted text-foreground border-border font-medium',
-  trace: 'bg-transparent text-muted-foreground border-transparent',
-  debug: 'bg-transparent text-muted-foreground border-transparent',
-  unknown: 'bg-muted text-muted-foreground border-border',
+  critical: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  fatal: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  alert: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  emergency: chipClasses({ tone: 'error', variant: 'solid', size: 'xs' }),
+  error: chipClasses({ tone: 'error', size: 'xs' }),
+  err: chipClasses({ tone: 'error', size: 'xs' }),
+  warn: chipClasses({ tone: 'warning', size: 'xs' }),
+  warning: chipClasses({ tone: 'warning', size: 'xs' }),
+  info: chipClasses({ tone: 'neutral', size: 'xs' }),
+  notice: chipClasses({ tone: 'neutral', size: 'xs' }),
+  trace: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
+  debug: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
+  unknown: chipClasses({ tone: 'neutral', size: 'xs' }),
 }
 const SEV_BADGE_TEXT: Record<string, string> = {
   critical: 'CRIT', fatal: 'FATAL', alert: 'ALERT', emergency: 'EMRG',
@@ -1084,7 +1283,7 @@ const SEV_BADGE_TEXT: Record<string, string> = {
   unknown: '?',
 }
 function sevBadgeClass(s: string): string {
-  return SEV_BADGE_CLASS[s.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border'
+  return SEV_BADGE_CLASS[s.toLowerCase()] ?? chipClasses({ tone: 'neutral', size: 'xs' })
 }
 function sevBadgeText(s: string): string {
   return SEV_BADGE_TEXT[s.toLowerCase()] ?? '?'
@@ -1097,11 +1296,23 @@ const localTimeFmt = new Intl.DateTimeFormat(undefined, {
 const utcTimeFmt = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
 })
+/**
+ * The apiserver stamps nanoseconds ("…42.005646139Z"). The ECMAScript
+ * date-time format allows three fractional digits, so a nine-digit stamp is
+ * not portable — a browser that rejects it renders the raw UTC string in
+ * the time column instead of a local time. Trim to milliseconds.
+ */
+function toDate(ts: string): Date | null {
+  const d = new Date(ts.replace(/(\.\d{3})\d+/, '$1'))
+  return Number.isNaN(d.getTime()) ? null : d
+}
 function fmtLocalTime(ts: string): string {
-  try { return localTimeFmt.format(new Date(ts)) } catch { return ts }
+  const d = toDate(ts)
+  return d ? localTimeFmt.format(d) : ts
 }
 function fmtUtcTime(ts: string): string {
-  try { return utcTimeFmt.format(new Date(ts)) + 'Z' } catch { return ts }
+  const d = toDate(ts)
+  return d ? utcTimeFmt.format(d) + 'Z' : ts
 }
 function tzOffset(): string {
   const off = -new Date().getTimezoneOffset()
@@ -1109,6 +1320,14 @@ function tzOffset(): string {
   const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
   const m = String(Math.abs(off) % 60).padStart(2, '0')
   return `UTC${sign}${h}:${m}`
+}
+/** The same offset, short enough for a chip: "UTC+8", "UTC+5:30", "UTC". */
+function tzShort(): string {
+  const off = -new Date().getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const h = Math.floor(Math.abs(off) / 60)
+  const m = Math.abs(off) % 60
+  return `UTC${sign}${h}${m ? ':' + String(m).padStart(2, '0') : ''}`
 }
 
 function escapeHtml(s: string): string {
@@ -1127,6 +1346,12 @@ function togglePause() {
 
 function setSeverity(rank: number) {
   minSeverity.value = minSeverity.value === rank ? 0 : rank
+  unknownOnly.value = false
+}
+
+function toggleUnknownOnly() {
+  unknownOnly.value = !unknownOnly.value
+  if (unknownOnly.value) minSeverity.value = 0
 }
 
 function clearSearch() {
@@ -1138,7 +1363,11 @@ const RECENT_KEY = STORAGE_KEYS.appLogSearchHistory
 const MAX_RECENT = 10
 
 const recentSearches = ref<string[]>(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'))
-const searchHistoryOpen = ref(false)
+// The overflow menu and the clear confirmation. Both live here because
+// "clear the screen" destroys what the reader is looking at, and the
+// overflow menu is where the action moved to.
+const moreOpen = ref(false)
+const clearConfirmOpen = ref(false)
 let searchHistoryTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(search, (v, old) => {
@@ -1152,9 +1381,19 @@ watch(search, (v, old) => {
   }, 1500)
 })
 
+function requestClear() {
+  moreOpen.value = false
+  clearConfirmOpen.value = true
+}
+
+function confirmClear() {
+  clearConfirmOpen.value = false
+  clearAll()
+}
+
 function applyRecent(q: string) {
   search.value = q
-  searchHistoryOpen.value = false
+  moreOpen.value = false
 }
 
 function clearRecent() {
@@ -1185,9 +1424,9 @@ function tokenizeJsonLine(line: string): string {
         if (str !== undefined) {
           return colon !== undefined
             ? `<span class="text-info">${str}</span>${colon}`
-            : `<span class="text-green-800">${str}</span>`
+            : `<span class="text-success">${str}</span>`
         }
-        if (bool !== undefined) return `<span class="text-red-700">${bool}</span>`
+        if (bool !== undefined) return `<span class="text-error">${bool}</span>`
         if (num !== undefined) return `<span class="text-warning">${num}</span>`
         return m
       },
@@ -1317,7 +1556,9 @@ function toggleTraceFilter(tid: string | null) {
 
 // === Download .log (filtered or all) ===
 function downloadLogs() {
-  const source = props.downloadScope === 'all' ? props.lines : filtered.value
+  // Chronological, like the clipboard copy: the file you attach to an
+  // issue starts with the first line, not the last.
+  const source = (props.downloadScope === 'all' ? props.lines : filtered.value).slice().reverse()
   const text = source.map((l) => stripAnsi(l.content)).join('\n') + '\n'
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -1334,11 +1575,13 @@ function downloadLogs() {
   // becomes invalid. Calling revokeObjectURL synchronously after .click() works
   // in Chrome but Safari sometimes races; deferring is the documented pattern.
   setTimeout(() => URL.revokeObjectURL(url), 0)
+  toast.success(t('toast.logsDownloaded', { count: source.length }))
 }
 
 function clearAllFilters() {
   search.value = ''
   minSeverity.value = 0
+  unknownOnly.value = false
 }
 
 // ponytail: keep help content out of the template to avoid re-listing the same
@@ -1356,72 +1599,118 @@ const helpRows = computed(() => [
 </script>
 
 <template>
-  <div class="flex flex-col h-full rounded-lg border border-border bg-card overflow-hidden font-mono text-xs">
+  <div class="flex flex-col h-full rounded-card border border-border bg-card overflow-hidden font-mono text-xs">
     <!-- Severity filter chips (4 aggregated buckets: ERROR / WARN / INFO / DEBUG) -->
     <div class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
       <button
         type="button"
         :aria-pressed="minSeverity === 0"
         :class="cn(
-          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors text-2xs',
+          'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
           minSeverity === 0
             ? 'border-foreground bg-foreground text-background'
             : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
         @click="setSeverity(0)"
       >
-        <Filter :size="11" :stroke-width="1.75" />
+        <Filter :size="12" :stroke-width="1.75" />
         {{ t('log.filterAll') }}
         <span class="tabular-nums">{{ lines.length.toLocaleString() }}</span>
       </button>
       <span class="text-muted-foreground/30 mx-0.5">·</span>
       <button
-        v-for="(rank, bucket) in SEVERITY_CHIP_THRESHOLDS"
-        :key="bucket"
+        v-for="chip in SEVERITY_FILTER_CHIPS"
+        :key="chip.bucket"
         type="button"
-        :disabled="counts[bucket] === 0"
-        :aria-pressed="minSeverity === rank"
+        :disabled="chipCounts[chip.bucket] === 0"
+        :aria-pressed="minSeverity === chip.rank"
         :class="cn(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors text-2xs',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
           'disabled:opacity-30 disabled:cursor-default',
-          minSeverity === rank
+          minSeverity === chip.rank
             ? 'border-foreground bg-foreground text-background'
             : cn(
                 'border-transparent hover:bg-accent hover:text-foreground',
-                SEV_CLASS[bucket] ?? 'text-muted-foreground',
+                SEV_CLASS[chip.bucket] ?? 'text-muted-foreground',
               ),
         )"
-        @click="setSeverity(rank)"
-        :title="t('log.severityLines', { bucket, count: counts[bucket].toLocaleString() })"
+        @click="setSeverity(chip.rank)"
+        :title="t('log.severityLines', { bucket: chip.bucket, count: chipCounts[chip.bucket].toLocaleString() })"
       >
-        <span class="font-mono w-3 inline-block text-center font-bold">{{ SEV_ICON[bucket] }}</span>
-        <span class="uppercase tracking-wider">{{ bucket }}</span>
-        <span class="tabular-nums">{{ counts[bucket].toLocaleString() }}</span>
+        <component
+          :is="SEV_ICON_COMPONENT[chip.bucket]"
+          :size="12"
+          :stroke-width="2"
+          class="shrink-0"
+          aria-hidden="true"
+        />
+        <span class="uppercase tracking-wider">{{ chip.bucket }}+</span>
+        <span class="tabular-nums">{{ chipCounts[chip.bucket].toLocaleString() }}</span>
+      </button>
+      <!--
+        ponytail: 「未识别」这一枚。
+
+        分类器认不出来的行（真实的 MCP 日志是 ℹ️ emoji 风格，认不出来）
+        以前被算进 INFO，于是芯片写着「INFO+ 513」—— 513 行全都没被读懂，
+        芯片却说它们都是 INFO 及以上。读者按 ERROR+ 过滤得到 0 行，面板
+        告诉他「没有错误」。
+
+        现在未识别是独立的一档，有自己的芯片和自己的计数。它不是第四个
+        rank（未识别的行没有 severity 可比），是一个单独的筛选。
+      -->
+      <button
+        type="button"
+        :disabled="counts.unknown === 0"
+        :aria-pressed="unknownOnly"
+        :class="cn(
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
+          'disabled:opacity-30 disabled:cursor-default',
+          unknownOnly
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+        )"
+        @click="toggleUnknownOnly()"
+        :title="t('log.severityUnknownLines', { count: counts.unknown.toLocaleString() })"
+      >
+        <HelpCircle :size="12" :stroke-width="2" class="shrink-0" aria-hidden="true" />
+        <span>{{ t('log.severityUnknown') }}</span>
+        <span class="tabular-nums">{{ counts.unknown.toLocaleString() }}</span>
       </button>
     </div>
 
-    <!-- Container tabs (only when pod has multiple containers) -->
+    <!--
+      ponytail: 容器页签改成药丸，和级别芯片同族。
+
+      全站的规则定了：**筛选器用药丸，页签用下划线**。
+
+      这一行是筛选器（看哪个容器的日志），不是页签 —— 它切的是同一份
+      日志的视角，底下那张表始终在。原来它是下划线样式，于是同一个
+      面板里出现了两种下划线：上面这排容器，下面那个面板自己的标签栏。
+
+      改完，这一行的容器芯片和上面那排级别芯片是同一种东西 —— 都在
+      筛选要看的行；页面级页签（下划线）留在 Pod 详情那一层。
+    -->
     <div
       v-if="availableContainers.length > 1"
-      class="flex items-center gap-px px-3 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
+      class="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
       role="tablist"
       :aria-label="t('log.containerTabsLabel')"
     >
-      <span class="text-2xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">{{ t('log.container') }}</span>
+      <span class="text-xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">{{ t('log.container') }}</span>
       <button
         type="button"
         role="tab"
         :aria-selected="selectedContainer === null"
         :class="cn(
-          'px-3 py-1.5 text-2xs font-medium transition-colors border-b-2',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
           selectedContainer === null
-            ? 'border-foreground text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
         @click="selectedContainer = null"
       >
         {{ t('log.filterAll') }}
-        <span class="ml-1 tabular-nums text-muted-foreground">{{ lines.length.toLocaleString() }}</span>
+        <span class="tabular-nums opacity-80">{{ lines.length.toLocaleString() }}</span>
       </button>
       <button
         v-for="c in availableContainers"
@@ -1431,22 +1720,22 @@ const helpRows = computed(() => [
         :aria-selected="selectedContainer === c"
         :title="c"
         :class="cn(
-          'inline-flex items-center px-3 py-1.5 text-2xs font-medium transition-colors border-b-2 max-w-[180px] truncate',
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition-colors ease-app dur-fast max-w-[180px] truncate',
           selectedContainer === c
-            ? 'border-foreground text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40',
+            ? 'border-foreground bg-foreground text-background'
+            : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
         )"
         @click="selectedContainer = c"
       >
         {{ c }}
-        <span class="ml-1 tabular-nums text-foreground shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
+        <span class="tabular-nums opacity-80 shrink-0">{{ (containerCounts[c] ?? 0).toLocaleString() }}</span>
       </button>
     </div>
 
     <!-- Toolbar -->
     <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-background shrink-0">
       <div class="relative flex-1 min-w-0">
-        <Search :size="13" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" :stroke-width="1.75" />
+        <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" :stroke-width="1.75" />
         <Input
           ref="searchInput"
           v-model="search"
@@ -1461,30 +1750,73 @@ const helpRows = computed(() => [
           class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           :aria-label="t('log.clearFilterLabel')"
         >
-          <X :size="13" :stroke-width="1.75" />
+          <X :size="14" :stroke-width="1.75" />
         </button>
       </div>
-      <Popover v-model:open="searchHistoryOpen">
+      <Button
+        variant="outline" size="xs"
+        @click="togglePause"
+        :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
+        :class="cn(!streaming && 'text-warning border-warning/50')"
+      >
+        <Pause v-if="streaming" :size="14" :stroke-width="1.75" />
+        <Play v-else :size="14" :stroke-width="1.75" />
+      </Button>
+      <Button
+        variant="outline" size="xs"
+        @click="toggleAutoFollow"
+        :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
+        :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
+      >
+        <ChevronDown v-if="autoFollow" :size="14" :stroke-width="1.75" />
+        <ChevronUp v-else :size="14" :stroke-width="1.75" />
+      </Button>
+      <Button
+        variant="outline" size="xs"
+        :disabled="!displayedLines.length"
+        @click="copyAll"
+        :aria-label="t('log.copyAllLabel')"
+      >
+        <Copy :size="14" :stroke-width="1.75" />
+      </Button>
+      <Button
+        variant="outline" size="xs"
+        :disabled="!filtered.length"
+        @click="downloadLogs"
+        :aria-label="t('log.downloadLabel')"
+        :title="t('log.downloadLabel')"
+      >
+        <Download :size="14" :stroke-width="1.75" />
+      </Button>
+      <!--
+        ponytail: 工具栏收成「三个动作 + 一个溢出菜单」。
+        之前是九个同权重的图标按钮：凌晨三点没人记得住 ChevronUp 是「跟随」，
+        而清空屏幕的 X 和搜索框里的清除 X 是同一个字形。两个意思不同的 X
+        并排放在一排图标里，是这个面板最难读的地方。
+        现在常驻的是值班时真的会按的四个（暂停、跟随、复制、下载），
+        加上一个 ? 帮助；搜索历史、换行、清屏进「⋯」菜单，每一项都带文字。
+      -->
+      <Popover v-model:open="moreOpen">
         <PopoverTrigger as-child>
           <Button
             variant="ghost"
-            size="sm"
-            class="h-7 px-2"
-            :aria-label="t('log.searchHistoryLabel')"
+            size="xs"
+            :aria-label="t('log.moreActions')"
+            :title="t('log.moreActions')"
           >
-            <Clock :size="13" :stroke-width="1.75" />
+            <MoreHorizontal :size="14" :stroke-width="1.75" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent class="w-[260px] p-0" align="start">
-          <div v-if="recentSearches.length === 0" class="p-4 text-center text-2xs text-muted-foreground">
-            {{ t('log.searchHistoryEmpty') }}
-          </div>
-          <div v-else class="py-1">
+        <PopoverContent class="w-[260px] p-0" align="end">
+          <div v-if="recentSearches.length > 0" class="py-1">
+            <div class="px-3 py-1 text-xs uppercase tracking-wider text-muted-foreground">
+              {{ t('log.searchHistoryLabel') }}
+            </div>
             <button
               v-for="q in recentSearches"
               :key="q"
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               @click="applyRecent(q)"
             >
               <span class="flex-1 truncate">{{ q }}</span>
@@ -1495,83 +1827,48 @@ const helpRows = computed(() => [
               </Button>
             </div>
           </div>
+          <div class="border-t border-border p-1">
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              @click="toggleWrap"
+            >
+              <WrapText v-if="wrapMode === 'wrap'" :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+              <ChevronsRight v-else :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
+              <span class="flex-1">{{ t('log.menuToggleWrap') }}</span>
+              <span class="text-xs text-muted-foreground">
+                {{ wrapMode === 'wrap' ? t('log.wrapStateOn') : t('log.wrapStateOff') }}
+              </span>
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-error hover:bg-error/10 focus-visible:bg-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              :disabled="!lines.length"
+              :aria-label="t('log.clearLabel')"
+              @click="requestClear"
+            >
+              <Trash2 :size="14" :stroke-width="1.75" class="shrink-0" />
+              <span class="flex-1">{{ t('log.menuClear') }}</span>
+            </button>
+          </div>
         </PopoverContent>
       </Popover>
-      <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
-        :title="wrapMode === 'wrap' ? t('log.wrapOn') : t('log.wrapOff')"
-        @click="toggleWrap"
-        :aria-label="t('log.toggleWrapLabel')"
-      >
-        <WrapText v-if="wrapMode === 'wrap'" :size="13" :stroke-width="1.75" />
-        <ChevronsRight v-else :size="13" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
-        @click="togglePause"
-        :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
-        :class="cn(!streaming && 'text-warning border-warning/50')"
-      >
-        <Pause v-if="streaming" :size="13" :stroke-width="1.75" />
-        <Play v-else :size="13" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
-        @click="toggleAutoFollow"
-        :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
-        :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
-      >
-        <ChevronUp v-if="autoFollow" :size="13" :stroke-width="1.75" />
-        <ChevronDown v-else :size="13" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
-        :disabled="!lines.length"
-        @click="emit('clear')"
-        :aria-label="t('log.clearLabel')"
-      >
-        <X :size="13" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
-        :disabled="!displayedLines.length"
-        @click="copyAll"
-        :aria-label="t('log.copyAllLabel')"
-      >
-        <Copy :size="13" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="sm"
-        class="h-7 px-2"
-        :disabled="!filtered.length"
-        @click="downloadLogs"
-        :aria-label="t('log.downloadLabel')"
-        :title="t('log.downloadLabel')"
-      >
-        <Download :size="13" :stroke-width="1.75" />
-      </Button>
       <Popover v-model:open="helpOpen">
         <PopoverTrigger as-child>
           <Button
             variant="ghost"
-            size="sm"
-            class="h-7 px-2"
+            size="xs"
             :aria-label="t('log.shortcutsHelpLabel')"
             :title="t('log.shortcutsTitle')"
           >
-            <HelpCircle :size="13" :stroke-width="1.75" />
+            <HelpCircle :size="14" :stroke-width="1.75" />
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-[260px] p-3" align="end">
-          <div class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{{ t('log.shortcutsHeading') }}</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{{ t('log.shortcutsHeading') }}</div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono">
             <template v-for="row in helpRows" :key="row.key">
-              <kbd class="px-1.5 py-0.5 rounded border border-border bg-muted text-2xs">{{ row.key }}</kbd>
+              <kbd class="px-1.5 py-0.5 rounded-sm border border-border bg-muted text-xs">{{ row.key }}</kbd>
               <span class="text-muted-foreground self-center">{{ row.label }}</span>
             </template>
           </dl>
@@ -1584,12 +1881,12 @@ const helpRows = computed(() => [
       v-if="jsonFieldChips.length > 0"
       class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap"
     >
-      <span class="text-2xs text-muted-foreground shrink-0 mr-1">{{ t('log.field') }}</span>
+      <span class="text-xs text-muted-foreground shrink-0 mr-1">{{ t('log.field') }}</span>
       <button
         v-for="key in jsonFieldChips"
         :key="key"
         type="button"
-        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors"
+        class="inline-flex items-center px-2 py-0.5 rounded-md border border-transparent text-xs text-muted-foreground hover:bg-accent hover:text-foreground hover:border-foreground/20 transition-colors ease-app dur-fast"
         :title="t('log.filterField', { field: key })"
         @click="applyFieldFilter(key)"
       >
@@ -1597,12 +1894,12 @@ const helpRows = computed(() => [
       </button>
       <button
         type="button"
-        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-2xs text-muted-foreground hover:bg-accent hover:text-red-700 hover:border-error/30 transition-colors ml-auto"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-transparent text-xs text-muted-foreground hover:bg-accent hover:text-error hover:border-error/30 transition-colors ease-app dur-fast ml-auto"
         :title="t('log.clearFieldFilter')"
         :aria-label="t('log.clearFieldFilter')"
         @click="clearFieldFilter"
       >
-        <X :size="11" :stroke-width="1.75" />
+        <X :size="12" :stroke-width="1.75" />
         {{ t('log.clearFieldFilter') }}
       </button>
     </div>
@@ -1611,9 +1908,15 @@ const helpRows = computed(() => [
          stream. It used to sit inside the scrollable region, where it took
          flow space the virtual model knew nothing about, so every offset
          was shifted by the banner's height whenever an error was showing,
-         and the banner scrolled away from the thing it was reporting on. -->
+         and the banner scrolled away from the thing it was reporting on.
+
+         It only shows when there are still logs on screen — a partial
+         failure (one container's stream died, the others are fine). When
+         the whole fetch failed there is nothing to show, and the empty
+         area below carries the message and the retry instead. Two error
+         surfaces for one failure is one too many. -->
     <div
-      v-if="error"
+      v-if="error && displayedLines.length > 0"
       class="flex items-center gap-3 px-3 py-2 bg-error/10 border-b border-error/30 text-error shrink-0"
       role="alert"
     >
@@ -1621,8 +1924,8 @@ const helpRows = computed(() => [
       <span class="flex-1 text-xs font-medium">{{ error }}</span>
       <Button
         variant="outline"
-        size="sm"
-        class="h-6 px-2 text-2xs border-error/40 text-error hover:bg-error/15"
+        size="xs"
+        class="text-xs border-error-border text-error hover:bg-error-bg"
         @click="emit('retry')"
         :aria-label="t('state.retry')"
       >
@@ -1630,7 +1933,7 @@ const helpRows = computed(() => [
       </Button>
     </div>
 
-    <!-- Log area (NEWEST AT TOP) - fold groups, virtualized -->
+    <!-- Log area (NEWEST AT BOTTOM) - fold groups, virtualized -->
     <!--
       The scroll container owns no scroll behaviour of its own. A CSS
       `scroll-behavior: smooth` turns every programmatic scroll into an
@@ -1641,9 +1944,18 @@ const helpRows = computed(() => [
       when the content above the viewport resizes, which moves scrollTop on
       its own and fights the model's own correction.
     -->
+    <!--
+      The "N new" pill lives OUTSIDE the scroll container, pinned to the
+      bottom of the log area. It used to be absolutely positioned inside the
+      scroller, which meant it sat at the top of the scrollable content and
+      scrolled out of view the moment the reader moved down — the one
+      affordance that tells them how much they missed was the one they
+      could not see.
+    -->
+    <div class="relative flex-1 min-h-0">
     <div
       ref="scrollEl"
-      class="log-scroll flex-1 overflow-auto bg-background relative"
+      class="log-scroll h-full overflow-auto bg-background"
       role="log"
       aria-live="off"
       :aria-label="t('log.outputLabel')"
@@ -1651,17 +1963,6 @@ const helpRows = computed(() => [
       @mouseleave="onRegionLeave"
       @scroll="onScroll"
     >
-      <!-- "N new" pill when auto-follow is off and new lines arrived -->
-      <button
-        v-if="!autoFollow && (unreadCount ?? 0) > 0"
-        type="button"
-        class="absolute top-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-2xs font-medium shadow-md hover:opacity-90 transition-opacity"
-        @click="toggleAutoFollow"
-      >
-        <ChevronUp :size="12" :stroke-width="2" />
-        {{ t('log.newLines', { count: unreadCount }) }}
-      </button>
-
       <div
         v-if="displayedLines.length === 0"
         class="flex flex-col items-center justify-center h-full px-4 text-center text-muted-foreground font-sans"
@@ -1670,25 +1971,46 @@ const helpRows = computed(() => [
              Without filter + lines=[] + streaming=true → "等待" (pods haven't
              written yet); without filter + paused → "已暂停"; with filter but
              filtered=[] (lines exist) → "无匹配" + a one-click reset. -->
-        <template v-if="lines.length === 0">
-          <Terminal :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
+        <!--
+          ponytail: 第四个分支 —— 出错。
+          之前这里只有三个分支，于是「读取失败」和「暂无日志」会同时出现：
+          上面一条红条说「Request failed with status code 500」，下面一块
+          空白区说「暂无日志 · 等待容器输出…」。两句话互相矛盾，读者只能
+          猜哪个是真的。
+
+          现在这一块是失败的唯一出口：文案用 error 本身（后端说的原话，
+          比如「Pod 或容器不存在」），「重试」按钮也在这里。上面那条红条
+          只在还有日志可看的时候出现（部分容器失败），两种情况不再同时
+          出现，也不再用两个词说同一件事。
+        -->
+        <template v-if="error">
+          <CircleX :size="32" class="mb-3 opacity-40 text-error" :stroke-width="1.5" />
+          <p class="text-sm font-medium text-foreground mb-1">
+            {{ error }}
+          </p>
+          <Button variant="outline" size="xs" @click="emit('retry')">
+            {{ t('state.retry') }}
+          </Button>
+        </template>
+        <template v-else-if="lines.length === 0">
+          <Terminal :size="32" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
             {{ t('log.emptyTitle') }}
           </p>
-          <p class="text-2xs text-muted-foreground">
+          <p class="text-xs text-muted-foreground">
             {{ streaming ? t('log.emptyWaiting') : t('log.emptyPaused') }}
           </p>
         </template>
         <template v-else>
-          <Search :size="28" class="mb-3 opacity-30" :stroke-width="1.5" />
+          <Search :size="32" class="mb-3 opacity-30" :stroke-width="1.5" />
           <p class="text-sm font-medium text-foreground mb-1">
             {{ t('log.emptyFilteredTitle') }}
           </p>
-          <p class="text-2xs text-muted-foreground mb-3">
+          <p class="text-xs text-muted-foreground mb-3">
             {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
           </p>
-          <Button variant="outline" size="sm" class="h-7 text-xs" @click="clearAllFilters">
-            <X :size="11" :stroke-width="2" class="mr-1" />
+          <Button variant="outline" size="xs" class="text-xs" @click="clearAllFilters">
+            <X :size="12" :stroke-width="2" class="mr-1" />
             {{ t('log.clearFilters') }}
           </Button>
         </template>
@@ -1705,59 +2027,63 @@ const helpRows = computed(() => [
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
-                'hover:bg-muted/40 transition-colors',
+                'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
+                groupFlashes(group) && 'animate-log-flash',
               )"
-              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale]"
+              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale, groupFlashes(group)]"
             >
               <button
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
               />
               <span
                 v-if="isNewestLine(group)"
-                class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
+                :class="cn(
+                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full animate-pulse',
+                  isNewestLineError(group) ? 'bg-error' : 'bg-success',
+                )"
                 aria-hidden="true"
               />
               <!-- Col 1: timestamp (sticky) -->
               <span
-                class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
               <!-- Col 2: severity badge (sticky) -->
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <!-- Col 3: content (inline-prefix chips + ANSI-colored text + truncate toggle) -->
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <button
                   v-if="group.lines[0].isJson"
                   type="button"
                   @click="toggleJson(`${group.key}`)"
-                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded text-2xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors"
+                  class="shrink-0 inline-flex items-center gap-0.5 px-1.5 min-h-6 rounded-sm text-xs font-bold uppercase tracking-wider bg-info-bg text-info border border-info-border hover:bg-info/20 transition-colors ease-app dur-fast"
                   :title="jsonExpanded.has(`${group.key}`) ? t('log.collapseJson') : t('log.expandJson')"
                   :aria-expanded="jsonExpanded.has(`${group.key}`)"
                   :aria-label="t('log.toggleJsonLabel')"
                 >
                   JSON
-                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="9" :stroke-width="2.5" />
-                  <ChevronUp v-else :size="9" :stroke-width="2.5" />
+                  <ChevronDown v-if="!jsonExpanded.has(`${group.key}`)" :size="12" :stroke-width="2.5" />
+                  <ChevronUp v-else :size="12" :stroke-width="2.5" />
                 </button>
                 <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.lines[0].raw.content : undefined" v-html="lineHtml(group.lines[0].raw)" />
                 <button
                   v-if="plainLength(group.lines[0].raw) > TRUNCATE_LIMIT"
                   type="button"
-                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                  class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                   :title="truncatedExpanded.has(group.lines[0].raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(group.lines[0].raw) - TRUNCATE_LIMIT).toLocaleString() })"
                   @click.stop="toggleTruncate(group.lines[0].raw.content)"
                 >
@@ -1767,14 +2093,14 @@ const helpRows = computed(() => [
             </div>
             <div
               v-if="group.lines[0].isJson && jsonExpanded.has(`${group.key}`)"
-              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded bg-muted/40 border border-border text-2xs overflow-x-auto font-mono"
+              class="ml-[184px] mr-3 mb-1 mt-1 px-3 py-2 rounded-md bg-muted/40 border border-border text-xs overflow-x-auto font-mono"
             >
               <div
                 v-for="jl in formatJsonLines(group.lines[0].raw)"
                 :key="jl.num"
                 class="flex items-start gap-2 leading-[1.7] hover:bg-background/40 -mx-1 px-1 rounded-sm"
               >
-                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-2xs mt-px">{{ jl.num }}</span>
+                <span class="shrink-0 w-7 text-right text-muted-foreground tabular-nums select-none text-xs mt-px">{{ jl.num }}</span>
                 <span
                   class="flex-1 min-w-0 whitespace-pre"
                   :style="JSON_GUIDE_STYLE"
@@ -1787,10 +2113,11 @@ const helpRows = computed(() => [
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
-                'hover:bg-muted/40 transition-colors',
+                'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
+                groupFlashes(group) && 'animate-log-flash',
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale, groupFlashes(group)]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"
@@ -1802,27 +2129,30 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
               />
               <span
                 v-if="isNewestLine(group)"
-                class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-success animate-pulse"
+                :class="cn(
+                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full animate-pulse',
+                  isNewestLineError(group) ? 'bg-error' : 'bg-success',
+                )"
                 aria-hidden="true"
               />
               <span
-                class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                 :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center px-1.5 py-0 rounded border text-2xs font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded text-2xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <span
@@ -1837,20 +2167,20 @@ const helpRows = computed(() => [
                     class="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover/fold:flex flex-col gap-1 p-2 rounded-md border border-border bg-popover text-popover-foreground shadow-md min-w-[320px] max-w-[640px]"
                     role="tooltip"
                   >
-                    <span class="text-2xs uppercase tracking-wider text-muted-foreground mb-0.5">
+                    <span class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">
                       {{ t('log.foldTooltip', { count: group.lines.length }) }}
                     </span>
                     <span
                       v-for="(l, i) in group.lines.slice(0, 3)"
                       :key="i"
-                      class="flex gap-2 text-2xs font-mono"
+                      class="flex gap-2 text-xs font-mono"
                     >
                       <span class="text-muted-foreground tabular-nums shrink-0">{{ fmtLocalTime(l.raw.timestamp) }}</span>
                       <span class="truncate text-foreground/80">{{ stripAnsi(l.raw.content).slice(0, 120) }}</span>
                     </span>
                     <span
                       v-if="group.lines.length > 3"
-                      class="text-2xs text-muted-foreground italic"
+                      class="text-xs text-muted-foreground italic"
                     >
                       {{ t('log.foldMore', { count: group.lines.length }) }}
                     </span>
@@ -1862,13 +2192,13 @@ const helpRows = computed(() => [
                      scanability — error fold = red, warn = amber, etc. -->
                 <span
                   :class="cn(
-                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors',
+                    'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums transition-colors ease-app dur-fast',
                         severityBorderFor(group.lines[0].raw.severity),
                   )"
                   :title="t('log.foldTitle', { count: group.lines.length })"
                 >
-                  <ChevronDown v-if="group.expanded" :size="11" :stroke-width="2.5" />
-                  <ChevronRight v-else :size="11" :stroke-width="2.5" />
+                  <ChevronDown v-if="group.expanded" :size="12" :stroke-width="2.5" />
+                  <ChevronRight v-else :size="12" :stroke-width="2.5" />
                   ×{{ group.lines.length }}
                 </span>
               </div>
@@ -1884,13 +2214,13 @@ const helpRows = computed(() => [
                     v-if="line.traceId"
                     type="button"
                     @click.stop="toggleTraceFilter(line.traceId)"
-                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-all cursor-pointer z-10"
+                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
                     :title="t('log.filterTraceTitle', { traceId: line.traceId })"
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
                   />
                   <span
-                    class="sticky left-0 bg-card text-2xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                    class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
                     :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
@@ -1901,7 +2231,7 @@ const helpRows = computed(() => [
                     <button
                       v-if="plainLength(line.raw) > TRUNCATE_LIMIT"
                       type="button"
-                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-2xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors"
+                      class="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-sm text-xs font-medium border border-info-border text-info hover:bg-info/10 transition-colors ease-app dur-fast"
                       :title="truncatedExpanded.has(line.raw.content) ? t('log.collapse') : t('log.expandRemaining', { count: (plainLength(line.raw) - TRUNCATE_LIMIT).toLocaleString() })"
                       @click.stop="toggleTruncate(line.raw.content)"
                     >
@@ -1917,6 +2247,17 @@ const helpRows = computed(() => [
         <div :style="{ height: padBottom + 'px' }" aria-hidden="true" />
       </div>
     </div>
+      <!-- "N new" pill when auto-follow is off and new lines arrived -->
+      <button
+        v-if="!autoFollow && (unreadCount ?? 0) > 0"
+        type="button"
+        class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-foreground text-background text-xs font-medium shadow-md hover:opacity-90 transition-opacity ease-app dur-fast"
+        @click="toggleAutoFollow"
+      >
+        <ChevronDown :size="12" :stroke-width="2" />
+        {{ t('log.newLines', { count: unreadCount }) }}
+      </button>
+    </div>
 
     <!--
       The virtualized region is marked `aria-live="off"`: every scroll
@@ -1927,23 +2268,59 @@ const helpRows = computed(() => [
     <div class="sr-only" aria-live="polite" aria-atomic="true">{{ liveMessage }}</div>
 
     <!-- Status bar -->
-    <div class="px-3 py-1.5 border-t border-border bg-muted text-2xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
-      <span class="tabular-nums">
-        <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
-        <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
-        {{ t('log.linesUnit') }}
-      </span>
+    <div class="px-3 py-1.5 border-t border-border bg-muted text-xs text-muted-foreground flex justify-between items-center shrink-0 font-sans">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="tabular-nums">
+          <span class="text-foreground font-medium">{{ displayedLines.length.toLocaleString() }}</span>
+          <span v-if="search || minSeverity > 0"> / {{ lines.length.toLocaleString() }}</span>
+          {{ t('log.linesUnit') }}
+        </span>
+        <!--
+          The time column is local time, and nothing on screen said so. A
+          reader comparing a log line against a chart, an alert, or another
+          machine had to hover the cell to find out which zone they were
+          looking at. The zone is now stated once, in the panel's own status
+          bar.
+        -->
+        <!-- Inherits the status bar's own colour: at 80% opacity the chip
+             measured 4.17:1 on the dark bar's surface, under the 4.5 AA
+             floor. -->
+        <span aria-hidden="true">·</span>
+        <span class="shrink-0" :title="t('log.localTimeHint')">
+          {{ t('log.localTime', { tz: tzShort() }) }}
+        </span>
+      </div>
       <div class="flex items-center gap-3">
-        <span v-if="streaming" class="flex items-center gap-1 text-green-800">
-          <span class="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+        <span v-if="streaming" class="flex items-center gap-1 text-success">
+          <span class="h-1.5 w-1.5 rounded-full bg-success" :class="livePulse ? 'animate-pulse' : ''" />
           {{ t('log.live') }}
         </span>
         <span v-else class="text-warning">{{ t('log.paused') }}</span>
         <span class="hidden sm:inline text-muted-foreground">·</span>
         <span v-if="!autoFollow">{{ t('log.scrollHint') }}</span>
-        <span v-else>{{ t('log.autoFollow') }} <ChevronDown :size="11" :stroke-width="2" class="inline -mb-px" /></span>
+        <span v-else>{{ t('log.autoFollow') }} <ChevronDown :size="12" :stroke-width="2" class="inline -mb-px" /></span>
       </div>
     </div>
+
+    <!--
+      Clearing the screen destroys what the reader is looking at, and it sits
+      next to "copy all" — two different risk levels side by side. It asks
+      first.
+    -->
+    <Dialog :open="clearConfirmOpen" @update:open="(v) => (clearConfirmOpen = v)">
+      <DialogContent class="sm:max-w-sm font-sans">
+        <DialogTitle>{{ t('log.clearConfirmTitle') }}</DialogTitle>
+        <p class="text-sm text-muted-foreground">{{ t('log.clearConfirmBody') }}</p>
+        <div class="mt-3 flex justify-end gap-2">
+          <Button variant="outline" size="sm" @click="clearConfirmOpen = false">
+            {{ t('log.clearConfirmCancel') }}
+          </Button>
+          <Button variant="destructive" size="sm" @click="confirmClear">
+            {{ t('log.clearConfirmOk') }}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 

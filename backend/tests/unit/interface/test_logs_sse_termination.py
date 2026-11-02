@@ -31,7 +31,7 @@ pytestmark = pytest.mark.asyncio
 
 
 class _UseCase:
-    """Yields `n` entries, then lets the watch end like a stopped pod would."""
+    """Yields `n` entries, a poll-boundary marker, then ends like a dead pod."""
 
     def __init__(self, n: int) -> None:
         self.n = n
@@ -51,6 +51,7 @@ class _UseCase:
                     container="c",
                     severity="INFO",
                 )
+            yield None  # poll boundary
         finally:
             # Runs on exhaustion AND on GeneratorExit, i.e. exactly when the
             # drain loop stopped driving the watch.
@@ -125,6 +126,18 @@ async def test_stream_sends_end_with_a_single_batch():
     # The boring path, kept so the fix cannot be "just delete the drain loop".
     events, _ = await _collect(3)
     assert [e.get("event") for e in events] == ["log", "end"]
+    assert _lines(events) == 3
+
+
+async def test_lines_are_flushed_at_a_poll_boundary_not_only_at_batch_size():
+    # Regression: `_drain` held its partial batch until BATCH_MAX (100) or
+    # end-of-stream. Following is now a long-lived poll loop, so there may
+    # never be an end-of-stream — a pod emitting a line a second produced
+    # pings and NO log events at all. The repo yields a `None` marker when a
+    # poll completes; that must flush what the poll produced.
+    events, _ = await _collect(3)
+    kinds = [e.get("event") for e in events]
+    assert kinds == ["log", "end"], kinds
     assert _lines(events) == 3
 
 

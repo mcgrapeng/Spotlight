@@ -33,6 +33,7 @@ from app.application.dto.permissions import (
 )
 from app.application.dto.ai import (
     AIAnalyzeIn,
+    AIAskIn,
     AIAnalyzeOut,
     AIProviderIn,
     AIProviderOut,
@@ -52,6 +53,7 @@ __all__ = [
     "FavoriteCreate",
     "FavoriteOut",
     "AIAnalyzeIn",
+    "AIAskIn",
     "AIAnalyzeOut",
     "AIProviderIn",
     "AIProviderOut",

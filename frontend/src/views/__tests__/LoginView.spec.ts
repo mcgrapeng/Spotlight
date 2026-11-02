@@ -105,6 +105,40 @@ describe('LoginView', () => {
     expect(ids).not.toContain('login-password')
   })
 
+  it('labels the credential fields in the interface\'s language', async () => {
+    // The labels used to come from the auth plugin, which wrote them in
+    // Chinese — so an English login screen showed 「MFA 一次性码」 next to
+    // "Sign in". The field NAME is the stable part, so the frontend owns
+    // the wording and the backend's label is only a fallback.
+    vi.mocked(authApi.status).mockResolvedValue(teleportStatus as any)
+    getI18n().global.locale.value = 'en-US'
+    const auth = useAuthStore()
+    await auth.refreshStatus()
+    const wrapper = await mountLogin(pinia)
+
+    expect(wrapper.text()).toContain('Password')
+    expect(wrapper.text()).toContain('MFA one-time code')
+    expect(wrapper.text()).not.toContain('一次性码')
+  })
+
+  it('falls back to the backend label for a field it has no wording for', async () => {
+    // A third-party auth plugin can ask for fields this build has never
+    // heard of. Its own label is better than a raw key.
+    vi.mocked(authApi.status).mockResolvedValue({
+      configured: true,
+      provider: {
+        id: 'custom', label: 'Custom',
+        fields: [{ name: 'sso_ticket', label: 'SSO 工单', type: 'text', required: true }],
+      },
+      auth_required: true, client_session: false, session: null,
+    } as any)
+    const auth = useAuthStore()
+    await auth.refreshStatus()
+    const wrapper = await mountLogin(pinia)
+
+    expect(wrapper.text()).toContain('SSO 工单')
+  })
+
   it('explains the bearer-only mode instead of showing a dead form', async () => {
     // API_TOKEN set but no plugin: there is nothing to type, and submitting
     // used to POST an empty fields object for a 503.

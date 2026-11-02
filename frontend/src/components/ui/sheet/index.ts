@@ -11,7 +11,10 @@ export { default as SheetTitle } from "./SheetTitle.vue"
 export { default as SheetTrigger } from "./SheetTrigger.vue"
 
 export const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  // ponytail: 打开 500ms / 关闭 300ms 太慢 —— ⌘J 唤起的 AI 面板要半秒才
+  // 到位。同类的侧滑面板在 200ms 左右。改成 200 / 150：进场比退场慢，
+  // 退场是「撤掉」，不该比进场还拖。
+  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-app data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-150 data-[state=open]:duration-200",
   {
     variants: {
       side: {

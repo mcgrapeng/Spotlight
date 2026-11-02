@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import { getI18n } from './i18n'
 import { setDayjsLocale } from './utils/dayjs'
+import { initTheme } from './composables/useTheme'
 import './styles/main.css'
 
 const app = createApp(App)
@@ -20,5 +21,9 @@ app.use(router)
 // `.catch()` guards a rejection, not a promise that never settles, and a locale
 // loader that hangs here gates `app.mount()` and blanks the page for everyone.
 await setDayjsLocale(i18n.global.locale.value).catch(() => {})
+
+// Theme has to land on <html> before the first paint, otherwise the page
+// flashes light before switching to dark.
+initTheme()
 
 app.mount('#app')
