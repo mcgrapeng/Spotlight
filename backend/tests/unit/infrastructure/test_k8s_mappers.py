@@ -235,6 +235,16 @@ def test_map_node_with_missing_capacity_strings_defaults_to_empty():
             mapped.cpu_allocatable, mapped.memory_allocatable) == ("", "", "", "")
 
 
+def test_map_node_survives_a_missing_node_info():
+    # Found live: a minimal apiserver node without nodeInfo crashed the whole
+    # node list with AttributeError. Missing optional status fields are not
+    # an error.
+    node = _node()
+    node.status.node_info = None
+    mapped = map_node(node, now=_NOW)
+    assert (mapped.kubelet_version, mapped.os_image) == ("", "")
+
+
 # ── events ──────────────────────────────────────────────────────────────
 
 

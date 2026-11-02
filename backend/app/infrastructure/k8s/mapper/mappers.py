@@ -125,12 +125,15 @@ def map_node(node_obj, *, pod_count: int = 0, cluster: str = "", now: datetime |
 
     cap = node_obj.status.capacity or {}
     alloc = node_obj.status.allocatable or {}
+    # nodeInfo can be absent (seen live: a minimal apiserver response) — a
+    # missing field on one node must not crash the whole node list.
+    info = node_obj.status.node_info
     return Node(
         name=node_obj.metadata.name,
         status=status,
         roles=roles,
-        kubelet_version=node_obj.status.node_info.kubelet_version,
-        os_image=node_obj.status.node_info.os_image,
+        kubelet_version=info.kubelet_version if info else "",
+        os_image=info.os_image if info else "",
         cpu_capacity=cap.get("cpu", ""),
         memory_capacity=cap.get("memory", ""),
         cpu_allocatable=alloc.get("cpu", ""),
