@@ -180,3 +180,6 @@ frontend/package-lock.json
 # Local audit tooling (visual README audit server) — dev-only, not shipped
 .audit/
 .playwright-mcp
+.research
+backend/.schemathesis/
+backend/mutants/

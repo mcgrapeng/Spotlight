@@ -1,0 +1,7 @@
+# Coverage floor for the backend suite. CI already collects coverage
+# (`pytest --cov=app`); this pins the water level so it only rises.
+# Raised when new tests land (89% as of 2026-11), never lowered to pass a run.
+[report]
+fail_under = 88
+show_missing = true
+skip_covered = false
