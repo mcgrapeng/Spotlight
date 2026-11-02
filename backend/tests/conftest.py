@@ -28,11 +28,28 @@ _ENV_LEAK_VARS = (
     "API_TOKEN",
 )
 
+# The developer's own proxy (ALL_PROXY=socks5://…) leaks in the other
+# direction: importing litellm builds an httpx client that honours it and
+# dies with "socksio is not installed" before a single assertion runs.
+# Tests must see a proxy-free environment.
+_PROXY_LEAK_VARS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "SOCKS_PROXY",
+    "socks_proxy",
+)
+
 
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch):
     for var in _ENV_LEAK_VARS:
         monkeypatch.setenv(var, "")
+    for var in _PROXY_LEAK_VARS:
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.delenv("TELEPORT_AUTOLOGIN_PASSWORD", raising=False)
     get_settings.cache_clear()
     sess._sessions.clear()
