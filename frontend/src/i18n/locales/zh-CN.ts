@@ -3,6 +3,8 @@ export default {
     username: '用户名',
     usernamePlaceholder: '用户名',
     bearerOnly: '此部署仅接受 API 令牌，请通过脚本或 CLI 以 Authorization 请求头发送，此处无需输入。',
+    openHint: '此部署未启用登录，无需凭据即可进入。',
+    openEnter: '直接进入',
     clustersUnavailable: '无法列出你可访问的集群。',
     clustersUnavailableHint: '此时继续会看到服务端自己的集群，而不是你的，所以 Spotlight 停在了这一步。这通常是临时故障 —— 可以重试，或退出后重新登录。',
     retryClusters: '重试',

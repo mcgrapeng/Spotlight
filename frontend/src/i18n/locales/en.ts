@@ -3,6 +3,8 @@ export default {
     username: 'Username',
     usernamePlaceholder: 'Your username',
     bearerOnly: 'This deployment accepts an API token only. Send it as an Authorization header from a script or CLI — there is nothing to type here.',
+    openHint: 'This deployment runs without login — no credentials needed.',
+    openEnter: 'Enter',
     clustersUnavailable: 'Could not list the clusters available to you.',
     clustersUnavailableHint: 'Connecting now would show the server\'s own cluster, not yours, so Spotlight stopped here. This is usually temporary — try again, or sign out and back in.',
     retryClusters: 'Try again',

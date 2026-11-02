@@ -26,6 +26,17 @@ const availableClusters = computed(() => auth.pendingClusters)
 const fields = computed<ProviderField[]>(() => auth.status?.provider?.fields ?? [])
 
 /**
+ * Open deployment (no auth plugin, nothing required): anyone may enter.
+ * The bearer-only copy below belongs to token deployments and would lie
+ * here, so offer the way in instead of a dead-end card.
+ */
+const openDeployment = computed(
+  () => auth.status?.auth_required === false
+    && availableClusters.value.length === 0
+    && fields.value.length === 0,
+)
+
+/**
  * The label of a provider field.
  *
  * The backend sends one (the auth plugin's own wording — the built-in
@@ -153,9 +164,19 @@ async function onRetryClusters() {
           </p>
         </div>
 
+        <!-- Open deployment: nothing to log in with, and the app lets the
+             reader straight in. -->
+        <div v-if="openDeployment" class="space-y-3">
+          <p class="text-sm text-muted-foreground">{{ t('login.openHint') }}</p>
+          <Button class="w-full" @click="router.push('/dashboard')">
+            {{ t('login.openEnter') }}
+            <LogIn :size="14" class="ml-1.5" />
+          </Button>
+        </div>
+
         <!-- Step 1: plugin auth. Empty `fields` means the server accepts an
              API_TOKEN but has no login plugin — nothing to type here. -->
-        <div v-if="availableClusters.length === 0 && fields.length === 0" class="space-y-3">
+        <div v-else-if="availableClusters.length === 0 && fields.length === 0" class="space-y-3">
           <p class="text-sm text-muted-foreground">{{ t('login.bearerOnly') }}</p>
           <p class="text-xs text-muted-foreground font-mono break-all bg-muted/40 border border-border rounded-md px-3 py-2">
             Authorization: Bearer &lt;API_TOKEN&gt;
