@@ -39,9 +39,10 @@ class FakeTokenPlugin:
     id = "token"
     label = "访问令牌"
 
-    def __init__(self, fields: list[FormField] | None = None, *, raise_on_login: Exception | None = None) -> None:
+    def __init__(self, fields: list[FormField] | None = None, *, raise_on_login: Exception | None = None, raise_on_acquire: Exception | None = None) -> None:
         self._fields = fields or [FormField(name="token", label="访问令牌", type="password")]
         self._raise = raise_on_login
+        self._raise_on_acquire = raise_on_acquire
         self.acquired: list[str] = []
 
     def form_fields(self) -> list[FormField]:
@@ -57,7 +58,15 @@ class FakeTokenPlugin:
 
     async def acquire(self, identity: Identity, cluster: str, session_dir: Path) -> Kubeconfig:
         self.acquired.append(cluster)
-        return Kubeconfig(yaml=f"fake:{cluster}\n".encode(), context=cluster)
+        if self._raise_on_acquire is not None:
+            raise self._raise_on_acquire
+        # The kubeconfig's context name is NOT the cluster name — with
+        # Teleport it is "<proxy>-<cluster>". Returning a different name here
+        # is what lets the test prove the route reports the kubeconfig's
+        # context and not the name the client asked for.
+        return Kubeconfig(
+            yaml=f"fake:{cluster}\n".encode(), context=f"{cluster}-kubeconfig-context"
+        )
 
     async def logout(self, identity: Identity, session_dir: Path) -> None:
         return None
@@ -73,6 +82,19 @@ def fake_plugin(monkeypatch):
     state like `raise_on_login`).
     """
     plugin = FakeTokenPlugin()
+    monkeypatch.setattr(
+        "app.interface.api.v1.routes.auth.active_plugin",
+        lambda: plugin,
+    )
+    yield plugin
+
+
+@pytest.fixture
+def fake_plugin_failing_acquire(monkeypatch):
+    """A plugin that authenticates but cannot reach the cluster."""
+    plugin = FakeTokenPlugin(
+        raise_on_acquire=AuthError("unavailable", "not authorized to access cluster"),
+    )
     monkeypatch.setattr(
         "app.interface.api.v1.routes.auth.active_plugin",
         lambda: plugin,
@@ -162,6 +184,17 @@ def test_login_and_cluster_flow(fake_plugin, monkeypatch):
     r = client.post("/api/v1/auth/cluster", json={"cluster": "ctx-a"})
     assert r.status_code == 200, r.text
     assert fake_plugin.acquired == ["ctx-a"]
+
+    # The response carries BOTH names, and they mean different things:
+    #   cluster — the Teleport Kubernetes cluster the user picked
+    #   context — the context name in the session kubeconfig, which is what
+    #             the API's ?context= expects
+    # The UI once used `cluster` for the request parameter and every call
+    # answered 409, so the contract is pinned here.
+    body = r.json()
+    assert body["ok"] is True
+    assert body["cluster"] == "ctx-a"
+    assert body["context"] == "ctx-a-kubeconfig-context"
 
     # /auth/kube-clusters reuses list_clusters
     r = client.get("/api/v1/auth/kube-clusters")
@@ -353,3 +386,68 @@ def test_protected_route_401_without_session(monkeypatch):
     from app.main import app
     client = TestClient(app)
     assert client.get("/api/v1/clusters").status_code == 401
+
+
+# ── A session with no cluster of its own ──────────────────────────────────
+def test_session_without_a_cluster_does_not_read_the_host_kubeconfig(
+    fake_plugin, monkeypatch, tmp_path,
+):
+    """The host kubeconfig is the OPERATOR's cluster.
+
+    A session that has logged in but not yet picked a cluster has no
+    kubeconfig of its own. Falling back to the host's would hand that user
+    the operator's clusters — the exact failure the four-names contract in
+    docs/design/teleport-names.md exists to prevent.
+    """
+    monkeypatch.setenv("AUTH_PROVIDER", "token")
+    get_settings.cache_clear()
+
+    # A synthetic "host" kubeconfig, so the assertion does not depend on
+    # whatever kubeconfig the machine running the tests happens to carry.
+    host = tmp_path / "host-kubeconfig.yaml"
+    host.write_text(
+        "apiVersion: v1\nkind: Config\ncurrent-context: operator-cluster\n"
+        "clusters:\n- name: operator-cluster\n  cluster:\n"
+        "    server: https://operator.example\n"
+        "contexts:\n- name: operator-cluster\n"
+        "  context: {cluster: operator-cluster, user: operator-cluster}\n"
+        "users:\n- name: operator-cluster\n  user: {token: operator-token}\n"
+    )
+    monkeypatch.setenv("KUBECONFIG", str(host))
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "fields": {"token": "any"}},
+    )
+
+    r = client.get("/api/v1/clusters")
+    assert r.status_code == 409, r.text
+    assert "operator-cluster" not in r.text
+
+
+def test_failed_cluster_acquisition_revokes_the_session(
+    fake_plugin_failing_acquire, monkeypatch,
+):
+    """A session that could not reach a cluster must not stay alive for 12
+    hours looking logged in — it has no kubeconfig, so every data route
+    would fail on it anyway."""
+    monkeypatch.setenv("AUTH_PROVIDER", "token")
+    get_settings.cache_clear()
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "fields": {"token": "any"}},
+    )
+
+    r = client.post("/api/v1/auth/cluster", json={"cluster": "ctx-a"})
+    assert r.status_code in (401, 403, 503), r.text
+
+    # The session is gone: the cookie no longer authenticates anything.
+    r = client.get("/api/v1/clusters")
+    assert r.status_code == 401, r.text

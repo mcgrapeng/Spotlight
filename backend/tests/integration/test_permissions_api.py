@@ -82,7 +82,11 @@ def test_me_reflects_an_assigned_role(client, repo):
 def test_role_listing_needs_roles_manage(client):
     r = client.get("/api/v1/permissions/roles")
     assert r.status_code == 403
-    assert r.json()["detail"] == {"code": "forbidden", "permission": "roles.manage"}
+    assert r.json()["detail"] == {
+        "code": "forbidden",
+        "permission": "roles.manage",
+        "message": "没有权限：roles.manage",
+    }
 
 
 def test_user_listing_needs_users_manage(client):
@@ -221,7 +225,11 @@ def test_a_caller_without_the_code_is_turned_away_from_a_data_route(client, repo
     repo.users["dev"] = AppUser(id=1, username="dev", roles=("nobody",))
     r = client.get("/api/v1/pods")
     assert r.status_code == 403
-    assert r.json()["detail"] == {"code": "forbidden", "permission": "pods.read"}
+    assert r.json()["detail"] == {
+        "code": "forbidden",
+        "permission": "pods.read",
+        "message": "没有权限：pods.read",
+    }
 
 
 def test_a_disabled_caller_is_turned_away(client, repo):
@@ -249,3 +257,118 @@ def test_auth_status_carries_the_callers_permissions(client, repo):
     assert body["session"]["username"] == "alice"
     assert "pods.read" in body["permissions"]
     assert "pods.logs" not in body["permissions"]
+
+
+# ── nobody can grant more than they hold ───────────────────────────────────
+def _session_for(username: str) -> str:
+    """A real session cookie for `username` — the HTTP layer reads the
+    caller's identity from it."""
+    from app.infrastructure.auth import session as session_store
+    from app.infrastructure.auth.plugins.base import Identity
+    return session_store.create_session("token", Identity(username=username), 60).token
+
+
+def _ops_role(repo: FakePermissionRepo) -> None:
+    """A role carrying only `users.manage` — the delegation an operator
+    makes when they hand "just user management" to a colleague."""
+    from app.domain.entities.permissions import Role
+    repo.roles[99] = Role(
+        id=99, name="ops", description="",
+        permissions=("users.manage",), builtin=False,
+    )
+
+
+def test_users_manage_cannot_grant_itself_the_admin_role(client, repo):
+    _ops_role(repo)
+    repo.users["mallory"] = AppUser(
+        id=2, username="mallory", roles=("ops",), disabled=False,
+    )
+    client.cookies.set("spotlight_session", _session_for("mallory"))
+
+    r = client.put("/api/v1/permissions/users/mallory", json={"roles": ["admin"]})
+
+    assert r.status_code == 403, r.text
+    # And the grant did not happen.
+    assert repo.users["mallory"].roles == ("ops",)
+
+
+def test_creating_a_role_beyond_the_callers_permissions_is_refused(client, repo):
+    _ops_role(repo)
+    repo.users["mallory"] = AppUser(
+        id=2, username="mallory", roles=("ops",), disabled=False,
+    )
+    client.cookies.set("spotlight_session", _session_for("mallory"))
+
+    r = client.post(
+        "/api/v1/permissions/roles",
+        json={"name": "sneaky", "description": "", "permissions": ["roles.manage"]},
+    )
+
+    assert r.status_code == 403, r.text
+
+
+def test_the_last_admin_cannot_demote_themselves(client, repo):
+    """Without this, the admin surface becomes unreachable forever: no user
+    row would hold the admin role and no bootstrap would re-create it."""
+    _make_admin(repo, "dev")
+
+    r = client.put("/api/v1/permissions/users/dev", json={"roles": ["viewer"]})
+
+    assert r.status_code == 409, r.text
+    assert repo.users["dev"].roles == (ROLE_ADMIN,)
+
+
+def test_the_last_admin_cannot_lock_themselves_out(client, repo):
+    _make_admin(repo, "dev")
+
+    r = client.put(
+        "/api/v1/permissions/users/dev",
+        json={"roles": ["admin"], "disabled": True},
+    )
+
+    assert r.status_code == 409, r.text
+    assert repo.users["dev"].disabled is False
+
+
+def test_an_admin_may_still_demote_another_admin(client, repo):
+    """The guard is about the LAST admin, not about admins changing admins."""
+    _make_admin(repo, "dev")
+    _make_admin(repo, "bob")
+
+    r = client.put("/api/v1/permissions/users/bob", json={"roles": ["viewer"]})
+
+    assert r.status_code == 200, r.text
+    assert repo.users["bob"].roles == ("viewer",)
+
+
+# ── a failing permission lookup ────────────────────────────────────────────
+async def test_a_failing_lookup_grants_read_only_access():
+    """SQLite hiccupping must not hand a `viewer` the `user` role's
+    permissions — `ai.manage` included, which decides where an API key and
+    the cluster's log content go."""
+    from sqlalchemy.exc import SQLAlchemyError
+    from starlette.requests import Request
+
+    from app.interface.api.v1.dependencies import require_permission
+
+    class BrokenRepo(FakePermissionRepo):
+        async def get_user(self, username):
+            raise SQLAlchemyError("database is locked")
+
+    uc = PermissionUseCases(BrokenRepo(), cache_ttl=0)
+    scope = {
+        "type": "http", "method": "GET", "path": "/api/v1/pods",
+        "query_string": b"", "headers": [], "scheme": "http",
+        "server": ("127.0.0.1", 80), "client": ("127.0.0.1", 1),
+    }
+    request = Request(scope)
+
+    # Reading the cluster is still allowed: the kubeconfig limits that
+    # anyway, and refusing it would turn a database hiccup into an outage.
+    await require_permission("pods.read")(request, uc)
+
+    from fastapi import HTTPException
+    for code in ("ai.manage", "ai.use", "favorites.write", "roles.manage"):
+        with pytest.raises(HTTPException) as e:
+            await require_permission(code)(request, uc)
+        assert e.value.status_code == 403, code

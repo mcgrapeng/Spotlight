@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from app.application.ports.outbound import PermissionRepositoryPort
@@ -57,6 +58,14 @@ class RoleInUseError(RoleError):
 
 class UnknownRoleError(RoleError):
     """A user was granted a role that does not exist."""
+
+
+class PrivilegeEscalationError(RoleError):
+    """A caller tried to grant a permission it does not hold itself."""
+
+
+class LastAdminError(RoleError):
+    """The change would leave nobody holding the admin role."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +122,7 @@ class PermissionUseCases:
 
     async def create_role(
         self, name: str, description: str, permissions: list[str],
+        *, actor: str | None = None,
     ) -> Role:
         if await self._repo.get_role_by_name(name) is not None:
             raise RoleExistsError(f"角色已存在: {name}")
@@ -123,13 +133,17 @@ class PermissionUseCases:
             permissions=tuple(sorted(set(permissions))),
             builtin=False,
         )
+        # Validate before the ceiling: an unknown permission code is a bad
+        # request (400), whatever the caller happens to hold.
         role.validate()
+        await self._assert_within_ceiling(actor, role.permissions)
         created = await self._repo.add_role(role)
         invalidate_permission_cache()
         return created
 
     async def update_role(
         self, role_id: int, name: str, description: str, permissions: list[str],
+        *, actor: str | None = None,
     ) -> Role:
         current = await self._repo.get_role(role_id)
         if current is None:
@@ -146,7 +160,10 @@ class PermissionUseCases:
             permissions=tuple(sorted(set(permissions))),
             builtin=False,
         )
+        # Validate before the ceiling: an unknown permission code is a bad
+        # request (400), whatever the caller happens to hold.
         role.validate()
+        await self._assert_within_ceiling(actor, role.permissions)
         updated = await self._repo.update_role(role)
         # A role's permission set changed: everybody holding it is stale.
         invalidate_permission_cache()
@@ -171,8 +188,14 @@ class PermissionUseCases:
 
     async def assign_roles(
         self, username: str, roles: list[str], disabled: bool = False,
+        *, actor: str | None = None,
     ) -> AppUser:
-        """Grant `roles` to `username`, creating the row if needed."""
+        """Grant `roles` to `username`, creating the row if needed.
+
+        `actor` is the identity making the request. When given, it bounds
+        what may be granted: nobody can hand out a permission they do not
+        hold themselves, and nobody can remove the last admin.
+        """
         username = (username or "").strip()
         if not username:
             raise ValueError("用户名不能为空")
@@ -181,9 +204,14 @@ class PermissionUseCases:
         wanted = tuple(dict.fromkeys(r.strip() for r in roles if r.strip()))
         if not wanted:
             raise ValueError("至少需要分配一个角色")
+        granted: set[str] = set()
         for name in wanted:
             if await self._repo.get_role_by_name(name) is None:
                 raise UnknownRoleError(f"角色不存在: {name}")
+            granted.update(await self._role_permissions(name))
+        await self._assert_within_ceiling(actor, granted)
+        if await self._would_remove_the_last_admin(username, wanted, disabled):
+            raise LastAdminError("不能移除最后一个管理员")
         user = AppUser(
             id=None, username=username, roles=wanted, disabled=disabled,
         )
@@ -191,6 +219,66 @@ class PermissionUseCases:
         saved = await self._repo.upsert_user(user)
         invalidate_permission_cache(username)
         return saved
+
+    async def _assert_within_ceiling(
+        self, actor: str | None, permissions: Iterable[str],
+    ) -> None:
+        """Refuse a grant that goes beyond what the caller holds.
+
+        Without this, `users.manage` alone is enough to grant yourself the
+        admin role: handing "just user management" to a colleague — a
+        completely normal delegation — becomes full escalation.
+        """
+        if actor is None:
+            return
+        held = set((await self.effective_permissions(actor)).permissions)
+        extra = sorted(set(permissions) - held)
+        if extra:
+            raise PrivilegeEscalationError(
+                f"不能授予自己没有的权限: {', '.join(extra)}"
+            )
+
+    async def _would_remove_the_last_admin(
+        self, username: str, new_roles: tuple[str, ...], disabled: bool,
+    ) -> bool:
+        """Whether this change would leave nobody holding the admin role.
+
+        The admin role is the escape hatch: once nobody holds it, the whole
+        admin surface is unreachable through the API, forever.
+        """
+        target = await self._repo.get_user(username)
+        # A configured admin is an admin even WITHOUT a stored row — that is
+        # the bootstrap (see effective_permissions). Only a DISABLED row takes
+        # that away, and a disabled row wins over admin_users there too.
+        was_admin = (
+            not (target is not None and target.disabled)
+            and (
+                (target is not None and ROLE_ADMIN in target.roles)
+                or username in self._admin_users
+            )
+        )
+        if not was_admin:
+            return False
+        keeps_admin = (
+            not disabled
+            and (ROLE_ADMIN in new_roles or username in self._admin_users)
+        )
+        if keeps_admin:
+            return False
+        for user in await self._repo.list_users():
+            if user.username == username or user.disabled:
+                continue
+            if ROLE_ADMIN in user.roles or user.username in self._admin_users:
+                return False
+        # A configured admin without a stored row is an admin as well — and
+        # without this the scan would refuse a legitimate demotion.
+        for other in self._admin_users:
+            if other == username:
+                continue
+            row = await self._repo.get_user(other)
+            if row is None or not row.disabled:
+                return False
+        return True
 
     # ── resolution ──────────────────────────────────────────────────────
     async def effective_permissions(self, username: str) -> EffectivePermissions:
@@ -242,7 +330,9 @@ class PermissionUseCases:
 __all__ = [
     "BuiltinRoleError",
     "EffectivePermissions",
+    "LastAdminError",
     "PermissionUseCases",
+    "PrivilegeEscalationError",
     "RoleError",
     "RoleExistsError",
     "RoleInUseError",

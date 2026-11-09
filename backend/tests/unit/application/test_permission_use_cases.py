@@ -5,6 +5,7 @@ import pytest
 
 from app.application.use_cases.permissions import (
     BuiltinRoleError,
+    LastAdminError,
     PermissionUseCases,
     RoleExistsError,
     RoleInUseError,
@@ -35,6 +36,17 @@ def uc(repo: FakePermissionRepo) -> PermissionUseCases:
 
 
 # ── resolution ─────────────────────────────────────────────────────────────
+async def test_a_configured_admin_cannot_be_locked_out(repo):
+    """A configured admin has no user row until one is written — and a
+    DISABLED row beats admin_users in effective_permissions, so allowing
+    this would leave the deployment with no admin at all, and the admin
+    surface unreachable through the API forever."""
+    uc = PermissionUseCases(repo, admin_users=("root",), cache_ttl=0)
+    repo.seed_builtin_roles()
+    with pytest.raises(LastAdminError):
+        await uc.assign_roles("root", [ROLE_VIEWER], disabled=True)
+
+
 async def test_unknown_user_gets_the_default_role(repo, uc):
     """Nobody assigned a role keeps today's behaviour: the `user` role."""
     repo.seed_builtin_roles()

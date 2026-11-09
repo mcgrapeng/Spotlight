@@ -44,6 +44,22 @@ PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
 
 ADMIN_ONLY: frozenset[str] = frozenset({"roles.manage", "users.manage"})
 
+#: What a caller may still do while the permission lookup itself is failing.
+#:
+#: Reading the cluster is already limited by the session's own kubeconfig, so
+#: refusing it would only turn a database hiccup into an outage. Everything
+#: else — changing where an API key goes, sending log content to a model,
+#: managing roles — is a decision nobody can take while the database is down.
+FALLBACK_READ_ONLY: frozenset[str] = frozenset({
+    "clusters.read",
+    "namespaces.read",
+    "pods.read",
+    "pods.logs",
+    "nodes.read",
+    "events.read",
+    "favorites.read",
+})
+
 # Built-in role names. `admin` is the escape hatch (everything), `user` is
 # the default for anyone without an explicit assignment, `viewer` is the
 # read-only profile an operator hands to colleagues.
@@ -83,6 +99,7 @@ __all__ = [
     "ADMIN_ONLY",
     "BUILTIN_ROLES",
     "DEFAULT_ROLE",
+    "FALLBACK_READ_ONLY",
     "PERMISSIONS",
     "PERMISSION_CODES",
     "ROLE_ADMIN",

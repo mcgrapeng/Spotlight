@@ -26,7 +26,9 @@ from app.application.dto import (
 )
 from app.application.use_cases.permissions import (
     BuiltinRoleError,
+    LastAdminError,
     PermissionUseCases,
+    PrivilegeEscalationError,
     RoleExistsError,
     RoleInUseError,
     RoleNotFoundError,
@@ -108,12 +110,18 @@ async def list_roles(uc: PermissionUseCases = Depends(permission_uc)) -> list[Ro
 )
 async def create_role(
     payload: RoleIn,
+    request: Request,
     uc: PermissionUseCases = Depends(permission_uc),
 ) -> RoleOut:
     try:
-        role = await uc.create_role(payload.name, payload.description, payload.permissions)
+        role = await uc.create_role(
+            payload.name, payload.description, payload.permissions,
+            actor=current_username(request),
+        )
     except RoleExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except PrivilegeEscalationError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _to_role_out(role)
@@ -126,13 +134,15 @@ async def create_role(
 )
 async def update_role(
     payload: RoleIn,
+    request: Request,
     # sqlite INTEGER is int64; beyond it the driver overflows (fuzz-found).
     role_id: int = Path(ge=1, le=2**63 - 1),
     uc: PermissionUseCases = Depends(permission_uc),
 ) -> RoleOut:
     try:
         role = await uc.update_role(
-            role_id, payload.name, payload.description, payload.permissions
+            role_id, payload.name, payload.description, payload.permissions,
+            actor=current_username(request),
         )
     except RoleNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -140,6 +150,8 @@ async def update_role(
         raise HTTPException(status_code=409, detail=str(e)) from e
     except BuiltinRoleError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except PrivilegeEscalationError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _to_role_out(role)
@@ -183,12 +195,20 @@ async def list_users(uc: PermissionUseCases = Depends(permission_uc)) -> list[Us
 async def assign_roles(
     username: str,
     payload: UserAssignmentIn,
+    request: Request,
     uc: PermissionUseCases = Depends(permission_uc),
 ) -> UserOut:
     try:
-        user = await uc.assign_roles(username, payload.roles, payload.disabled)
+        user = await uc.assign_roles(
+            username, payload.roles, payload.disabled,
+            actor=current_username(request),
+        )
     except UnknownRoleError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except PrivilegeEscalationError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except LastAdminError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return await _to_user_out(uc, user)

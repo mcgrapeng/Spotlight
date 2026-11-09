@@ -25,7 +25,7 @@ from app.application.use_cases.permissions import (
     PermissionUseCases,
 )
 from app.application.use_cases.pods import PodUseCases
-from app.domain.value_objects.permissions import DEFAULT_ROLE, builtin_permissions
+from app.domain.value_objects.permissions import FALLBACK_READ_ONLY
 from app.infrastructure.ai.providers.litellm_provider import LiteLLMAIRepository
 from app.infrastructure.ai.providers.sql_provider import SQLAIProviderRepository
 from app.infrastructure.auth import session as session_store
@@ -116,13 +116,13 @@ def require_permission(code: str):
     The 403 body carries the missing code so the frontend can explain what
     is missing instead of showing a generic "forbidden".
 
-    On a database failure the check falls back to the default role instead
-    of locking everybody out: the permission layer gates *Spotlight* features
-    (AI, role management, …), while the K8s data itself is already limited
-    by the session's own kubeconfig credentials. A console that refuses to
-    serve pods because SQLite hiccuped is worse than a console that briefly
-    forgets a restriction — and the fallback deliberately does NOT include
-    the admin-only permissions.
+    On a database failure the check falls back to READ-ONLY access instead
+    of locking everybody out: reading the cluster is already limited by the
+    session's own kubeconfig, so refusing it would only turn a database
+    hiccup into an outage. Everything else — changing where an API key goes,
+    sending log content to a model, managing roles — is refused, because
+    substituting the whole default role handed a `viewer` the `user` role's
+    permissions (ai.manage included) for as long as SQLite was unhappy.
     """
     async def _guard(
         request: Request,
@@ -133,13 +133,18 @@ def require_permission(code: str):
             effective = await uc.effective_permissions(username)
         except SQLAlchemyError as e:
             log.warning("permissions.lookup_failed", error=str(e), username=username)
-            effective = EffectivePermissions(
-                username, (DEFAULT_ROLE,), builtin_permissions(DEFAULT_ROLE)
-            )
+            effective = EffectivePermissions(username, (), tuple(FALLBACK_READ_ONLY))
         if not effective.allows(code):
             raise HTTPException(
                 status_code=403,
-                detail={"code": "forbidden", "permission": code},
+                detail={
+                    "code": "forbidden",
+                    "permission": code,
+                    # The frontend prints the detail verbatim. Without a
+                    # sentence to print it shows "[object Object]" — and this
+                    # is the message a blocked user most needs to read.
+                    "message": f"没有权限：{code}",
+                },
             )
 
     return _guard
@@ -176,10 +181,22 @@ async def reject_legacy_cluster_param(request: Request) -> None:
 
 # ── Adapters (singletons — no per-request state) ─────────────────────────
 def k8s_repo(s: Session = Depends(current_session)) -> KubernetesAdapter:
-    # Per-session kubeconfig lives under s.dir/kubeconfig.yaml; the global
-    # host-bound kubeconfig is the fallback when the per-session file is absent.
-    kp = str(s.kubeconfig_path) if s.kubeconfig_path.exists() else None
-    return KubernetesAdapter(s.token, kp)
+    """The adapter for THIS session's cluster.
+
+    A real plugin session carries its own kubeconfig, written when the user
+    picked a cluster (`POST /auth/cluster`). The host-bound kubeconfig is the
+    fallback only for the shared dev session (open mode / Bearer token): for
+    a real session the host's file is the OPERATOR's cluster, and a session
+    that has not picked one yet must not be served it.
+    """
+    if s.kubeconfig_path.exists():
+        return KubernetesAdapter(s.token, str(s.kubeconfig_path))
+    if s.token == session_store.DEV_TOKEN:
+        return KubernetesAdapter(s.token, None)
+    raise HTTPException(
+        status_code=409,
+        detail="尚未选择集群，请先完成集群选择",
+    )
 
 
 def ai_repo(
