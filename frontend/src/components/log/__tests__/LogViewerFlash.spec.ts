@@ -31,8 +31,10 @@ describe('LogViewer severity filter icons', () => {
   it('draws the severity chips with real icons, not ASCII glyphs', () => {
     const wrapper = mountViewer([line('error', 'boom'), line('warn', 'meh'), line('info', 'ok')])
     const chips = wrapper.findAll('button[aria-pressed]')
-    // "全部" + INFO + WARN + ERROR + 未识别
-    expect(chips.length).toBe(5)
+    // "全部" + WARN + ERROR + 未识别 — and NOT "≥ INFO": those three lines
+    // are exactly the lines "≥ INFO" would show, so the chip would say the
+    // same 3 as 全部 and the row would carry two controls for one thing.
+    expect(chips.length).toBe(4)
     // The ASCII stand-ins were `i`, `!` and `▲` rendered as monospace text.
     // A Lucide icon is an <svg>; a glyph is a text node.
     for (const chip of chips) {

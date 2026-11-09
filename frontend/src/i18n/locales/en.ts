@@ -367,7 +367,7 @@ export default {
     severityUnknownLines: 'Unclassified · {count} lines',
     containerTabsLabel: 'Container selection',
     container: 'Container',
-    searchPlaceholder: 'Filter (content / container) · / to focus search',
+    searchPlaceholder: 'Filter (content / container / level) · / to focus search',
     searchLabel: 'Filter logs',
     clearFilterLabel: 'Clear filter',
     searchHistoryLabel: 'Search history',
@@ -437,7 +437,7 @@ export default {
       clear: 'Clear logs',
       jumpError: 'Next / previous error·warn line',
       scroll: 'Scroll down / up 5 lines',
-      toggle: 'Show / hide this panel',
+      toggle: 'Show / hide the shortcut sheet',
     },
   },
   palette: {

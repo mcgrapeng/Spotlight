@@ -1,6 +1,5 @@
 import { computed, type Ref } from 'vue'
 import type { LogLineOut } from '@/api/types'
-import { stripAnsi } from '@/domain/services/logFormat'
 import { isUnknownSeverity } from '@/composables/useLogSeverityCounts'
 
 export const SEVERITY_RANK: Record<string, number> = {
@@ -66,7 +65,15 @@ export function useLogFilters(opts: UseLogFiltersOpts) {
         // so a UUID-string typed in plain search doesn't pull unrelated lines.
         if (cachedTraceId(l) !== traceQ) continue
       } else if (q) {
-        if (!l.content.toLowerCase().includes(q) && !l.container.toLowerCase().includes(q)) continue
+        // The level is no longer IN the content: the backend strips the
+        // app's own "<timestamp> <LEVEL>" prefix, because the panel shows
+        // both in its own columns. So the severity is part of what a search
+        // can match — typing "error" finds the error lines.
+        if (
+          !l.content.toLowerCase().includes(q)
+          && !l.container.toLowerCase().includes(q)
+          && !(l.severity ?? '').toLowerCase().includes(q)
+        ) continue
       }
       out.push(l)
       if (out.length >= max) break

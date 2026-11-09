@@ -398,7 +398,7 @@ export default {
     severityUnknownLines: '未识别 · {count} 行',
     containerTabsLabel: '容器选择',
     container: '容器',
-    searchPlaceholder: '过滤（内容 / 容器） · / 聚焦搜索',
+    searchPlaceholder: '过滤（内容 / 容器 / 级别） · / 聚焦搜索',
     searchLabel: '过滤日志',
     clearFilterLabel: '清除过滤',
     searchHistoryLabel: '搜索历史',
@@ -467,7 +467,7 @@ export default {
       clear: '清空日志',
       jumpError: '下一条 / 上一条 error·warn',
       scroll: '向下 / 向上滚动 5 行',
-      toggle: '显示 / 隐藏此面板',
+      toggle: '显示 / 隐藏快捷键说明',
     },
   },
   palette: {

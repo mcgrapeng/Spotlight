@@ -6,7 +6,7 @@ from typing import Iterator
 from app.application.dto import LogStreamParams
 from app.application.ports.outbound import K8sRepositoryPort
 from app.domain.services.log_classifier import get_classifier
-from app.domain.services.log_parser import parse_timestamp
+from app.domain.services.log_parser import parse_timestamp, strip_app_prefix
 from app.domain.value_objects.enums import LogSeverity
 from app.domain.value_objects.primitives import LogFilter, ResourceRef
 
@@ -44,10 +44,18 @@ class LogUseCases:
         # of the history showed the moment the log was fetched, and the
         # follow-stream showed the real per-line times. The two paths
         # disagreed, and neither one was right.
+        #
+        # The application's own `<timestamp> <LEVEL>` prefix goes too: the
+        # panel shows the time in its column and the level in its badge, so
+        # keeping the prefix meant every row printed both facts twice — and
+        # a line that says "INFO" next to a badge that says "ERROR" is a
+        # contradiction the reader has to resolve. The classification runs
+        # BEFORE the strip, on the untouched line.
+        severity = self._classifier.classify(entry.content)
         return LogStreamParams(
-            timestamp=entry.timestamp, content=entry.content,
+            timestamp=entry.timestamp, content=strip_app_prefix(entry.content),
             container=entry.container,
-            severity=self._classifier.classify(entry.content).value,
+            severity=severity.value,
         )
 
 

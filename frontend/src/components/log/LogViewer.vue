@@ -206,7 +206,15 @@ function parseJson(line: LogLineOut): unknown {
   const cached = jsonCache.get(line)
   if (cached !== undefined) return cached
   let parsed: unknown = null
-  try { parsed = JSON.parse(line.content) } catch { /* not JSON */ }
+  // A log line is JSON only if it opens with { or [. Asking JSON.parse and
+  // catching the SyntaxError threw an exception PER LINE — 10,000 of them
+  // on a full buffer — and the throw cost more than the rest of the
+  // panel's work put together (measured: 1.4 s of a 2.1 s profile, with
+  // the panel blocked for a quarter of a second while it happened).
+  const first = line.content.trimStart()[0]
+  if (first === '{' || first === '[') {
+    try { parsed = JSON.parse(line.content) } catch { /* not JSON after all */ }
+  }
   if (parsed === null || typeof parsed !== 'object') parsed = null
   jsonCache.set(line, parsed)
   return parsed
@@ -759,6 +767,30 @@ const counts = useLogSeverityCounts(toRef(props, 'lines'))
 // 芯片显示的是「点了之后会看到几行」，不是该档位自己的行数。
 const chipCounts = computed(() => cumulativeSeverityCounts(counts.value))
 
+// ponytail: 一枚和「全部」写着同一个数字的芯片不渲染。
+//
+// 「≥ INFO」在没有任何 debug 行时和「全部」是同一批行。两枚芯片写着同
+// 一个数字，一枚黑底一枚灰字，读起来像两个状态而不是一个——这个面板早
+// 就因为「全部」和「DEBUG」并排出现、两枚都自称激活而吃过亏（见下面
+// 芯片组的注释）。
+//
+// 它正在被选中时不能消失：那样面板上就没有任何一枚激活的芯片了。计数
+// 为 0 的芯片照旧留着（禁用状态），它们占着位置，位置就不会跳。
+const severityChips = computed(() =>
+  SEVERITY_FILTER_CHIPS.filter((chip) => {
+    if (minSeverity.value === chip.rank) return true
+    return chipCounts.value[chip.bucket] !== props.lines.length
+  }),
+)
+
+// The name of the severity filter, in the reader's words. The panel used to
+// print the internal rank here ("severity ≥ 2") where the chip the reader
+// clicked says "WARN+" — two names for one thing, one of them not a word.
+const severityFilterLabel = computed(() => {
+  const chip = SEVERITY_FILTER_CHIPS.find((c) => c.rank === minSeverity.value)
+  return chip ? `≥ ${chip.bucket.toUpperCase()}` : ''
+})
+
 // === Additional filter pipeline: container ===
 const selectedContainer = ref<string | null>(null)
 const availableContainers = computed(() => props.containers ?? [])
@@ -1268,8 +1300,14 @@ const SEV_BADGE_CLASS: Record<string, string> = {
   err: chipClasses({ tone: 'error', size: 'xs' }),
   warn: chipClasses({ tone: 'warning', size: 'xs' }),
   warning: chipClasses({ tone: 'warning', size: 'xs' }),
-  info: chipClasses({ tone: 'neutral', size: 'xs' }),
-  notice: chipClasses({ tone: 'neutral', size: 'xs' }),
+  // ponytail: INFO is the noise, so it gets no surface.
+  //
+  // On a busy pod 95% of the rows are INFO, and a pill on every one of them
+  // turned a wall of log lines into a wall of badges — the eye had nothing
+  // to land on. The WORD stays (it is what the eye scans); the surface goes,
+  // so ERROR and WARN are the only rows that raise their voice.
+  info: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
+  notice: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
   trace: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
   debug: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
   unknown: chipClasses({ tone: 'neutral', size: 'xs' }),
@@ -1293,7 +1331,8 @@ function sevBadgeText(s: string): string {
 const localTimeFmt = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
 })
-const utcTimeFmt = new Intl.DateTimeFormat('en-GB', {
+const utcDateTimeFmt = new Intl.DateTimeFormat('en-GB', {
+  year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC',
 })
 /**
@@ -1310,9 +1349,18 @@ function fmtLocalTime(ts: string): string {
   const d = toDate(ts)
   return d ? localTimeFmt.format(d) : ts
 }
-function fmtUtcTime(ts: string): string {
+/**
+ * The full UTC stamp, date included.
+ *
+ * The time column shows HH:MM:SS, so a pod that has been up for days has
+ * lines from two different days that look identical. The date used to be
+ * visible only because the application printed its own timestamp into the
+ * line — and that prefix is now stripped, so the tooltip is where the date
+ * lives.
+ */
+function fmtUtcDateTime(ts: string): string {
   const d = toDate(ts)
-  return d ? utcTimeFmt.format(d) + 'Z' : ts
+  return d ? utcDateTimeFmt.format(d) + 'Z' : ts
 }
 function tzOffset(): string {
   const off = -new Date().getTimezoneOffset()
@@ -1619,7 +1667,7 @@ const helpRows = computed(() => [
       </button>
       <span class="text-muted-foreground/30 mx-0.5">·</span>
       <button
-        v-for="chip in SEVERITY_FILTER_CHIPS"
+        v-for="chip in severityChips"
         :key="chip.bucket"
         type="button"
         :disabled="chipCounts[chip.bucket] === 0"
@@ -2007,7 +2055,7 @@ const helpRows = computed(() => [
             {{ t('log.emptyFilteredTitle') }}
           </p>
           <p class="text-xs text-muted-foreground mb-3">
-            {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? `severity ≥ ${minSeverity}` : '' }}
+            {{ t('log.filteredOut', { count: lines.length.toLocaleString() }) }}{{ search || minSeverity > 0 ? t('log.currentFilter') : '' }}{{ search ? t('log.filterQuery', { query: search }) : '' }}{{ search && minSeverity > 0 ? ' + ' : '' }}{{ minSeverity > 0 ? severityFilterLabel : '' }}
           </p>
           <Button variant="outline" size="xs" class="text-xs" @click="clearAllFilters">
             <X :size="12" :stroke-width="2" class="mr-1" />
@@ -2052,8 +2100,8 @@ const helpRows = computed(() => [
               />
               <!-- Col 1: timestamp (sticky) -->
               <span
-                class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
-                :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
+                class="sticky left-0 bg-card text-xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                :title="`${fmtUtcDateTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
@@ -2063,7 +2111,7 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] text-xs font-medium text-muted-foreground uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <button
@@ -2143,8 +2191,8 @@ const helpRows = computed(() => [
                 aria-hidden="true"
               />
               <span
-                class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
-                :title="`${fmtUtcTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
+                class="sticky left-0 bg-card text-xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                :title="`${fmtUtcDateTime(group.lines[0].raw.timestamp)} · ${tzOffset()}`"
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
@@ -2152,7 +2200,7 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] px-1.5 py-0 rounded-sm text-xs font-semibold bg-muted text-muted-foreground border border-border uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] text-xs font-medium text-muted-foreground uppercase tracking-wider truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <span
@@ -2220,8 +2268,8 @@ const helpRows = computed(() => [
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
                   />
                   <span
-                    class="sticky left-0 bg-card text-xs text-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
-                    :title="`${fmtUtcTime(line.raw.timestamp)} · ${tzOffset()}`"
+                    class="sticky left-0 bg-card text-xs text-muted-foreground font-mono tabular-nums select-none whitespace-nowrap px-2 py-0.5 z-10"
+                    :title="`${fmtUtcDateTime(line.raw.timestamp)} · ${tzOffset()}`"
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
                   </span>

@@ -57,6 +57,7 @@ playwright-report/
 playwright/.cache/
 coverage/
 .nyc_output/
+.vitest/
 
 # --- Logs / OS / Editor ---
 *.log

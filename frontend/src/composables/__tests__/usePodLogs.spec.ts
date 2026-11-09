@@ -262,6 +262,26 @@ describe('usePodLogs — no flash on the pod page', () => {
     expect(api.lines.value.some((l) => l.content.startsWith('A-'))).toBe(false)
   })
 
+  it('re-fetches the history when the reader retries a failed load', async () => {
+    // The Retry button re-runs start() for the SAME target, so gating the
+    // backfill on "the target changed" skipped the history fetch: the error
+    // cleared, the stream opened, and the panel said "no logs yet" FOREVER
+    // while the pod's history sat unrequested.
+    const history = vi.spyOn(podsApi, 'historyLogs').mockRejectedValueOnce(new Error('boom'))
+    const { api } = mountLogs(ref('prod'), ref('ns'), ref('pod'))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(api.error.value).not.toBeNull()
+    expect(api.lines.value).toHaveLength(0)
+
+    history.mockResolvedValue(lines(3, 'R'))
+    await api.start()
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(history).toHaveBeenCalledTimes(2)
+    expect(api.lines.value).toHaveLength(3)
+    expect(api.error.value).toBeNull()
+  })
+
   it('discards a batch arriving from a replaced stream', async () => {
     const history = vi.spyOn(podsApi, 'historyLogs').mockResolvedValue(lines(3, 'A'))
     const name = ref('a')

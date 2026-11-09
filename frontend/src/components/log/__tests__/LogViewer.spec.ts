@@ -1,4 +1,4 @@
-import { beforeEach, describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import LogViewer from '../LogViewer.vue'
 import type { LogLineOut } from '@/api/types'
@@ -57,6 +57,41 @@ describe('LogViewer', () => {
     // Regression: "全部" and "DEBUG" both had rank 0, so both rendered as
     // active black pills — two contradicting states of the same control.
     expect(pressed().length).toBe(1)
+  })
+
+  it('never asks JSON.parse about a line that cannot be JSON', () => {
+    // The panel used to ask JSON.parse about EVERY line and catch the
+    // SyntaxError — one thrown exception per line. On a full buffer that
+    // was 10,000 throws, and they cost more than the rest of the panel's
+    // work put together: a 2.1 s CPU profile of which 1.4 s was the
+    // throws, and a 260 ms long task while one batch of lines arrived.
+    const parse = vi.spyOn(JSON, 'parse')
+    mount(LogViewer, {
+      props: { lines: makeLines(50), unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    const askedAboutALine = parse.mock.calls.filter(([arg]) =>
+      typeof arg === 'string' && /^m-\d+$/.test(arg),
+    )
+    expect(askedAboutALine).toEqual([])
+    parse.mockRestore()
+  })
+
+  it('does not render a severity chip that would say the same as 全部', () => {
+    // 20 INFO lines and nothing else: 「≥ INFO」 counts the same 20 as
+    // 全部. Two chips, one number, one of them a different word for the
+    // same control — which is how this panel once ended up with two
+    // active pills at once.
+    const onlyInfo = Array.from({ length: 20 }, () => line('info', 'm'))
+    const wrapper = mount(LogViewer, {
+      props: { lines: onlyInfo, unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    const labels = wrapper.findAll('button[aria-pressed]').map((c) => c.text().toLowerCase())
+    expect(labels.filter((l) => l.includes('info'))).toEqual([])
+    // The levels with no lines stay put (disabled), so the row does not
+    // jump around as lines arrive.
+    expect(labels.some((l) => l.includes('warn'))).toBe(true)
   })
 
   it('hides the unread pill when unreadCount is 0', () => {

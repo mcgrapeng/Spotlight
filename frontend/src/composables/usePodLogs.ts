@@ -109,6 +109,13 @@ export function usePodLogs(opts: UsePodLogsOptions) {
   // — otherwise pod A's lines sit under pod B's heading, forever, if B's
   // history fetch fails.
   let lastTarget = ''
+  // Whether the HISTORY for the current target has actually arrived. A
+  // failed history load left this false, and the backfill is gated on it:
+  // the Retry button re-ran start() for the same target, so "the target did
+  // not change" skipped the history fetch — the error cleared, the stream
+  // opened, and the panel said "no logs yet" FOREVER while the pod's
+  // history sat unrequested.
+  let historyLoaded = false
 
   function closeStream() {
     es?.close()
@@ -180,6 +187,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
     if (!sameTarget) {
       lines.value = []
       deferred.length = 0
+      historyLoaded = false
     }
     // The pill count IS the backlog length — keep the two in step. On a
     // target change the backlog was just cleared, so this reads 0. On a
@@ -232,14 +240,15 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       for (const b of deferred) seed(b)
     }
 
-    // Backfill only on a target change. Re-fetching a target already on
-    // screen is what duplicated lines: the response window overlaps both the
-    // rendered lines and the preserved `deferred` backlog, `lines.value =
-    // flat` re-added the overlap, and `commitDeferred()` then prepended the
-    // same content on top — every overlapping line twice, with the pill
-    // reading 0 so nothing warned the user first. Covered by the
-    // same-target re-open tests in usePodLogs.spec.ts.
-    if (!sameTarget) {
+    // Backfill on a target change — and on a target whose history never
+    // arrived. Re-fetching a target already on screen is what duplicated
+    // lines: the response window overlaps both the rendered lines and the
+    // preserved `deferred` backlog, `lines.value = flat` re-added the
+    // overlap, and `commitDeferred()` then prepended the same content on top
+    // — every overlapping line twice, with the pill reading 0 so nothing
+    // warned the user first. Covered by the same-target re-open tests in
+    // usePodLogs.spec.ts.
+    if (!sameTarget || !historyLoaded) {
       try {
         const { items } = await podsApi.historyLogs(
           cluster0,
@@ -262,8 +271,10 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         flat.reverse()
         lines.value = flat
         seed(flat)
+        historyLoaded = true
       } catch (e: any) {
         if (!alive || myGen !== gen) return
+        historyLoaded = false
         // ponytail: 不用 axios 的原始 message。
         //
         // 那个字符串是 "Request failed with status code 500" —— 英文、
