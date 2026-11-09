@@ -234,6 +234,12 @@ async def post_cluster(payload: ClusterSelectIn, request: Request) -> dict:
         kc = await plugin.acquire(sess.identity, payload.cluster, sess.dir)
     except AuthError as e:
         log.warning("auth.cluster.failed", code=e.code, cluster=payload.cluster)
+        # The session has no kubeconfig now, so it cannot reach any cluster.
+        # Revoke it instead of leaving it alive for its full TTL: a session
+        # that looks logged in but reads nothing is worse than a clean 401
+        # that sends the user back through the login.
+        session_store.revoke_session(sess.token)
+        get_pool().drop_session(sess.token)
         raise _http_for_auth_error(e) from None
 
     # ponytail: write kubeconfig bytes to session.kubeconfig_path, then

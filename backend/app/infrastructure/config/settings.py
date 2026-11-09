@@ -3,6 +3,15 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.infrastructure.config.env import sanitize_host_identity
+
+# BEFORE any Settings can exist: pydantic-settings reads the process
+# environment when a Settings is constructed, and get_settings() is
+# lru_cached — so a stale exported TELEPORT_CLUSTER would be baked into the
+# first Settings, and popping it afterwards cannot undo that.
+#: The host identity variables that were present when this module loaded.
+REMOVED_HOST_IDENTITY: list[str] = sanitize_host_identity()
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -54,13 +63,15 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
-    # 逗号分隔的允许来源。留空 = 开发模式：由 cors_origin_regex 放行
-    # 任意端口的 localhost/127.0.0.1，无需随前端端口变动而改。
-    # 生产请显式设置，且不要再用 localhost。
+    # 逗号分隔的允许来源。留空 = 只答同源请求：前端走 vite 代理
+    # （相对路径 /api/v1），浏览器只看到一个源，本来就不需要 CORS。
+    # 前端部署在别的源上时才需要显式设置。
     cors_origins: str = ""
-    # 仅在 cors_origins 为空时生效。开发期前端走 vite 代理（相对路径
-    # /api/v1），同源请求本不触发 CORS；这条兜底覆盖"浏览器直连后端"的场景。
-    cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    # 可选的来源正则，默认空。以前这里默认放行任意端口的
+    # localhost/127.0.0.1 —— 端口不影响 SameSite 的"站点"判定，
+    # 所以 localhost:9999 上的页面能带着会话 cookie 读走整个控制台。
+    # 需要时再显式打开。
+    cors_origin_regex: str = ""
 
     # Cache TTLs (seconds). 0 disables.
     cache_ttl_pods: int = 5

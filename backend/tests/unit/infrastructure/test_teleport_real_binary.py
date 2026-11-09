@@ -28,6 +28,7 @@ TSH_STUB = textwrap.dedent("""\
     #!/bin/sh
     # Fake tsh. Records what it was called with, then behaves per $FAKE_MODE.
     echo "$@" >> "$TELEPORT_HOME/argv.log"
+    echo "kube_cluster_env=[$TELEPORT_KUBE_CLUSTER]" >> "$TELEPORT_HOME/argv.log"
 
     case "$1" in
       login)
@@ -47,6 +48,23 @@ TSH_STUB = textwrap.dedent("""\
             echo "Enter your one-time password (OTP):" >&2
             exit 1
             ;;
+          mfa_blocks)
+            # A real tsh does not exit when it wants a one-time code — it
+            # waits for one on the terminal. This mode is the one that used
+            # to escape as a CancelledError.
+            echo "Enter your one-time password (OTP):" >&2
+            sleep 300
+            ;;
+          mfa_read_otp)
+            echo "Enter your one-time password (OTP):" >&2
+            IFS= read -r otp
+            if [ "$otp" = "$EXPECTED_OTP" ]; then
+              echo "logged in with one-time password"
+              exit 0
+            fi
+            echo "invalid one-time password" >&2
+            exit 1
+            ;;
           bad_password)
             echo "invalid credentials" >&2
             exit 1
@@ -64,6 +82,36 @@ TSH_STUB = textwrap.dedent("""\
             exit 1
           fi
           mkdir -p "$(dirname "$KUBECONFIG")"
+          if [ "$FAKE_MODE" = "kube_login_exec" ]; then
+            # The shape real tsh writes: an exec credential plugin whose env
+            # carries TELEPORT_HOME verbatim.
+            cat > "$KUBECONFIG" <<EOF
+    apiVersion: v1
+    kind: Config
+    current-context: $3
+    clusters:
+    - name: $3
+      cluster:
+        server: https://proxy.example:443
+    contexts:
+    - name: $3
+      context: {cluster: $3, user: $3}
+    users:
+    - name: $3
+      user:
+        exec:
+          apiVersion: client.authentication.k8s.io/v1beta1
+          command: tsh
+          args:
+          - kube
+          - credentials
+          - --kube-cluster=$3
+          env:
+          - name: TELEPORT_HOME
+            value: $TELEPORT_HOME
+    EOF
+            exit 0
+          fi
           # A plausible per-cluster kubeconfig with current-context set.
           cat > "$KUBECONFIG" <<EOF
     apiVersion: v1
@@ -159,6 +207,40 @@ async def test_login_surfaces_mfa_required(monkeypatch, fake_tsh, tmp_path):
     assert exc.value.code == "mfa_required"
 
 
+async def test_run_with_pty_returns_when_the_child_blocks(monkeypatch, fake_tsh):
+    """A real tsh waits for the one-time code instead of exiting.
+
+    The timeout path must report what the child said — the MFA prompt — and
+    not raise: `asyncio.wait_for` cancels the gather it is waiting on, and
+    re-gathering those cancelled tasks raises CancelledError, which is a
+    BaseException and escapes the login handler as a 500.
+    """
+    monkeypatch.setenv("FAKE_MODE", "mfa_blocks")
+
+    rc, _out, err = await tp._run_with_pty(
+        [str(fake_tsh), "login", "cluster"], [b"pw"], timeout=2,
+    )
+
+    assert rc == 124
+    assert "one-time password" in err
+
+
+async def test_login_reports_mfa_required_when_tsh_waits_for_the_code(
+    monkeypatch, fake_tsh, tmp_path,
+):
+    """The user-facing half of the same defect: the MFA path must answer
+    `mfa_required`, not 500."""
+    _install(monkeypatch, _settings(fake_tsh))
+    session_dir = tmp_path / "session"
+    (session_dir / "tsh").mkdir(parents=True)
+    monkeypatch.setenv("FAKE_MODE", "mfa_blocks")
+    monkeypatch.setattr(tp, "_MFA_FAIL_FAST_TIMEOUT", 2.0)
+
+    with pytest.raises(tp.AuthError) as exc:
+        await tp.TeleportPlugin().login("alice", {"password": "pw"}, session_dir)
+    assert exc.value.code == "mfa_required"
+
+
 async def test_login_with_otp_reports_bad_otp_on_retry(monkeypatch, fake_tsh, tmp_path):
     _install(monkeypatch, _settings(fake_tsh))
     session_dir = tmp_path / "session"
@@ -172,6 +254,85 @@ async def test_login_with_otp_reports_bad_otp_on_retry(monkeypatch, fake_tsh, tm
     assert exc.value.code == "bad_otp"
 
 
+async def test_login_feeds_the_code_only_after_tsh_asks_for_it(
+    monkeypatch, fake_tsh, tmp_path,
+):
+    """The one-time code must reach tsh when it asks, not before.
+
+    Feeding it on a timer races the prompt — a prompt that discards typeahead
+    eats the code as the password, and the user sees "wrong code" for a code
+    they typed correctly.
+    """
+    _install(monkeypatch, _settings(fake_tsh))
+    session_dir = tmp_path / "session"
+    (session_dir / "tsh").mkdir(parents=True)
+    monkeypatch.setenv("FAKE_MODE", "mfa_read_otp")
+    monkeypatch.setenv("EXPECTED_OTP", "551112")
+
+    ident = await tp.TeleportPlugin().login(
+        "alice", {"password": "pw", "otp": "551112"}, session_dir
+    )
+    assert ident.username == "alice"
+
+
+async def test_login_neutralises_the_host_teleport_kube_cluster(
+    monkeypatch, fake_tsh, tmp_path,
+):
+    """A leaked TELEPORT_KUBE_CLUSTER makes tsh log into a cluster that is
+    named by its kubeconfig context name, not by a registered cluster name."""
+    _install(monkeypatch, _settings(fake_tsh))
+    session_dir = tmp_path / "session"
+    (session_dir / "tsh").mkdir(parents=True)
+    monkeypatch.setenv("FAKE_MODE", "ok")
+    monkeypatch.setenv("TELEPORT_KUBE_CLUSTER", "gt.internal.zhiman.tech-pvg1s1-cloud")
+
+    await tp.TeleportPlugin().login("alice", {"password": "pw"}, session_dir)
+    argv = (session_dir / "tsh" / "argv.log").read_text()
+    assert "kube_cluster_env=[]" in argv
+
+
+async def test_acquire_writes_a_kubeconfig_the_sdk_can_load(
+    monkeypatch, fake_tsh, tmp_path,
+):
+    """The session kubeconfig is a contract between `tsh kube login` and the
+    Kubernetes SDK's exec credential plugin.
+
+    The SDK runs that plugin with CWD = the kubeconfig's own directory, so a
+    relative TELEPORT_HOME resolves against the wrong directory, the plugin
+    finds no profile, and every request answers 403. The plugin must hand tsh
+    an absolute path.
+    """
+    import os
+
+    import yaml
+    from kubernetes import config as kcfg
+
+    _install(monkeypatch, _settings(fake_tsh))
+    session_dir = tmp_path / "session"
+    (session_dir / "tsh").mkdir(parents=True)
+    monkeypatch.setenv("FAKE_MODE", "kube_login_exec")
+
+    kc = await tp.TeleportPlugin().acquire(
+        tp.Identity("alice"), "prod-east", session_dir
+    )
+
+    written = tmp_path / "kubeconfig.yaml"
+    written.write_bytes(kc.yaml)
+    # The SDK accepts it.
+    kcfg.load_kube_config(config_file=str(written), context=kc.context)
+
+    # And the credential plugin points at an absolute, existing profile dir.
+    data = yaml.safe_load(written.read_text())
+    env = data["users"][0]["user"]["exec"]["env"]
+    home = next(e["value"] for e in env if e["name"] == "TELEPORT_HOME")
+    assert os.path.isabs(home), home
+    assert os.path.isdir(home), home
+
+    # The context the caller gets back is one the kubeconfig really has —
+    # it is what the API's ?context= must be.
+    assert kc.context in {c["name"] for c in data["contexts"]}
+
+
 async def test_login_uses_explicit_teleport_cluster(monkeypatch, fake_tsh, tmp_path):
     _install(monkeypatch, _settings(fake_tsh, teleport_cluster="prod-cluster"))
     session_dir = tmp_path / "session"
@@ -179,7 +340,7 @@ async def test_login_uses_explicit_teleport_cluster(monkeypatch, fake_tsh, tmp_p
     monkeypatch.setenv("FAKE_MODE", "ok")
 
     await tp.TeleportPlugin().login("alice", {"password": "pw"}, session_dir)
-    argv = (session_dir / "tsh" / "argv.log").read_text()
+    argv = (session_dir / "tsh" / "argv.log").read_text().splitlines()[0]
     assert argv.strip().endswith("prod-cluster")
 
 

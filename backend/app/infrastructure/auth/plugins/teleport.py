@@ -3,7 +3,7 @@
 设计要点：
 - 凭证完全 per-session：会话目录 0700，TELEPORT_HOME/KUBECONFIG 都指向会话
   目录的子路径；不同会话之间互不污染，K8s 客户端池按 session_dir 加载。
-- 复用原 `teleport.py` 的子进程/PTY 工程：`_run_with_pty` 带 shield 排水、
+- 复用原 `teleport.py` 的子进程/PTY 工程：`_run_with_pty` 带超时排水、
   MFA 提示快速失败（无 OTP 时 20s、有 OTP 时 60s）、OTM 输出分类。
 - RBAC 探测与 Teleport 无关，且所有用户都是开发者、看到相同页面，需求上不需要，
   随旧 `rbac.py` 一并删除。
@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import pty
+import re
 import shutil
 from pathlib import Path
 from typing import Mapping
@@ -29,6 +30,13 @@ from app.infrastructure.auth.plugins.base import (
 )
 
 log = get_logger("auth.teleport")
+
+#: How long `tsh login` may take. With a one-time code in hand it has to wait
+#: for a human to type it, so it gets the long budget; without one it gets the
+#: short one, because the only thing it is waiting for is an MFA prompt the
+#: user cannot answer yet.
+_LOGIN_TIMEOUT = 60.0
+_MFA_FAIL_FAST_TIMEOUT = 20.0
 
 
 # ── 二进制检测 ──────────────────────────────────────────────────────────
@@ -74,43 +82,91 @@ async def _run(cmd: list[str], *, stdin: bytes | None = None,
     )
 
 
-def _dec(b: bytes | None) -> str:
-    return (b or b"").decode("utf-8", "replace")
-
-
 def _is_mfa_prompt(text: str) -> bool:
     """True when tsh stopped to ask for an MFA/TOTP code."""
     low = text.lower()
     return any(k in low for k in ("otp", "mfa", "two-factor", "2fa", "totp"))
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _tsh_error(text: str) -> str:
+    """The ERROR line tsh printed, if any.
+
+    tsh prints its OTP prompt before it resolves the target cluster, so a
+    failed login can contain "Enter an OTP code" AND then fail for an
+    unrelated reason. The error line is the only trustworthy signal:
+    classifying by the presence of an MFA prompt mislabels every failure as
+    "wrong one-time code".
+    """
+    for line in reversed(text.splitlines()):
+        stripped = _ANSI.sub("", line).strip()
+        if "ERROR:" in stripped:
+            return stripped.split("ERROR:", 1)[1].strip()
+    return ""
+
+
+def _is_otp_rejected(text: str) -> bool:
+    """True when tsh's error says the one-time code itself was refused."""
+    low = text.lower()
+    return bool(
+        re.search(r"(invalid|incorrect|wrong|expired|already used)[^\n]{0,40}"
+                  r"(otp|one[- ]?time|code|token)", low)
+        or re.search(r"(otp|one[- ]?time|code|token)[^\n]{0,40}"
+                     r"(invalid|incorrect|wrong|expired)", low)
+    )
+
+
+# tsh asks for the one-time code with wording that varies by release
+# ("Enter an OTP code", "Enter your one-time password (OTP)"). Match the code
+# wording only — a bare "MFA" also shows up in "MFA required" notices that
+# print BEFORE the password prompt, and matching those would push the code
+# into the password slot.
+_OTP_PROMPT_RE = re.compile(
+    r"\b(otp|totp|one[\s-]?time)\b"
+    r"|\b(mfa|2fa)\b[^\n]{0,40}\b(code|token)\b",
+    re.I,
+)
+
+
+def _write_line(fd: int, line: bytes) -> bool:
+    """Write one line to the PTY master. False when the child is already gone.
+
+    A child that exits before we write leaves the PTY slave closed, and the
+    write raises EIO. That is routine, not exceptional: the caller's exit-code
+    handling decides the answer, and letting the OSError escape would skip the
+    output drain and surface as a 500 instead of "wrong code".
+    """
+    try:
+        os.write(fd, line + b"\n")
+        return True
+    except OSError:
+        return False
+
+
 async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
-                          env: dict[str, str] | None = None,
-                          timeout: float = 60.0,
-                          inter_line_delay: float = 1.0) -> tuple[int, str, str]:
+                        env: dict[str, str] | None = None,
+                        timeout: float = 60.0) -> tuple[int, str, str]:
     """Like `_run`, but connects the child's stdin to a real PTY and feeds
-    one or more input lines through the master fd.
+    input lines through the master fd.
 
     `tsh login --auth=local` checks `isatty(stdin)` and bails on a plain pipe
     with "cannot perform password login without a terminal". Attaching a PTY
-    slave as the child's stdin makes `isatty(0)` true from its POV; we feed
-    the password (and optionally an OTP / MFA token) through the master fd.
+    slave as the child's stdin makes `isatty(0)` true from its POV.
 
-    The master fd stays open for the lifetime of the child. Closing it
-    early (right after writing) races with the child's read() — by the time
-    tsh drains the buffer and reaches its next stdin read (e.g. for OTP),
-    the slave may already have hit HUP. Leaving master open until the child
-    exits avoids that race; once the child exits the slave fd is reaped by
-    the kernel and we just need to close master in cleanup.
+    The first line (the password) is written right away. Any later line (the
+    one-time code) is written only once the child actually asks for a code.
+    Feeding it blind on a timer races the prompt: the bytes can arrive before
+    the prompt exists, and a prompt that discards typeahead then consumes the
+    code as the password — which surfaces as a mysterious "wrong code".
 
-    `inter_line_delay` is the pause between successive lines so the child
-    has time to consume each one before the next arrives.
+    The master fd stays open for the lifetime of the child: closing it early
+    races the child's read() — by the time tsh drains the buffer and reaches
+    its next stdin read, the slave may already have hit HUP.
+
+    Returns (rc, stdout, stderr).
     """
-    # Ponytail: exactly ONE cleanup block closes master_fd, on every exit
-    # path (spawn failure, timeout, crash, success). A nested
-    # finally + except-BaseException pair double-closes the fd on exception
-    # paths — and after another thread reuses the fd number the second
-    # close kills an unrelated connection.
     master_fd, slave_fd = pty.openpty()
     full_env = os.environ.copy()
     if env:
@@ -134,58 +190,65 @@ async def _run_with_pty(cmd: list[str], lines: list[bytes], *,
             except OSError:
                 pass
 
-        try:
-            await asyncio.wait_for(
-                loop.run_in_executor(None, _feed_lines, master_fd, lines, inter_line_delay),
-                timeout=max(10.0, inter_line_delay * (len(lines) + 1)),
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            out_b, err_b = await proc.communicate()
-            return (124, _dec(out_b), _dec(err_b) or "timeout")
+        out: list[str] = []
+        err: list[str] = []
 
-        # shield() keeps communicate() alive past a timeout so we can still
-        # drain what the child printed (e.g. the TOTP prompt) after kill.
-        comm = asyncio.ensure_future(proc.communicate())
-        try:
-            stdout_b, stderr_b = await asyncio.wait_for(asyncio.shield(comm), timeout=timeout)
-        except asyncio.TimeoutError:
-            proc.kill()
-            stdout_b, stderr_b = await comm
-            return (124, _dec(stdout_b), _dec(stderr_b) or "timeout")
+        async def _drain(stream: asyncio.StreamReader, sink: list[str]) -> None:
+            while True:
+                chunk = await stream.read(4096)
+                if not chunk:
+                    return
+                sink.append(chunk.decode("utf-8", "replace"))
 
+        out_task = asyncio.create_task(_drain(proc.stdout, out))
+        err_task = asyncio.create_task(_drain(proc.stderr, err))
+
+        deadline = loop.time() + timeout
+        pending = list(lines)
+        if pending:
+            _write_line(master_fd, pending.pop(0))
+        while pending:
+            if loop.time() > deadline:
+                break
+            if _OTP_PROMPT_RE.search("".join(out) + "".join(err)):
+                _write_line(master_fd, pending.pop(0))
+                continue
+            if proc.returncode is not None:
+                # The child exited before asking for a code — no prompt will
+                # ever come. Waiting out the whole timeout would stall a
+                # plain wrong-password login for a full minute.
+                break
+            await asyncio.sleep(0.2)
+
+        timed_out = False
+        # `asyncio.wait` leaves what it waits on alone when the timeout
+        # expires; `wait_for` cancels it. Re-gathering those cancelled tasks
+        # raises CancelledError — a BaseException that escapes the login
+        # handler and turns the MFA path into a 500.
+        _done, still_running = await asyncio.wait(
+            {out_task, err_task},
+            timeout=max(0.5, deadline - loop.time()),
+        )
+        if still_running:
+            timed_out = True
+            proc.kill()
+            # The child is dead now, so the drains reach EOF and finish on
+            # their own. What they collected is what tells the caller why
+            # the child never answered.
+            await asyncio.wait(still_running, timeout=5)
+        rc = await proc.wait()
+        if timed_out:
+            return (124, "".join(out), "".join(err) or "timeout")
         return (
-            proc.returncode or 0,
-            _dec(stdout_b),
-            _dec(stderr_b),
+            rc or 0,
+            "".join(out),
+            "".join(err),
         )
     finally:
         try:
             os.close(master_fd)
         except OSError:
             pass
-
-
-def _feed_lines(fd: int, lines: list[bytes], delay: float) -> None:
-    """Write each line (with newline appended) to the PTY master, pausing
-    `delay` seconds between lines so the child has time to consume each.
-
-    A write that fails is normal, not exceptional. Once the child exits its
-    PTY slave is closed, and writing to the master then raises EIO — which
-    happens routinely on the password+OTP path, where `tsh` may finish with
-    the password before the one-time code is fed. Letting that OSError
-    escape would skip the `communicate()` below, lose the exit code and the
-    MFA prompt text, and surface as a 500 instead of "wrong code". Stop
-    feeding instead; the caller's normal exit-code handling decides the answer.
-    """
-    import time as _time
-    for i, line in enumerate(lines):
-        try:
-            os.write(fd, line + b"\n")
-        except OSError:
-            return
-        if i < len(lines) - 1:
-            _time.sleep(delay)
 
 
 def _proxy_to_cluster(proxy: str) -> str:
@@ -285,9 +348,24 @@ class TeleportPlugin:
 
     @staticmethod
     def _env(session_dir: Path) -> dict[str, str]:
+        # Absolute paths on purpose: `tsh kube login` copies TELEPORT_HOME
+        # into the kubeconfig's exec credential block, and the Kubernetes SDK
+        # runs that exec with CWD = the kubeconfig's own directory. A relative
+        # path resolves against the wrong directory, tsh finds no profile
+        # ("Having problems with relogin"), and every API call answers 403.
+        base = session_dir.resolve()
         return {
-            "TELEPORT_HOME": str(session_dir / "tsh"),
-            "KUBECONFIG": str(session_dir / "kubeconfig.yaml"),
+            "TELEPORT_HOME": str(base / "tsh"),
+            "KUBECONFIG": str(base / "kubeconfig.yaml"),
+            # The host's Teleport identity must not leak into a session login.
+            # TELEPORT_KUBE_CLUSTER makes tsh log into that Kubernetes cluster
+            # by name — the value people have exported is a kubeconfig
+            # *context* name ("<proxy>-<cluster>"), not a registered cluster
+            # name, so the login dies with "Kubernetes cluster ... is not
+            # registered in this Teleport cluster". The session picks its
+            # cluster explicitly (positional arg / `tsh kube login`).
+            "TELEPORT_KUBE_CLUSTER": "",
+            "TELEPORT_CLUSTER": "",
         }
 
     async def login(self, username: str, fields: Mapping[str, str], session_dir: Path) -> Identity:
@@ -305,19 +383,32 @@ class TeleportPlugin:
         # on multi-cluster proxies the hostname is often not the cluster.
         cluster = s.teleport_cluster.strip() or _proxy_to_cluster(s.teleport_proxy)
         cmd = [s.tsh_binary, "login", f"--proxy={s.teleport_proxy}",
-               f"--auth={s.teleport_auth}", f"--user={username}",
-               cluster]
+               f"--auth={s.teleport_auth}", f"--user={username}"]
+        if otp:
+            # preferred_local_mfa=webauthn proxies otherwise start a security-key
+            # ceremony and the piped TOTP code is never consumed (surfaces as bad_otp).
+            cmd.append("--mfa-mode=otp")
+        cmd.append(cluster)
         if s.teleport_insecure:
             cmd.append("--insecure")
         lines = [password.encode("utf-8")] + ([otp.encode("ascii")] if otp else [])
-        run_timeout = 60.0 if otp else 20.0          # 无 OTP：MFA 提示前快速失败
+        run_timeout = _LOGIN_TIMEOUT if otp else _MFA_FAIL_FAST_TIMEOUT
         rc, out, err = await _run_with_pty(cmd, lines, env=self._env(session_dir), timeout=run_timeout)
         if rc != 0:
-            if _is_mfa_prompt(f"{out}\n{err}"):
+            # Log what tsh actually said: "bad code" and "we never got a code
+            # into the prompt" look identical from the outside.
+            log.warning("tsh.login.rejected", rc=rc,
+                        stdout=out.strip()[:400], stderr=err.strip()[:400])
+            text = f"{out}\n{err}"
+            error = _tsh_error(text)
+            if error and not _is_otp_rejected(error):
+                # A real tsh failure (unknown cluster, TLS problem, …) — do
+                # not blame the one-time code for it.
+                raise AuthError("invalid_credentials", f"登录失败：{error}")
+            if _is_mfa_prompt(text):
                 if otp:
                     raise AuthError("bad_otp", "一次性码错误或已过期，请重试")
                 raise AuthError("mfa_required", "该集群要求 MFA，请输入一次性码后重新登录")
-            log.warning("tsh.login.failed", rc=rc, stderr=err.strip())
             raise AuthError("invalid_credentials", "用户名或密码错误")
         return Identity(username=username, extra={"proxy": s.teleport_proxy})
 

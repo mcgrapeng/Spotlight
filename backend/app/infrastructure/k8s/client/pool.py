@@ -32,6 +32,7 @@ from threading import RLock
 from typing import Optional
 
 from kubernetes import client, config
+from urllib3.util.retry import Retry
 
 from app.infrastructure.logging import get_logger
 
@@ -46,6 +47,41 @@ class UnknownContextError(Exception):
     cluster that login actually selected. Callers turn this into a 4xx so the
     UI can re-sync instead of showing a 500.
     """
+
+
+class CredentialUnavailableError(Exception):
+    """The kubeconfig's exec credential plugin produced no credentials.
+
+    The Kubernetes SDK runs the plugin while loading the kubeconfig and
+    swallows its failure — it only logs it — then sends requests without any
+    credentials. The cluster answers 401/403 and nothing points at the real
+    cause, which is how a wrong `TELEPORT_HOME` looks exactly like a
+    permissions problem.
+
+    The pool checks the result right after loading, where the answer is still
+    known, so the caller can say what actually went wrong.
+    """
+
+
+def _kubeconfig_uses_exec_plugin(path: str) -> bool:
+    """Whether the kubeconfig authenticates through an exec credential plugin."""
+    try:
+        # PyYAML rides in with the kubernetes SDK, so this needs no extra dep.
+        import yaml
+
+        with open(path, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except Exception:
+        return False
+    for user in data.get("users") or []:
+        if "exec" in (user.get("user") or {}):
+            return True
+    return False
+
+
+def _has_credentials(cfg: client.Configuration) -> bool:
+    """Whether the loaded configuration carries any usable credential."""
+    return bool(cfg.api_key) or bool(cfg.username) or bool(cfg.cert_file)
 
 
 def _host_kubeconfig_exists() -> bool:
@@ -82,6 +118,13 @@ class KubernetesClientPool:
         concurrent builds for different contexts can't cross-contaminate.
         """
         cfg = client.Configuration()
+        # urllib3 retries a timed-out READ three times by default, so a hung
+        # apiserver holds the request for 4 x k8s_request_timeout — longer
+        # than the browser's own timeout, so the user would watch the request
+        # fail before the server had answered. A read that timed out will not
+        # succeed on a second try; a refused connection might. Retry the
+        # connection, not the read.
+        cfg.retries = Retry(total=3, connect=3, read=0)
         path = kubeconfig_path
         if path and os.path.exists(path):
             try:
@@ -95,6 +138,14 @@ class KubernetesClientPool:
                 raise UnknownContextError(
                     f"context {context!r} not found in {path}"
                 ) from e
+            if (
+                _kubeconfig_uses_exec_plugin(path)
+                and not _has_credentials(cfg)
+            ):
+                # The SDK ran the credential plugin and swallowed its failure.
+                raise CredentialUnavailableError(
+                    f"credential plugin for {path} produced no credentials"
+                )
         else:
             try:
                 config.load_kube_config(context=context, client_configuration=cfg)

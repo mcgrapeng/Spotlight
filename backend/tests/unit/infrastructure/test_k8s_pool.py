@@ -52,6 +52,24 @@ def test_clients_have_distinct_configurations(monkeypatch, tmp_path):
     assert cb.host == "https://b.example"
 
 
+def test_a_timed_out_read_is_attempted_once(monkeypatch, tmp_path):
+    """urllib3 retries a read three times by default.
+
+    A read that timed out is not going to succeed on a second try, and
+    4 x k8s_request_timeout is longer than the browser's own timeout — the
+    user would see the request fail before the server had answered. One
+    attempt, then the error is reported.
+    """
+    pool = _pool_for(monkeypatch, tmp_path)
+    path = str(tmp_path / "kubeconfig.yaml")
+    api, _ = pool.get("s1", path, "ctx-a")
+    retries = api.api_client.configuration.retries
+    assert retries is not None, "the pool must pin a retry policy"
+    assert retries.read == 0
+    # A refused connection is still worth another try.
+    assert retries.connect == 3
+
+
 def test_get_is_cached_per_context(monkeypatch, tmp_path):
     pool = _pool_for(monkeypatch, tmp_path)
     path = str(tmp_path / "kubeconfig.yaml")
