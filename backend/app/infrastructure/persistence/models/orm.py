@@ -19,6 +19,7 @@ class FavoriteRow(Base):
     namespace: Mapped[str] = mapped_column(String(255), default="", index=True)
     cluster: Mapped[str] = mapped_column(String(255), default="", index=True)
     note: Mapped[str] = mapped_column(String(512), default="")
+    owner: Mapped[str] = mapped_column(String(128), default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

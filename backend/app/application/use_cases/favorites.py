@@ -12,10 +12,10 @@ class FavoriteUseCases:
     def __init__(self, repo: FavoriteRepositoryPort):
         self._repo = repo
 
-    async def list(self) -> list[FavoriteOut]:
-        return [FavoriteOut.model_validate(r) for r in await self._repo.list()]
+    async def list(self, owner: str) -> list[FavoriteOut]:
+        return [FavoriteOut.model_validate(r) for r in await self._repo.list(owner)]
 
-    async def add(self, payload: dict) -> FavoriteOut:
+    async def add(self, payload: dict, owner: str) -> FavoriteOut:
         rt = payload["resource_type"]
         if rt not in ("pod", "node", "namespace"):
             raise ValueError(f"invalid resource_type: {rt}")
@@ -26,11 +26,12 @@ class FavoriteUseCases:
             namespace=payload.get("namespace", ""),
             cluster=payload.get("cluster", ""),
             note=payload.get("note", ""),
+            owner=owner,
         )
         fav.validate()
         return FavoriteOut.model_validate(await self._repo.add(fav))
 
-    async def remove(self, fav_id: int) -> None:
-        ok = await self._repo.remove(fav_id)
+    async def remove(self, fav_id: int, owner: str) -> None:
+        ok = await self._repo.remove(fav_id, owner)
         if not ok:
             raise HTTPException(status_code=404, detail="favorite not found")

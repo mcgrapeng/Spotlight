@@ -1,11 +1,15 @@
 """Favorite routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 
 from app.application.dto import FavoriteCreate, FavoriteOut
 from app.application.use_cases.favorites import FavoriteUseCases
-from app.interface.api.v1.dependencies import favorite_uc, require_permission
+from app.interface.api.v1.dependencies import (
+    current_username,
+    favorite_uc,
+    require_permission,
+)
 
 router = APIRouter(tags=["favorites"])
 
@@ -15,8 +19,8 @@ router = APIRouter(tags=["favorites"])
     response_model=list[FavoriteOut],
     dependencies=[Depends(require_permission("favorites.read"))],
 )
-async def list_favs(uc: FavoriteUseCases = Depends(favorite_uc)):
-    return await uc.list()
+async def list_favs(request: Request, uc: FavoriteUseCases = Depends(favorite_uc)):
+    return await uc.list(current_username(request))
 
 
 @router.post(
@@ -27,10 +31,11 @@ async def list_favs(uc: FavoriteUseCases = Depends(favorite_uc)):
 )
 async def add_fav(
     payload: FavoriteCreate,
+    request: Request,
     uc: FavoriteUseCases = Depends(favorite_uc),
 ):
     try:
-        return await uc.add(payload.model_dump())
+        return await uc.add(payload.model_dump(), current_username(request))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -41,9 +46,10 @@ async def add_fav(
     dependencies=[Depends(require_permission("favorites.write"))],
 )
 async def remove_fav(
+    request: Request,
     # sqlite INTEGER is int64; beyond it the driver overflows (fuzz-found).
     fav_id: int = Path(ge=1, le=2**63 - 1),
     uc: FavoriteUseCases = Depends(favorite_uc),
 ):
-    await uc.remove(fav_id)
+    await uc.remove(fav_id, current_username(request))
     return None

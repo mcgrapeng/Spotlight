@@ -3,8 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlparse
 
 ResourceType = Literal["pod", "node", "namespace"]
+
+# The one place plain HTTP is legitimate: a model server on this machine.
+# Everything else has to be https://, because api_base decides where the
+# provider's API key — and the cluster's log content — is posted.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+# Ceiling for a single completion. Long enough for a log analysis, short
+# enough that a typo cannot ask for a 1M-token bill.
+MAX_TOKENS_CEILING = 8192
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +25,9 @@ class Favorite:
     namespace: str
     cluster: str
     note: str
+    #: The username that owns this favorite. Without it every user's
+    #: favorites are everybody's — and anybody's can be deleted by id.
+    owner: str = ""
     created_at: datetime | None = None
 
     def validate(self) -> None:
@@ -55,6 +68,12 @@ class AIProviderConfig:
             raise ValueError("temperature must be in [0,2]")
         if self.max_tokens <= 0:
             raise ValueError("max_tokens must be positive")
+        if self.max_tokens > MAX_TOKENS_CEILING:
+            raise ValueError(f"max_tokens must be at most {MAX_TOKENS_CEILING}")
+        if self.api_base:
+            _validate_api_base(self.api_base)
+        if self.extra:
+            _validate_extra(self.extra)
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,3 +115,47 @@ class DashboardSnapshot:
 
 # Avoid circular import at module load
 from app.domain.value_objects.primitives import ResourceRef  # noqa: E402
+
+
+def _validate_api_base(api_base: str) -> None:
+    """Reject an api_base that would ship the API key over plain HTTP.
+
+    The api_base is the address the provider's key and the cluster's log
+    content are posted to. Plain HTTP to a remote host hands both to
+    whoever is on the wire, so only a loopback address may skip TLS —
+    that is how a local Ollama is reached.
+    """
+    parsed = urlparse(api_base)
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("api_base must be an absolute https:// URL")
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme == "http" and host in _LOOPBACK_HOSTS:
+        return
+    raise ValueError(
+        "api_base must use https:// (http:// is allowed only for "
+        "127.0.0.1, localhost or ::1)"
+    )
+
+
+# `extra` is merged into the call kwargs LAST, so a key here can override
+# the validated fields above — `api_base` most of all: that is the address
+# the API key and the cluster's log content go to. These keys are the
+# provider's own settings, not passthrough.
+_RESERVED_EXTRA_KEYS = (
+    "api_base",
+    "base_url",
+    "api_key",
+    "max_tokens",
+    "temperature",
+    "messages",
+    "stream",
+)
+
+
+def _validate_extra(extra: dict[str, str]) -> None:
+    """Reject passthrough keys that would bypass a validated field."""
+    for key in extra:
+        if key in _RESERVED_EXTRA_KEYS:
+            raise ValueError(f"extra must not contain '{key}'")
