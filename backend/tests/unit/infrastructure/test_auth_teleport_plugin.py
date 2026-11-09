@@ -105,12 +105,18 @@ async def test_login_maps_bad_otp(plugin, tmp_path, monkeypatch):
     assert ei.value.code == "bad_otp"
 
 
-async def test_login_reports_the_tsh_error_not_a_wrong_code(plugin, tmp_path, monkeypatch):
+async def test_login_reports_a_real_tsh_failure_without_quoting_tsh(
+    plugin, tmp_path, monkeypatch,
+):
     """tsh prints the OTP prompt before it resolves the target cluster.
 
     A failed login therefore contains "Enter an OTP code" AND a real error.
     Classifying by the prompt alone blames the user's code for it — which is
     exactly how a wrong TELEPORT_CLUSTER looked like a bad one-time code.
+
+    But the message must not QUOTE tsh: this endpoint is unauthenticated,
+    and tsh's own words carry file paths, proxy names and cluster names.
+    The raw text stays in the server log.
     """
     async def fake_run(cmd, lines, *, env=None, timeout=60.0):
         return 1, "", (
@@ -122,7 +128,9 @@ async def test_login_reports_the_tsh_error_not_a_wrong_code(plugin, tmp_path, mo
     with pytest.raises(AuthError) as ei:
         await plugin.login("bob", {"password": "pw", "otp": "123456"}, tmp_path)
     assert ei.value.code == "invalid_credentials"
-    assert "is not found" in ei.value.message
+    assert "一次性码" not in ei.value.message
+    assert "is not found" not in ei.value.message
+    assert "pvg1s1-cloud" not in ei.value.message
 
 
 # Real tsh v18.10.0 output, captured against gt.internal.zhiman.tech on

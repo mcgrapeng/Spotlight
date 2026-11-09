@@ -8,9 +8,9 @@ its read timeout and then died of an exception, reconnected by the browser,
 forever. A preloaded read returns in about a second, so this polls those.
 
 These tests pin the properties that matter: overlap between consecutive polls
-is not re-sent, a poll never lets the apiserver truncate the window it
-reads, a quiet pod backs off instead of hammering the apiserver, a deleted
-pod ends the stream, and a transient error does not.
+is not re-sent, a poll is capped at the panel's own buffer so one chatty pod
+cannot turn a poll into megabytes, a quiet pod backs off instead of hammering
+the apiserver, a deleted pod ends the stream, and a transient error does not.
 """
 from __future__ import annotations
 
@@ -129,17 +129,16 @@ def test_read_window_covers_the_longest_backoff():
     )
 
 
-def test_a_poll_never_lets_the_apiserver_truncate_the_window(monkeypatch):
-    """The apiserver returns the last N lines OF the window.
+def test_a_poll_is_capped_at_the_panels_own_buffer(monkeypatch):
+    """The apiserver answers with the last N lines OF the window.
 
-    The window itself is computed by the node
-    (pkg/kubelet/kuberuntime/kuberuntime_logs.go), where `since` and `tail`
-    commute: the answer is the last `tail` lines of the window, not the
-    window cut down to `tail`. So a poll that asks for a tail DROPS the
-    window's oldest lines whenever the pod bursts, and the next poll's
-    window has already moved past them — the burst is lost for good.
+    So a poll that asks for no tail at all hands back EVERY line the pod
+    wrote inside the window — a pod writing megabytes a second turns one
+    poll into megabytes, over and over. The tail is what bounds it.
 
-    The follow poll must therefore not ask for a tail at all.
+    The cap is the panel's own buffer size, so the reader loses nothing:
+    the panel keeps the newest 10k lines and no more, so the lines this
+    tail discards are exactly the ones the panel would have discarded.
     """
     monkeypatch.setattr(adapter_mod.time, "sleep", lambda s: None)
     api = _Api(["2026-01-01T00:00:00Z x\n"] * 5)
@@ -147,7 +146,15 @@ def test_a_poll_never_lets_the_apiserver_truncate_the_window(monkeypatch):
     _drive(_repo(api), threading.Event(), want=1)
 
     assert api.kwargs, "no polls were made"
-    assert all(kw.get("tail_lines") is None for kw in api.kwargs), api.kwargs
+    assert {kw.get("tail_lines") for kw in api.kwargs} == {
+        adapter_mod._STREAM_MAX_TAIL
+    }
+
+
+def test_the_dedup_covers_a_whole_poll():
+    """The next poll re-reads the window, so everything the previous poll
+    sent has to still be remembered — or it comes back as a duplicate."""
+    assert adapter_mod._STREAM_DEDUP_WINDOW >= adapter_mod._STREAM_MAX_TAIL
 
 
 def test_the_history_read_still_honours_the_requested_tail():

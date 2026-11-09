@@ -274,3 +274,29 @@ def test_pool_reports_a_broken_credential_plugin_instead_of_a_bare_403(
 
     with pytest.raises(CredentialUnavailableError):
         _pool().get("exec-detect", str(kubeconfig), "ctx")
+
+
+def test_the_credential_error_never_carries_the_session_token(
+    tmp_path, apiserver_url,
+):
+    """The kubeconfig path embeds the session token — and that token IS the
+    session cookie. `main.py` logs this message, so the path must not be in
+    it: the session is named by its first eight characters instead."""
+    from app.infrastructure.k8s.client.pool import CredentialUnavailableError
+
+    token = "test-session-token"
+    _session_profile(tmp_path)
+    script = _write_credential_script(tmp_path)
+    path = tmp_path / token / "kubeconfig.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    kubeconfig = _write_kubeconfig(
+        path, apiserver_url, "data/sessions/x/tsh", script
+    )
+
+    with pytest.raises(CredentialUnavailableError) as exc:
+        _pool().get(token, str(kubeconfig), "ctx")
+
+    message = str(exc.value)
+    assert token not in message
+    assert str(kubeconfig) not in message
+    assert token[:8] in message

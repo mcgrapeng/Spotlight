@@ -365,10 +365,13 @@ async def test_a_failing_lookup_grants_read_only_access():
 
     # Reading the cluster is still allowed: the kubeconfig limits that
     # anyway, and refusing it would turn a database hiccup into an outage.
+    # It is exactly the viewer role and no more — `pods.logs` is refused
+    # too, because the viewer's own list leaves log content out on purpose.
     await require_permission("pods.read")(request, uc)
 
     from fastapi import HTTPException
-    for code in ("ai.manage", "ai.use", "favorites.write", "roles.manage"):
+    for code in ("ai.manage", "ai.use", "favorites.write", "roles.manage",
+                 "pods.logs"):
         with pytest.raises(HTTPException) as e:
             await require_permission(code)(request, uc)
         assert e.value.status_code == 403, code

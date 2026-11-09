@@ -451,3 +451,66 @@ def test_failed_cluster_acquisition_revokes_the_session(
     # The session is gone: the cookie no longer authenticates anything.
     r = client.get("/api/v1/clusters")
     assert r.status_code == 401, r.text
+
+
+def test_a_failed_cluster_selection_does_not_tear_down_the_shared_dev_session(
+    fake_plugin_failing_acquire, monkeypatch,
+):
+    """The dev session backs every Bearer/open-mode caller.
+
+    Revoking it because ONE of them picked a cluster that failed would log
+    all of them out at once — and would close the shared ApiClient out from
+    under their in-flight requests.
+    """
+    monkeypatch.setenv("AUTH_PROVIDER", "token")
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    get_settings.cache_clear()
+
+    from fastapi.testclient import TestClient
+    from app.infrastructure.auth import session as session_store
+    from app.main import app
+    client = TestClient(app)
+    # A cookie session, so the route's cookie guard lets the request in …
+    client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "fields": {"token": "any"}},
+    )
+    # … and the Bearer header, which is what makes the route resolve the
+    # SHARED dev session instead of the cookie's own.
+    dev = session_store.dev_session()
+
+    r = client.post(
+        "/api/v1/auth/cluster",
+        json={"cluster": "ctx-a"},
+        headers={"authorization": "Bearer s3cret"},
+    )
+    assert r.status_code in (401, 403, 503), r.text
+
+    # The same object: not revoked, not recreated.
+    assert session_store.dev_session() is dev
+
+
+def test_a_cookie_naming_the_dev_session_does_not_authenticate(
+    fake_plugin, monkeypatch,
+):
+    """`spotlight_session=dev` must not be a way in.
+
+    The dev session has no kubeconfig of its own, so the K8s adapter falls
+    back to the HOST kubeconfig for it — a cookie naming it would hand the
+    host's cluster to anyone who typed the name.
+    """
+    monkeypatch.setenv("AUTH_PROVIDER", "token")
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    get_settings.cache_clear()
+
+    from fastapi.testclient import TestClient
+    from app.infrastructure.auth import session as session_store
+    from app.main import app
+    client = TestClient(app)
+
+    # The shared session exists (some Bearer caller made it).
+    session_store.dev_session()
+    client.cookies.set(session_store.COOKIE_NAME, session_store.DEV_TOKEN)
+
+    r = client.get("/api/v1/clusters")
+    assert r.status_code == 401, r.text

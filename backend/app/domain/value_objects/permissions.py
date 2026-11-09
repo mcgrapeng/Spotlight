@@ -44,22 +44,6 @@ PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
 
 ADMIN_ONLY: frozenset[str] = frozenset({"roles.manage", "users.manage"})
 
-#: What a caller may still do while the permission lookup itself is failing.
-#:
-#: Reading the cluster is already limited by the session's own kubeconfig, so
-#: refusing it would only turn a database hiccup into an outage. Everything
-#: else — changing where an API key goes, sending log content to a model,
-#: managing roles — is a decision nobody can take while the database is down.
-FALLBACK_READ_ONLY: frozenset[str] = frozenset({
-    "clusters.read",
-    "namespaces.read",
-    "pods.read",
-    "pods.logs",
-    "nodes.read",
-    "events.read",
-    "favorites.read",
-})
-
 # Built-in role names. `admin` is the escape hatch (everything), `user` is
 # the default for anyone without an explicit assignment, `viewer` is the
 # read-only profile an operator hands to colleagues.
@@ -79,6 +63,19 @@ BUILTIN_ROLES: dict[str, tuple[str, ...]] = {
         "favorites.read",
     ),
 }
+
+#: What a caller may still do while the permission lookup itself is failing.
+#:
+#: Reading the cluster is already limited by the session's own kubeconfig, so
+#: refusing it would only turn a database hiccup into an outage. Everything
+#: else — changing where an API key goes, sending log content to a model,
+#: managing roles — is a decision nobody can take while the database is down.
+#:
+#: It is EXACTLY the viewer role, no more: a failure mode that hands out
+#: more than the product's own read-only profile is an escalation waiting
+#: for a bad afternoon. The viewer's list leaves out `pods.logs` on
+#: purpose — log content is the sensitive half of a cluster read.
+FALLBACK_READ_ONLY: frozenset[str] = frozenset(BUILTIN_ROLES[ROLE_VIEWER])
 
 # A user with no row in the database (the common case: the auth plugin
 # vouches for them, nobody ever assigned them a role) gets the `user` role —

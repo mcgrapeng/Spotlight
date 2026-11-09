@@ -404,7 +404,15 @@ class TeleportPlugin:
             if error and not _is_otp_rejected(error):
                 # A real tsh failure (unknown cluster, TLS problem, …) — do
                 # not blame the one-time code for it.
-                raise AuthError("invalid_credentials", f"登录失败：{error}")
+                #
+                # tsh's own words stay in the log above. This endpoint is
+                # unauthenticated, and its body reaches whoever typed the
+                # username: tsh errors carry file paths, proxy names and
+                # cluster names that have no business being handed out.
+                raise AuthError(
+                    "invalid_credentials",
+                    "登录失败：请检查用户名、密码与集群配置",
+                )
             if _is_mfa_prompt(text):
                 if otp:
                     raise AuthError("bad_otp", "一次性码错误或已过期，请重试")

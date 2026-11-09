@@ -57,12 +57,21 @@ class AIUseCases:
             # masked value would otherwise overwrite the secret with the
             # mask. The provider type has to match too: an OpenAI key
             # re-attached to another provider would be sent to it.
-            if (
-                stored is not None
-                and stored.provider == cfg.provider
-                and _is_placeholder_key(cfg.api_key)
-            ):
-                cfg = replace(cfg, api_key=stored.api_key)
+            #
+            # And so does the DESTINATION: the stored key belongs to the
+            # stored api_base. Re-attaching it to another endpoint would
+            # ship the operator's key to whoever chose that endpoint, and
+            # anyone who can edit a provider can choose one.
+            if stored is not None and _is_placeholder_key(cfg.api_key):
+                if (cfg.api_base or "") != (stored.api_base or ""):
+                    # Ollama has no key to protect, so a moved local
+                    # endpoint is not a problem.
+                    if cfg.provider != "ollama":
+                        raise ValueError(
+                            "api_base 已变更：请重新输入该端点的 API Key"
+                        )
+                elif stored.provider == cfg.provider:
+                    cfg = replace(cfg, api_key=stored.api_key)
         cfg.validate()
         if cfg.enabled and not await self._can_enable(cfg.id):
             raise SingleActiveProviderError(

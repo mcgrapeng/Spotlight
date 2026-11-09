@@ -238,8 +238,15 @@ async def post_cluster(payload: ClusterSelectIn, request: Request) -> dict:
         # Revoke it instead of leaving it alive for its full TTL: a session
         # that looks logged in but reads nothing is worse than a clean 401
         # that sends the user back through the login.
-        session_store.revoke_session(sess.token)
-        get_pool().drop_session(sess.token)
+        #
+        # Never the shared dev session: it backs every Bearer/open-mode
+        # caller, and tearing it down would log all of them out at once
+        # (the logout handler draws the same line). Its cached clients stay
+        # valid — it has no kubeconfig of its own to go stale.
+        if sess.token != session_store.DEV_TOKEN:
+            session_store.revoke_session(sess.token)
+            invalidate_scope(sess.token)
+            get_pool().drop_session(sess.token)
         raise _http_for_auth_error(e) from None
 
     # ponytail: write kubeconfig bytes to session.kubeconfig_path, then

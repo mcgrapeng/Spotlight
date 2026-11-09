@@ -188,6 +188,12 @@ def k8s_repo(s: Session = Depends(current_session)) -> KubernetesAdapter:
     fallback only for the shared dev session (open mode / Bearer token): for
     a real session the host's file is the OPERATOR's cluster, and a session
     that has not picked one yet must not be served it.
+
+    The dev-session branch is safe because of where the session came from,
+    not because of what its token says: `current_session()` hands out the dev
+    session only for a Bearer token or open mode, and `get_session()` — the
+    cookie path — refuses the dev token outright. So a cookie can never
+    arrive here as the dev session.
     """
     if s.kubeconfig_path.exists():
         return KubernetesAdapter(s.token, str(s.kubeconfig_path))

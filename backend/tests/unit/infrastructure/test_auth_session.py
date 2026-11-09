@@ -51,3 +51,16 @@ def test_dev_session_is_shared(tmp_path, monkeypatch):
     monkeypatch.setattr(sess, "SESSIONS_ROOT", tmp_path / "sessions")
     d1, d2 = sess.dev_session(), sess.dev_session()
     assert d1.token == d2.token == "dev"
+
+
+def test_the_dev_session_is_not_reachable_through_a_cookie(tmp_path, monkeypatch):
+    """`get_session` is the cookie path, and the dev session is not a cookie.
+
+    The dev session carries no kubeconfig, so the K8s adapter falls back to
+    the HOST kubeconfig for it. A cookie that named it would hand the host's
+    cluster to anyone who typed "spotlight_session=dev" — the token value is
+    not a proof of provenance.
+    """
+    monkeypatch.setattr(sess, "SESSIONS_ROOT", tmp_path / "sessions")
+    dev = sess.dev_session()
+    assert sess.get_session(dev.token) is None

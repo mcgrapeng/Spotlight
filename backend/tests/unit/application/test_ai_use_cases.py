@@ -287,6 +287,46 @@ async def test_switching_the_provider_type_does_not_carry_the_old_key():
         ))
 
 
+async def test_moving_the_endpoint_does_not_carry_the_stored_key():
+    """The stored key belongs to the stored api_base.
+
+    Re-attaching it to another endpoint would ship the operator's key to
+    whoever chose that endpoint — and anyone who can edit a provider can
+    choose one. So a moved endpoint has to come with a new key.
+    """
+    uc = AIUseCases(FakeAIRepo())
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="Prod", provider="openai", model="gpt-4o",
+        api_key="sk-secret", api_base="https://api.openai.com/v1",
+        temperature=0.7, max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    with pytest.raises(ValueError):
+        await uc.upsert_provider(AIProviderConfig(
+            id=saved.id, name="Prod", provider="openai", model="gpt-4o",
+            api_key="", api_base="https://elsewhere.example/v1",
+            temperature=0.7, max_tokens=1024, is_default=False, enabled=True, extra={},
+        ))
+
+
+async def test_a_moved_local_ollama_endpoint_needs_no_key():
+    """Ollama has no key to protect, so a moved local endpoint is fine."""
+    uc = AIUseCases(FakeAIRepo())
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="Local", provider="ollama", model="llama3",
+        api_key="", api_base="http://127.0.0.1:11434/v1",
+        temperature=0.7, max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    moved = await uc.upsert_provider(AIProviderConfig(
+        id=saved.id, name="Local", provider="ollama", model="llama3",
+        api_key="", api_base="http://127.0.0.1:11435/v1",
+        temperature=0.7, max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    assert moved.api_base == "http://127.0.0.1:11435/v1"
+
+
 async def test_an_edit_without_a_key_keeps_the_stored_one():
     """The API only ever returns a MASKED key, so an edit round-trip can
     never carry the plaintext one. An empty key means "keep the stored

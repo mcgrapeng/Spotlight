@@ -23,7 +23,7 @@ from app.infrastructure.ai.providers.litellm_provider import LLMTimeoutError
 from app.infrastructure.logging import get_logger
 from app.interface.api.v1.dependencies import (
     ai_uc,
-    current_username,
+    current_session,
     require_permission,
 )
 
@@ -43,21 +43,32 @@ _ai_calls: dict[str, list[float]] = {}
 _ai_lock = Lock()
 
 
-def _ai_rate_limited(username: str) -> bool:
+def _ai_rate_limited(bucket: str) -> bool:
+    """Whether this caller is over their model-call budget.
+
+    The key is the SESSION TOKEN, not the username: the username is chosen
+    by whoever logs in (the shared-token plugin accepts any name), so a
+    budget keyed on it can be minted afresh by logging in again. The token
+    is issued by the server and is not guessable.
+    """
     now = time.monotonic()
     with _ai_lock:
-        kept = [t for t in _ai_calls.get(username, []) if now - t < _AI_WINDOW_SECONDS]
+        kept = [t for t in _ai_calls.get(bucket, []) if now - t < _AI_WINDOW_SECONDS]
+        if not kept:
+            # Drop the bucket once its window is empty, or every session that
+            # ever called the model leaves an entry behind for good.
+            _ai_calls.pop(bucket, None)
         if len(kept) >= _AI_MAX_PER_MINUTE:
-            _ai_calls[username] = kept
+            _ai_calls[bucket] = kept
             return True
         kept.append(now)
-        _ai_calls[username] = kept
+        _ai_calls[bucket] = kept
         return False
 
 
 def _limit_model_calls(request: Request) -> None:
     """Dependency: refuse the call when the caller is over their budget."""
-    if _ai_rate_limited(current_username(request)):
+    if _ai_rate_limited(current_session(request).token):
         raise HTTPException(status_code=429, detail="AI 请求过于频繁，请稍后再试")
 
 
@@ -242,6 +253,15 @@ async def ask_stream(
                 payload.provider_id, payload.question, payload.context,
             ):
                 yield {"event": "delta", "data": json.dumps({"text": text}, ensure_ascii=False)}
+        except LLMTimeoutError:
+            # The model did not answer within the call timeout. The response
+            # has already begun, so this cannot be a 504 any more — report it
+            # in-band, and say what actually happened.
+            log.error("ai.ask.stream.timeout")
+            yield {
+                "event": "error",
+                "data": json.dumps({"detail": "模型响应超时，请稍后再试"}, ensure_ascii=False),
+            }
         except Exception as exc:  # noqa: BLE001
             # The response has already begun, so this cannot be an HTTP
             # status any more. Report it in-band and let the client decide

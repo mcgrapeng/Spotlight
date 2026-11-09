@@ -85,8 +85,7 @@ class LiteLLMAIRepository(AIRepositoryPort):
         messages = self._build_messages(req)
         kwargs = self._build_call_kwargs(cfg, messages)
         # After the extra dict, so a stored passthrough cannot widen the
-        # guard. The streaming path needs no timeout of its own: the
-        # browser aborts the stream and the generator is cancelled.
+        # guard.
         kwargs["timeout"] = LLM_CALL_TIMEOUT_SECONDS
         started = time.perf_counter()
         try:
@@ -130,6 +129,13 @@ class LiteLLMAIRepository(AIRepositoryPort):
         messages = self._build_messages(req)
         kwargs = self._build_call_kwargs(cfg, messages)
         kwargs["stream"] = True
+        # After the extra dict, so a stored passthrough cannot widen the
+        # guard. On the streaming path the timeout is the READ timeout: the
+        # model has to produce something within it. Without it a provider
+        # that never answers holds the request — and the operator's money —
+        # open indefinitely; the browser giving up does not cancel the
+        # provider's work.
+        kwargs["timeout"] = LLM_CALL_TIMEOUT_SECONDS
         try:
             stream = await litellm.acompletion(**kwargs)
             async for chunk in stream:
@@ -142,6 +148,10 @@ class LiteLLMAIRepository(AIRepositoryPort):
                     yield text
         except Exception as e:
             log.error("ai.stream.failed", error=str(e), provider=cfg.provider, model=cfg.model)
+            if _is_timeout_error(e, litellm):
+                raise LLMTimeoutError(
+                    f"模型响应超时（{LLM_CALL_TIMEOUT_SECONDS}s）"
+                ) from e
             raise
 
     @staticmethod

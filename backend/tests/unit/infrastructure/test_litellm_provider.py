@@ -109,3 +109,73 @@ async def test_the_extra_dict_cannot_widen_the_timeout(fake_litellm):
     await repo.analyze(_cfg(extra={"timeout": 600}), _req())
 
     assert fake_litellm[0]["timeout"] == LLM_CALL_TIMEOUT_SECONDS
+
+
+async def _drain(repo, cfg, req):
+    async for _text in repo.stream_analyze(cfg, req):
+        pass
+
+
+async def test_the_streaming_path_carries_the_timeout_too(monkeypatch):
+    """A stream with no timeout is a model call that never ends.
+
+    The browser giving up does not cancel the provider's work — the call
+    keeps running, and keeps billing. On the streaming path the timeout is
+    the READ timeout: the model has to produce something within it.
+    """
+    calls: list[dict] = []
+
+    async def acompletion(**kwargs):
+        calls.append(kwargs)
+
+        async def chunks():
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="hi"))]
+            )
+
+        return chunks()
+
+    module = types.ModuleType("litellm")
+    module.acompletion = acompletion  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "litellm", module)
+
+    repo = LiteLLMAIRepository(providers=None)  # type: ignore[arg-type]
+    await _drain(repo, _cfg(), _req())
+
+    assert calls[0]["timeout"] == LLM_CALL_TIMEOUT_SECONDS
+
+
+async def test_the_extra_dict_cannot_widen_the_streaming_timeout(monkeypatch):
+    calls: list[dict] = []
+
+    async def acompletion(**kwargs):
+        calls.append(kwargs)
+
+        async def chunks():
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="hi"))]
+            )
+
+        return chunks()
+
+    module = types.ModuleType("litellm")
+    module.acompletion = acompletion  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "litellm", module)
+
+    repo = LiteLLMAIRepository(providers=None)  # type: ignore[arg-type]
+    await _drain(repo, _cfg(extra={"timeout": 600}), _req())
+
+    assert calls[0]["timeout"] == LLM_CALL_TIMEOUT_SECONDS
+
+
+async def test_a_streaming_timeout_gets_a_name_the_route_can_answer(monkeypatch):
+    async def acompletion(**kwargs):
+        raise TimeoutError("the model did not answer")
+
+    module = types.ModuleType("litellm")
+    module.acompletion = acompletion  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "litellm", module)
+
+    repo = LiteLLMAIRepository(providers=None)  # type: ignore[arg-type]
+    with pytest.raises(LLMTimeoutError):
+        await _drain(repo, _cfg(), _req())

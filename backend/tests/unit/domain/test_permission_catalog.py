@@ -7,6 +7,7 @@ from app.domain.value_objects.permissions import (
     ADMIN_ONLY,
     BUILTIN_ROLES,
     DEFAULT_ROLE,
+    FALLBACK_READ_ONLY,
     PERMISSIONS,
     PERMISSION_CODES,
     ROLE_ADMIN,
@@ -53,6 +54,20 @@ def test_viewer_is_read_only():
     assert "ai.use" not in viewer
     assert not any(p.endswith(".write") for p in viewer)
     assert not any(p.endswith(".manage") for p in viewer)
+
+
+def test_the_failure_fallback_is_no_more_than_the_viewer_role():
+    """What a caller may still do while the permission lookup is failing.
+
+    A failure mode that hands out MORE than the product's own read-only
+    role is an escalation waiting for a bad afternoon — and log content is
+    the sensitive half of a cluster read, which is why the viewer's list
+    leaves it out.
+    """
+    assert set(FALLBACK_READ_ONLY) == set(builtin_permissions(ROLE_VIEWER))
+    assert "pods.logs" not in FALLBACK_READ_ONLY
+    assert not any(p.endswith(".write") for p in FALLBACK_READ_ONLY)
+    assert not any(p.endswith(".manage") for p in FALLBACK_READ_ONLY)
 
 
 def test_user_role_is_a_superset_of_viewer():

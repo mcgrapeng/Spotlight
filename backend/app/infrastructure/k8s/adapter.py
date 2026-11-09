@@ -35,8 +35,9 @@ from kubernetes.client.exceptions import ApiException
 # The window itself is computed by the node
 # (pkg/kubelet/kuberuntime/kuberuntime_logs.go), where `since` and `tail`
 # commute: the answer is the last `tail` lines OF the window, not the
-# window cut down to `tail`. That is why the follow poll asks for NO tail
-# at all — see stream_logs.
+# window cut down to `tail`. So a tail is a cap on what comes back — which
+# is why the follow poll asks for exactly as many lines as the panel can
+# hold: see stream_logs.
 _STREAM_MIN_INTERVAL = 2.0    # while the pod is producing
 _STREAM_MAX_INTERVAL = 8.0    # once it goes quiet; worst-case tail lag ≈ 9s
 _STREAM_READ_TIMEOUT = 10.0   # a preloaded read is ~1s; this is the safety net
@@ -44,7 +45,16 @@ _STREAM_SKEW_MARGIN = 2.0     # clock skew between the apiserver and the node
 _STREAM_SINCE_SECONDS = int(
     _STREAM_MAX_INTERVAL + _STREAM_READ_TIMEOUT + _STREAM_SKEW_MARGIN
 )
-_STREAM_DEDUP_WINDOW = 4096   # signatures kept to cover poll overlap
+# The panel keeps at most this many lines (the client's ring buffer). A poll
+# asks the apiserver for the same number, so the response is BOUNDED — a pod
+# writing megabytes a second cannot turn one poll into megabytes — and the
+# lines the tail drops are exactly the ones the panel would have dropped
+# anyway.
+_STREAM_MAX_TAIL = 10_000
+# The dedup has to cover one whole poll, or the lines the next poll re-reads
+# come back as duplicates. A hash keeps that memory small: 10k full lines
+# would be megabytes per open panel.
+_STREAM_DEDUP_WINDOW = _STREAM_MAX_TAIL
 
 
 def _container_names(api, ref: ResourceRef, timeout: float) -> list[str]:
@@ -367,11 +377,15 @@ class KubernetesAdapter(K8sRepositoryPort):
         or when `stop_event` is set, which is what lets the SSE endpoint send a
         real `end` instead of dying of a timeout.
 
-        `tail_lines` is part of the port's signature but the follow poll
-        deliberately does NOT use it: the apiserver returns the last `tail`
-        lines OF the window, so a burst bigger than the tail loses its oldest
-        lines for good — the next poll's window has already moved past them.
-        The client's tail contract is honoured by the history backfill
+        `tail_lines` is part of the port's signature, and the follow poll
+        asks the apiserver for `_STREAM_MAX_TAIL` lines — the panel's own
+        buffer size. The node answers with the last `tail` lines OF the
+        window, so a tail is a cap on the response: without it a pod that
+        writes megabytes a second makes every poll megabytes. The cap costs
+        the reader nothing, because the panel drops the overflow itself —
+        it keeps the newest 10k lines and no more, so the lines this tail
+        discards are the lines the panel would have discarded anyway. The
+        client's tail contract is honoured by the history backfill
         (`read_logs`), which is where the panel's initial lines come from.
         """
         api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
@@ -384,9 +398,14 @@ class KubernetesAdapter(K8sRepositoryPort):
         if not targets:
             return
 
-        # Bounded: only has to cover the overlap between consecutive polls,
-        # which is at most one interval's worth of lines.
-        recent: Deque[tuple[str, str, str]] = deque(maxlen=_STREAM_DEDUP_WINDOW)
+        # Bounded, and it has to cover ONE WHOLE POLL: the next poll re-reads
+        # the window, so anything the previous poll sent has to still be
+        # remembered. The set answers "have I sent this line?" in constant
+        # time; the deque keeps the insertion order so the oldest entry can
+        # be evicted. The signature is a hash because the window is 10k
+        # lines — 10k full lines would be megabytes per open panel.
+        recent: Deque[int] = deque()
+        seen: set[int] = set()
         interval = _STREAM_MIN_INTERVAL
 
         while True:
@@ -399,12 +418,11 @@ class KubernetesAdapter(K8sRepositoryPort):
                     raw = api.read_namespaced_pod_log(
                         name=ref.name, namespace=ref.namespace,
                         container=target,
-                        # NO tail_lines: the apiserver returns the last
-                        # `tail` lines OF the window, so a burst bigger
-                        # than the tail is truncated away for good — the
-                        # next poll's window has already moved past it.
-                        # The window is small (seconds), so reading it
-                        # whole is cheap; the read timeout is the backstop.
+                        # The tail is the panel's own buffer size: it bounds
+                        # the response (the node answers with the last N
+                        # lines OF the window) and drops only the lines the
+                        # panel would have dropped anyway.
+                        tail_lines=_STREAM_MAX_TAIL,
                         since_seconds=_STREAM_SINCE_SECONDS,
                         timestamps=True,
                         _request_timeout=_STREAM_READ_TIMEOUT,
@@ -435,15 +453,19 @@ class KubernetesAdapter(K8sRepositoryPort):
                     # Split the apiserver's stamp off the line, exactly as
                     # the history path does, so the use case sees the same
                     # shape from both: the line's real time, and the line's
-                    # text. The raw line is still what the dedup key uses —
-                    # it is the identity of the line, and the prefix is part
-                    # of it. The container name is part of the key too: two
-                    # containers can legitimately print the same line, and
-                    # dropping the second one would be a silent data loss.
+                    # text. The raw line is still what the dedup key is
+                    # computed from — it is the identity of the line, and the
+                    # prefix is part of it. The container name is part of the
+                    # key too: two containers can legitimately print the
+                    # same line, and dropping the second one would be a
+                    # silent data loss.
                     ts, rest = parse_log_line(line, target)
-                    sig = (ts, target, line)
-                    if sig in recent:
+                    sig = hash((ts, target, line))
+                    if sig in seen:
                         continue
+                    if len(seen) >= _STREAM_DEDUP_WINDOW:
+                        seen.discard(recent.popleft())
+                    seen.add(sig)
                     recent.append(sig)
                     emitted += 1
                     yield LogEntry(

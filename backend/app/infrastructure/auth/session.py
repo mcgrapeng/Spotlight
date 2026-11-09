@@ -56,7 +56,16 @@ def create_session(provider_id: str, identity: Identity, ttl_seconds: int) -> Se
 
 
 def get_session(token: str | None) -> Session | None:
-    if not token:
+    """Resolve a session by its token — the cookie path.
+
+    The dev session is deliberately NOT reachable here. It is the shared
+    synthetic identity behind Bearer/open-mode, it has no kubeconfig of its
+    own, and the K8s adapter falls back to the HOST kubeconfig for it. A
+    cookie that named it would therefore hand the host's cluster credentials
+    to anyone who typed "spotlight_session=dev" into their browser — the
+    token value is not a proof of provenance.
+    """
+    if not token or token == DEV_TOKEN:
         return None
     with _lock:
         s = _sessions.get(token)

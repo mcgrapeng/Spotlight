@@ -110,12 +110,20 @@ class KubernetesClientPool:
         self._clients.clear()
 
     def _build(
-        self, context: Optional[str], kubeconfig_path: Optional[str]
+        self,
+        context: Optional[str],
+        kubeconfig_path: Optional[str],
+        session_token: str = "",
     ) -> client.ApiClient:
         """Build an ApiClient bound to an explicit per-client Configuration.
 
         `client_configuration` keeps this off the SDK's global default, so
         concurrent builds for different contexts can't cross-contaminate.
+
+        The session token is here for the error messages only, and only its
+        first eight characters: the kubeconfig path embeds the whole token,
+        and that token IS the session cookie — a log line or an error body
+        carrying it hands the session to whoever reads them.
         """
         cfg = client.Configuration()
         # urllib3 retries a timed-out READ three times by default, so a hung
@@ -136,7 +144,7 @@ class KubernetesClientPool:
                 # cluster name, not a broken kubeconfig. Let the caller answer
                 # 4xx instead of letting this surface as a 500.
                 raise UnknownContextError(
-                    f"context {context!r} not found in {path}"
+                    f"context {context!r} not found in session {session_token[:8]}"
                 ) from e
             if (
                 _kubeconfig_uses_exec_plugin(path)
@@ -144,7 +152,8 @@ class KubernetesClientPool:
             ):
                 # The SDK ran the credential plugin and swallowed its failure.
                 raise CredentialUnavailableError(
-                    f"credential plugin for {path} produced no credentials"
+                    f"credential plugin for session {session_token[:8]} "
+                    "produced no credentials"
                 )
         else:
             try:
@@ -193,7 +202,7 @@ class KubernetesClientPool:
             key = (session_token, active)
             cli = self._clients.get(key)
             if cli is None:
-                cli = self._build(context, kubeconfig_path)
+                cli = self._build(context, kubeconfig_path, session_token)
                 self._clients[key] = cli
                 log.info(
                     "k8s.client.created",

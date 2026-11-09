@@ -46,6 +46,30 @@ def test_stale_context_raises_unknown_context_not_config_exception(kubeconfig):
         pool.get("sess-token", kubeconfig, "prod-east")
 
 
+def test_the_session_token_never_reaches_the_error_message(tmp_path):
+    """The kubeconfig path embeds the session token — and that token IS the
+    session cookie.
+
+    An error message (which `main.py` logs) or a stack trace carrying the
+    path hands the session to whoever reads them. The message names the
+    session's first eight characters instead, the way `k8s.client.created`
+    and `k8s.client.session_dropped` already do.
+    """
+    token = "test-session-token"
+    path = tmp_path / token / "kubeconfig.yaml"
+    path.parent.mkdir()
+    path.write_text(KUBECONFIG)
+
+    pool = KubernetesClientPool()
+    with pytest.raises(UnknownContextError) as exc:
+        pool.get(token, str(path), "prod-east")
+
+    message = str(exc.value)
+    assert token not in message
+    assert str(path) not in message
+    assert token[:8] in message
+
+
 def test_context_present_in_kubeconfig_still_builds(kubeconfig):
     pool = KubernetesClientPool()
     api, ctx = pool.get("sess-token", kubeconfig, "staging-eu")

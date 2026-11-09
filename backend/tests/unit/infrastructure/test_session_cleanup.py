@@ -68,5 +68,9 @@ def test_dev_session_survives_logout_path():
     store._sessions.clear()
     dev = store.dev_session()
     assert dev.token == store.DEV_TOKEN
-    assert store.get_session(store.DEV_TOKEN) is not None
+    # 还是同一个对象：没有被 revoke，也没有被重新创建。
+    assert store.dev_session() is dev
+    # （它也不再能被 cookie 解析到——`get_session` 拒绝 DEV_TOKEN。那是另一
+    # 回事：这个会话本来就不是 cookie 签发的。）
+    assert store.get_session(store.DEV_TOKEN) is None
     store._sessions.clear()

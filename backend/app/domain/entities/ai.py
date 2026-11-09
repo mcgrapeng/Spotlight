@@ -151,6 +151,10 @@ _RESERVED_EXTRA_KEYS = (
     "temperature",
     "messages",
     "stream",
+    # The timeout is the guard that stops the server calling (and paying for)
+    # a model long after the browser gave up. A passthrough may not set it
+    # or widen it.
+    "timeout",
 )
 
 

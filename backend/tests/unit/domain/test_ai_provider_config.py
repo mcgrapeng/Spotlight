@@ -52,9 +52,11 @@ def test_a_provider_without_an_api_base_is_fine():
 def test_extra_may_not_override_the_validated_fields():
     # `extra` is merged into the call kwargs LAST, so a key here can
     # override the validated api_base — and with it the address the API
-    # key and the cluster's log content are posted to.
+    # key and the cluster's log content are posted to. `timeout` is the
+    # guard that stops the server calling (and paying for) a model long
+    # after the browser gave up: a passthrough may not set it either.
     for key in ("api_base", "base_url", "api_key", "max_tokens",
-                "temperature", "messages", "stream"):
+                "temperature", "messages", "stream", "timeout"):
         with pytest.raises(ValueError):
             _cfg(extra={key: "x"}).validate()
 
