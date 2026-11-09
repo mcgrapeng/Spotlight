@@ -418,7 +418,7 @@ export default {
     shortcutsTitle: '快捷键 (?)',
     shortcutsHeading: '快捷键',
     field: '字段',
-    filterField: '过滤 {field}=',
+    filterField: '过滤含 {field} 字段的行',
     clearFieldFilter: '清除字段过滤',
     outputLabel: '日志输出（最新在下）',
     newLines: '{count} 条新 · 跳转',

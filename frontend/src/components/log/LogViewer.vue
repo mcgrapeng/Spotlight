@@ -1536,7 +1536,14 @@ const jsonFieldChips = computed<string[]>(() => {
 })
 
 function applyFieldFilter(key: string) {
-  search.value = `${key}=`
+  // ponytail: the query is a plain substring, so it has to be a substring
+  // that actually occurs in a JSON log line.
+  //
+  // It used to be `key=`. JSON lines spell the field `"level":"ERROR"` —
+  // never `level=` — so every field chip filtered to ZERO lines: the whole
+  // chip row was a dead control for exactly the case it exists to serve.
+  // `"level":` is in the line, and it works for numbers too (`"n":5000`).
+  search.value = `"${key}":`
 }
 function clearFieldFilter() {
   search.value = ''
@@ -1584,6 +1591,7 @@ function lineHtml(line: LogLineOut): string {
   const { html: cutHtml } = ansiToHtml(line.content.slice(0, cut))
   return applySearchHighlight(cutHtml) + '<span class="text-muted-foreground/60 select-none">…</span>'
 }
+const MARK = '<mark class="bg-warning/30 text-foreground rounded-sm px-0.5">$1</mark>'
 function applySearchHighlight(html: string): string {
   const q = search.value.trim()
   if (!q) return html
@@ -1592,10 +1600,15 @@ function applySearchHighlight(html: string): string {
   // highlighting wastes a regex pass per row.
   if (q.toLowerCase().startsWith('trace:')) return html
   const qEsc = escapeHtml(q)
-  return html.replace(
-    new RegExp(`(${escapeRegex(qEsc)})`, 'gi'),
-    '<mark class="bg-warning/30 text-foreground rounded-sm px-0.5">$1</mark>',
-  )
+  const re = new RegExp(`(${escapeRegex(qEsc)})`, 'gi')
+  // Only the text BETWEEN tags is content. The HTML carries class names —
+  // `text-red-600` — and replacing every match in the whole string put the
+  // <mark> INSIDE the class attribute, so searching for "red" (or "text",
+  // or "600") broke the span's colour.
+  return html
+    .split(/(<[^>]*>)/)
+    .map((part) => (part.startsWith('<') ? part : part.replace(re, MARK)))
+    .join('')
 }
 
 // === Trace-id chip click → filter to that trace ===

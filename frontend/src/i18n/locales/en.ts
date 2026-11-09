@@ -387,7 +387,7 @@ export default {
     shortcutsTitle: 'Shortcuts (?)',
     shortcutsHeading: 'Shortcuts',
     field: 'Fields',
-    filterField: 'Filter {field}=',
+    filterField: 'Filter lines with the {field} field',
     clearFieldFilter: 'Clear field filter',
     outputLabel: 'Log output (newest on the bottom)',
     newLines: '{count} new · Jump',

@@ -142,6 +142,52 @@ describe('LogViewer', () => {
     expect(dot().attributes('class')).toContain('animate-pulse')
   })
 
+  it('never puts the search highlight inside a colour class', async () => {
+    // The rendered line carries `class="text-red-600"`. Replacing every match
+    // of the query in the whole HTML put the <mark> INSIDE the class
+    // attribute — so searching for "red" (or "text", or "600") broke the
+    // colour of every line on screen.
+    const wrapper = mount(LogViewer, {
+      props: { lines: [line('info', 'first line')], unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    await wrapper.find('input[aria-label="过滤日志"]').setValue('red')
+    await wrapper.vm.$nextTick()
+    // A line that arrives while the search is live renders with the
+    // highlight applied — that is where the class attribute broke.
+    await wrapper.setProps({
+      lines: [line('error', '\x1b[31mred alarm\x1b[0m'), line('info', 'first line')],
+    })
+    await wrapper.vm.$nextTick()
+    const broken = [...wrapper.element.querySelectorAll('[class]')].filter((el) =>
+      (el.getAttribute('class') ?? '').includes('<mark'),
+    )
+    expect(broken).toEqual([])
+    expect(wrapper.html()).toContain('class="text-red-600"')
+  })
+
+  it('makes the field chips select the lines that have that field', async () => {
+    // The chip used to put `level=` in the search box. JSON lines spell the
+    // field `"level":"ERROR"` — never `level=` — so every field chip filtered
+    // to zero lines. The chip row was a dead control for the one case it
+    // exists to serve.
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('info', '{"id":1,"level":"ERROR"}'), line('info', 'plain text line')],
+        unreadCount: 0,
+      },
+      global: { plugins: [i18n] },
+    })
+    const chip = wrapper.findAll('button').find((b) => b.text() === 'level')
+    expect(chip).toBeTruthy()
+    await chip!.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect((wrapper.find('input[aria-label="过滤日志"]').element as HTMLInputElement).value).toBe('"level":')
+    // The JSON line stays, the plain one goes.
+    expect(wrapper.text()).toContain('"id":1')
+    expect(wrapper.text()).not.toContain('plain text line')
+  })
+
   it('hides the unread pill when unreadCount is 0', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(5), unreadCount: 0 },
