@@ -26,7 +26,7 @@ defineEmits<{
       <AlertCircle :size="32" class="text-error" :stroke-width="1.5" />
     </div>
     <h3 class="text-base font-semibold text-foreground mb-1">{{ heading }}</h3>
-    <p v-if="message" class="text-sm text-muted-foreground max-w-md mb-4">{{ message }}</p>
+    <p v-if="message && message !== heading" class="text-sm text-muted-foreground max-w-md mb-4">{{ message }}</p>
     <Button size="sm" @click="$emit('retry')">{{ t('state.retry') }}</Button>
   </div>
 </template>

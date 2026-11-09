@@ -125,6 +125,37 @@ describe('useResource', () => {
     expect(api.data.value).toBeNull()  // A's late reply did not land
   })
 
+  it('renders a structured error detail as a sentence', async () => {
+    // The permission guard answers `{"detail": {"code": "forbidden",
+    // "permission": "roles.manage"}}`. Handing that object straight to
+    // the error panel printed "[object Object]" — the one message a
+    // blocked user most needs to read.
+    const err: any = {
+      response: {
+        status: 403,
+        data: {
+          detail: {
+            code: 'forbidden',
+            permission: 'roles.manage',
+            message: '没有权限：roles.manage',
+          },
+        },
+      },
+    }
+    const fetcher = vi.fn().mockRejectedValue(err)
+    const api = host(fetcher, { watch: () => 1 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.error.value).toBe('没有权限：roles.manage')
+  })
+
+  it('falls back to the status code when the detail says nothing readable', async () => {
+    const err: any = { response: { status: 500, data: { detail: { code: 'boom' } } } }
+    const fetcher = vi.fn().mockRejectedValue(err)
+    const api = host(fetcher, { watch: () => 1 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.error.value).toBe('HTTP 500')
+  })
+
   it('skipping settles loading instead of stranding it', async () => {
     // Every view gates its spinner on `loading`; a skipped load that leaves it
     // true with nothing in flight to clear it means a permanent spinner.

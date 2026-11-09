@@ -11,7 +11,9 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'logs.spec.ts',
+  // logs.spec.ts needs a live cluster; auth-live.spec.ts needs live
+  // credentials (it skips without them). Both target the running dev stack.
+  testMatch: ['logs.spec.ts', 'auth-live.spec.ts'],
   timeout: 30_000,
   expect: { timeout: 5_000 },
   retries: 0,

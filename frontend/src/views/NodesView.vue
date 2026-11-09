@@ -28,6 +28,7 @@ const nodesFetch = useCachedFetch<NodeOut[]>({
   data: nodes,
   loading,
   error,
+  errorFallback: t('state.error'),
   ttlMs: 60_000,
 })
 
@@ -37,15 +38,11 @@ async function load() {
   // frozen at 'none' and serve one cluster's nodes for every other cluster.
   nodesFetch.rekey(`nodes:${cluster.activeCluster}`)
   nodesFetch.hydrateFromCache()
-  loading.value = true
-  error.value = null
-  try {
-    nodes.value = await nodesApi.list(cluster.activeCluster)
-  } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? t('state.error')
-  } finally {
-    loading.value = false
-  }
+  // Through useCachedFetch, not a direct `nodesApi.list`: it carries the
+  // supersede guard (a slow cluster A must not overwrite a fast cluster B)
+  // and it writes the cache — the TTL was a no-op while the view filled
+  // `nodes` by hand.
+  await nodesFetch.load()
 }
 
 onMounted(load)

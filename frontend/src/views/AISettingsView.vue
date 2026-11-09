@@ -45,13 +45,31 @@ function openEdit(p: AIProviderOut) {
   dialogOpen.value = true
 }
 
+/**
+ * The backend sends a sentence for most failures, but an OBJECT for the
+ * permission denial — printing an object gives the reader "[object Object]".
+ */
+function errorMessage(e: any): string {
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (detail?.message) return detail.message
+  return t('toast.providerActionFailed')
+}
+
 async function save(data: AIProviderIn) {
-  if (editing.value?.id) {
-    await aiApi.updateProvider(editing.value.id, data)
-  } else {
-    await aiApi.addProvider(data)
+  try {
+    if (editing.value?.id) {
+      await aiApi.updateProvider(editing.value.id, data)
+    } else {
+      await aiApi.addProvider(data)
+    }
+    toast.success(t('toast.providerSaved', { name: data.name }))
+    await load()
+  } catch (e: any) {
+    // The dialog closes on submit, so a rejected save used to vanish:
+    // no toast, no change, no explanation.
+    toast.error(errorMessage(e))
   }
-  await load()
 }
 
 function requestRemove(p: AIProviderOut) {
@@ -59,12 +77,19 @@ function requestRemove(p: AIProviderOut) {
 }
 
 async function confirmRemove() {
-  if (!deleteConfirm.value) return
+  // The dialog can be dismissed (Esc, the X, a click on the overlay) while
+  // the request is in flight — and the parent then clears deleteConfirm.
+  // Read the target NOW: after the await it may be gone, and a delete that
+  // actually succeeded would be reported as a failure.
+  const target = deleteConfirm.value
+  if (!target) return
   deleting.value = true
   try {
-    await aiApi.deleteProvider(deleteConfirm.value.id)
-    toast.success(t('toast.providerDeleted', { name: deleteConfirm.value.name }))
+    await aiApi.deleteProvider(target.id)
+    toast.success(t('toast.providerDeleted', { name: target.name }))
     await load()  // simplest correct path; refetch from server
+  } catch (e: any) {
+    toast.error(errorMessage(e))
   } finally {
     deleting.value = false
     deleteConfirm.value = null
@@ -72,9 +97,13 @@ async function confirmRemove() {
 }
 
 async function setDefault(p: AIProviderOut) {
-  await aiApi.setDefault(p.id)
-  toast.success(t('toast.providerDefault', { name: p.name }))
-  await load()
+  try {
+    await aiApi.setDefault(p.id)
+    toast.success(t('toast.providerDefault', { name: p.name }))
+    await load()
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail ?? t('toast.providerActionFailed'))
+  }
 }
 </script>
 

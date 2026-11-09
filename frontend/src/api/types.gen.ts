@@ -1692,6 +1692,13 @@ export interface operations {
                     "application/json": components["schemas"]["AIProviderOut"];
                 };
             };
+            /** @description Invalid provider configuration */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1727,6 +1734,20 @@ export interface operations {
                     "application/json": components["schemas"]["AIProviderOut"];
                 };
             };
+            /** @description Invalid provider configuration */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1751,6 +1772,13 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1786,6 +1814,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AIProviderOut"];
                 };
+            };
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

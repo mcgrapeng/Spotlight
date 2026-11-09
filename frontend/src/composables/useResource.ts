@@ -68,7 +68,16 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
       // ponytail: 只用后端给的 detail，不用 axios 的原始英文。
       // "Request failed with status code 500" 出现在中文界面上是噪声：
       // 读者要的是「加载失败」加上后端说的原因（如果有）。
-      error.value = e?.response?.data?.detail ?? t('state.error')
+      // 后端没给 detail 时给状态码——重复一遍「加载失败」等于什么都没说。
+      const status = e?.response?.status
+      const detail = e?.response?.data?.detail
+      // The backend sends a plain sentence for most failures, but an object
+      // for the permission denial. Printing an object gives the reader
+      // "[object Object]", so read the sentence out of the shape and fall
+      // back to the status code when the shape carries none.
+      const message = typeof detail === 'string' ? detail : detail?.message
+      error.value = message
+        ?? (status ? `HTTP ${status}` : t('state.error'))
     } finally {
       if (mySeq === seq) loading.value = false
     }

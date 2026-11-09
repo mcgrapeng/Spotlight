@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Save, X } from '@lucide/vue'
 import {
@@ -27,18 +27,32 @@ const emit = defineEmits<{
   save: [data: AIProviderIn]
 }>()
 
-const form = ref<AIProviderIn>({
-  name: props.initial?.name ?? '',
-  provider: props.initial?.provider ?? 'openai',
-  model: props.initial?.model ?? 'gpt-4o-mini',
-  api_base: props.initial?.api_base ?? null,
-  api_key: props.initial?.api_key ?? '',
-  temperature: props.initial?.temperature ?? 0.7,
-  max_tokens: props.initial?.max_tokens ?? 2048,
-  is_default: props.initial?.is_default ?? false,
-  enabled: props.initial?.enabled ?? true,
-  extra: props.initial?.extra ?? {},
-})
+function buildForm(v?: Partial<AIProviderIn>): AIProviderIn {
+  return {
+    name: v?.name ?? '',
+    provider: v?.provider ?? 'openai',
+    model: v?.model ?? 'gpt-4o-mini',
+    api_base: v?.api_base ?? null,
+    api_key: v?.api_key ?? '',
+    temperature: v?.temperature ?? 0.7,
+    max_tokens: v?.max_tokens ?? 2048,
+    is_default: v?.is_default ?? false,
+    enabled: v?.enabled ?? true,
+    extra: v?.extra ?? {},
+  }
+}
+
+const form = ref<AIProviderIn>(buildForm(props.initial))
+
+// The dialog keeps its component instance between opens, so the form is
+// re-read from `initial` every time it opens. Without this an edit shows
+// the creation defaults — an empty name, the wrong model — and the save
+// is rejected (or, worse, saved over the provider being edited).
+watch(
+  [() => props.open, () => props.initial],
+  () => { form.value = buildForm(props.initial) },
+  { immediate: true },
+)
 
 const apiBaseInput = computed<string>({
   get: () => form.value.api_base ?? '',

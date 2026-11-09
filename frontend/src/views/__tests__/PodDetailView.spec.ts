@@ -28,6 +28,11 @@ vi.mock('@/api/endpoints', () => ({
   },
   eventsApi: { list: vi.fn(async () => []) },
   aiApi: { listProviders: vi.fn(async () => []) },
+  favoritesApi: {
+    list: vi.fn(async () => []),
+    add: vi.fn(async (payload: any) => ({ id: 7, ...payload })),
+    remove: vi.fn(async () => undefined),
+  },
 }))
 
 vi.mock('@/composables/usePodLogs', async () => {
@@ -60,5 +65,22 @@ describe('PodDetailView', () => {
     expect(wrapper.text()).toContain('cache-001')
     expect(wrapper.text()).toContain('返回 Pod 列表')
     expect(wrapper.text()).toContain('node-1')
+  })
+
+  it('adds the pod to the favorites', async () => {
+    const { favoritesApi } = await import('@/api/endpoints')
+    const wrapper = mount(PodDetailView, {
+      global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n, createPinia()] },
+    })
+    await flushPromises()
+
+    const star = wrapper.find('button[aria-label="收藏"]')
+    expect(star.exists()).toBe(true)
+    await star.trigger('click')
+    await flushPromises()
+
+    expect(favoritesApi.add).toHaveBeenCalledWith(expect.objectContaining({
+      resource_type: 'pod', name: 'cache-001', namespace: 'default',
+    }))
   })
 })

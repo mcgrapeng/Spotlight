@@ -24,7 +24,10 @@ http.interceptors.response.use(
     // real one, which changes `activeCluster` — and the pages watching it
     // reload themselves. Without this the 409 was a dead end: the detail said
     // "reselect" and nothing did.
-    if (err?.response?.status === 409) {
+    // Not when the cluster list itself is what failed: in exactly the same
+    // state (no cluster chosen yet) it answers 409 too, so re-listing would
+    // answer 409 again and the interceptor would fire forever.
+    if (err?.response?.status === 409 && !url.includes('/clusters')) {
       const { useClusterStore } = await import('@/stores/cluster')
       await useClusterStore().loadClusters().catch(() => {})
     }

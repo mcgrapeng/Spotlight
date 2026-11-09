@@ -18,9 +18,12 @@ const stats = {
   recent_warns: [],
 }
 
-vi.mock('@/stores/cluster', () => {
-  const reactiveObj: any = { activeCluster: 'demo-cluster', activeNamespace: 'default' }
-  return { useClusterStore: () => reactiveObj }
+vi.mock('@/stores/cluster', async () => {
+  // reactive(): the view watches `cluster.activeCluster`, so a plain object
+  // would never fire the watcher and the switch would never happen.
+  const { reactive } = await import('vue')
+  const reactiveObj = reactive({ activeCluster: 'demo-cluster', activeNamespace: 'default' })
+  return { useClusterStore: () => reactiveObj, __cluster: reactiveObj }
 })
 
 vi.mock('@/api/endpoints', () => ({
@@ -67,6 +70,26 @@ describe('DashboardView hero', () => {
     expect(occurrences).toBe(1)
     // 剩下的那项（25 个 Warning 事件）出现在下面的卡里。
     expect(text).toContain('25 个 Warning 事件')
+  })
+
+  it('does not keep the previous cluster\'s numbers when the switch fails', async () => {
+    // Switching to a cluster that cannot be read used to leave cluster A's
+    // snapshot on screen under cluster B's name — and the error state never
+    // fired, because `stats` was still set.
+    const statsMock = (await import('@/api/endpoints')).podsApi.stats as unknown as ReturnType<typeof vi.fn>
+    const { __cluster } = await import('@/stores/cluster') as unknown as {
+      __cluster: { activeCluster: string; activeNamespace: string }
+    }
+    statsMock.mockResolvedValue(stats)
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.text()).toContain('287')
+
+    statsMock.mockRejectedValue({ response: { status: 500 } })
+    __cluster.activeCluster = 'cluster-b'
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('287')
   })
 
   it('hides the action card when the hero covers everything', async () => {

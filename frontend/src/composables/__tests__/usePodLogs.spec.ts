@@ -33,7 +33,12 @@ function lines(n: number, tag = 'A') {
 /** Mount the composable against refs the test keeps hold of, so mutating them
  *  is what drives the watchers. `cluster` is read through a getter because the
  *  composable's option is a plain object with an `activeCluster` property. */
-function mountLogs(clusterRef: Ref<string | null>, namespace: Ref<string>, name: Ref<string>) {
+function mountLogs(
+  clusterRef: Ref<string | null>,
+  namespace: Ref<string>,
+  name: Ref<string>,
+  streaming?: Ref<boolean>,
+) {
   let api!: ReturnType<typeof usePodLogs>
   const cluster = { get activeCluster() { return clusterRef.value } }
   const enabled = ref(true)
@@ -44,14 +49,14 @@ function mountLogs(clusterRef: Ref<string | null>, namespace: Ref<string>, name:
   const autoFollow = ref(true)
   const C = defineComponent({
     setup() {
-      api = usePodLogs({ cluster, namespace, name, enabled, autoFollow, tailLines: 500 })
+      api = usePodLogs({ cluster, namespace, name, enabled, autoFollow, tailLines: 500, streaming })
       return () => h('div')
     },
   })
   mount(C, { global: { plugins: [getI18n()] } })
   // `autoFollow` is returned so a test can simulate the user scrolling into
   // history and back — the switch that decides prepend-vs-defer in flush().
-  return { api, enabled, autoFollow }
+  return { api, enabled, autoFollow, streaming }
 }
 
 describe('usePodLogs — no flash on the pod page', () => {
@@ -318,6 +323,102 @@ describe('usePodLogs — no flash on the pod page', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(api.lines.value.some((l) => l.content === 'NEW-1')).toBe(true)
     expect(api.unreadCount.value).toBe(0)
+  })
+
+  it('keeps the newest lines in the dedup set once it overflows', async () => {
+    // The dedup set evicts its OLDEST entry when it is full, and the panel
+    // is newest-first — so seeding the set as the panel reads evicted the
+    // NEWEST lines. After more than `seenCap` lines the tail was gone from
+    // the set, and the stream's replay (the last `tail` lines, which the
+    // server re-reads) came back as new and was prepended a second time.
+    const history = vi.spyOn(podsApi, 'historyLogs').mockResolvedValue(lines(2100, 'A'))
+    const { api } = mountLogs(ref('prod'), ref('ns'), ref('a'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(api.lines.value).toHaveLength(2100)
+
+    // The newest line of the backfill arrives again on the stream.
+    const newest = api.lines.value[0]
+    FakeES.instances.at(-1)!.emit('log', [{
+      timestamp: newest.timestamp, content: newest.content,
+      container: 'c', severity: 'INFO',
+    }])
+    await new Promise((r) => setTimeout(r, 180))
+
+    const contents = api.lines.value.map((l) => l.content)
+    expect(contents.filter((c, i) => contents.indexOf(c) !== i)).toEqual([])
+    expect(api.lines.value).toHaveLength(2100)
+  })
+
+  it('recognises the replayed tail after the dedup set overflowed on a re-open', async () => {
+    // The same overflow, on the other seeding path: re-opening the tab for
+    // the same pod seeds the dedup set from the panel, which is newest-first
+    // too.
+    vi.spyOn(podsApi, 'historyLogs').mockResolvedValue(lines(2100, 'A'))
+    const name = ref('a')
+    const { api, enabled } = mountLogs(ref('prod'), ref('ns'), name)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(api.lines.value).toHaveLength(2100)
+
+    enabled.value = false                       // tab away
+    await nextTick()
+    enabled.value = true                        // ...and back, same pod
+    await new Promise((r) => setTimeout(r, 20))
+
+    const newest = api.lines.value[0]
+    FakeES.instances.at(-1)!.emit('log', [{
+      timestamp: newest.timestamp, content: newest.content,
+      container: 'c', severity: 'INFO',
+    }])
+    await new Promise((r) => setTimeout(r, 180))
+
+    const contents = api.lines.value.map((l) => l.content)
+    expect(contents.filter((c, i) => contents.indexOf(c) !== i)).toEqual([])
+    expect(api.lines.value).toHaveLength(2100)
+  })
+
+  it('keeps the panel ordered when the stream delivers a line older than the panel', async () => {
+    // The follow poll reads the whole read window, so it can hand over a
+    // line older than the panel's oldest one (the backfill asked for fewer
+    // lines than the window holds). Prepending such a batch blindly would
+    // put the older lines on top of the newer ones.
+    vi.spyOn(podsApi, 'historyLogs').mockResolvedValue({
+      total: 2,
+      items: [
+        { timestamp: '2026-01-01T00:00:01.000Z', content: 'mid', container: 'c', severity: 'INFO' },
+        { timestamp: '2026-01-01T00:00:02.000Z', content: 'new', container: 'c', severity: 'INFO' },
+      ],
+    })
+    const { api } = mountLogs(ref('prod'), ref('ns'), ref('a'))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(api.lines.value.map((l) => l.content)).toEqual(['new', 'mid'])
+
+    FakeES.instances.at(-1)!.emit('log', [
+      { timestamp: '2026-01-01T00:00:00.000Z', content: 'older', container: 'c', severity: 'INFO' },
+      { timestamp: '2026-01-01T00:00:03.000Z', content: 'newest', container: 'c', severity: 'INFO' },
+    ])
+    await new Promise((r) => setTimeout(r, 180))
+
+    expect(api.lines.value.map((l) => l.content)).toEqual(['newest', 'new', 'mid', 'older'])
+  })
+
+  it('stops the stream when the backend ends it', async () => {
+    // The backend sends `event: end` when the pod or its only container is
+    // gone. The native EventSource sees EOF and auto-reconnects every ~3s
+    // forever — re-running the container lookup and a log read each time —
+    // while the panel still claims to be streaming.
+    vi.spyOn(podsApi, 'historyLogs').mockResolvedValue(lines(2, 'A'))
+    const streaming = ref(true)
+    const { api } = mountLogs(ref('prod'), ref('ns'), ref('a'), streaming)
+    await new Promise((r) => setTimeout(r, 10))
+    const es = FakeES.instances.at(-1)!
+    expect(api.streaming.value).toBe(true)
+
+    es.emit('end', '[DONE]')
+
+    expect(api.streaming.value).toBe(false)   // the panel's indicator
+    expect(streaming.value).toBe(false)       // the shared ref the view reads
+    expect(es.closed).toBe(true)              // no auto-reconnect
+    expect(api.error.value).not.toBeNull()    // and the user is told
   })
 })
 

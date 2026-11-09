@@ -66,22 +66,50 @@ export const useClusterStore = defineStore('cluster', () => {
       // `if (Array.isArray(v))` was always false because loadOrHydrate
       // returned void, leaving activeCluster null on first login.
       await clustersFetch.loadOrHydrate()
-      // A selection restored from localStorage belongs to whoever used this
-      // browser last. If the current login cannot see that cluster, every
-      // request carries a context its session kubeconfig does not have and the
-      // server answers 409. Drop it and fall through to the default below.
-      if (activeCluster.value && !clusters.value.some((c) => c.name === activeCluster.value)) {
-        activeCluster.value = null
-        activeNamespace.value = '_all'
-        persist()
-      }
-      if (clusters.value.length && !activeCluster.value) {
+      adoptClusters()
+    } catch (e: any) {
+      // Silent — clusters endpoint not available (e.g. unauth'd). Router
+      // guard will redirect to /login if needed.
+    }
+  }
+
+  /**
+   * Re-list the clusters from the server, ignoring the localStorage cache.
+   *
+   * The cached list belongs to whoever used this browser last: right after
+   * a login the session is new, and its clusters are not the cached ones.
+   */
+  async function refreshClusters() {
+    try {
+      await clustersFetch.load()
+      // The selection was made deliberately, moments ago — it is NOT
+      // dropped here when the list does not carry it. Dropping a stale
+      // selection is the boot-time path's job (there the selection came
+      // from localStorage, i.e. from another browser session).
+      if (!activeCluster.value && clusters.value.length) {
         const cur = clusters.value.find((c) => c.is_current) ?? clusters.value[0]
         activeCluster.value = cur?.name ?? null
       }
     } catch (e: any) {
-      // Silent — clusters endpoint not available (e.g. unauth'd). Router
-      // guard will redirect to /login if needed.
+      // Silent — same reasoning as loadClusters(): a failed re-list must
+      // not break the login that just succeeded.
+    }
+  }
+
+  /** Drop a selection the current session cannot see, then pick a default. */
+  function adoptClusters() {
+    // A selection restored from localStorage belongs to whoever used this
+    // browser last. If the current login cannot see that cluster, every
+    // request carries a context its session kubeconfig does not have and the
+    // server answers 409. Drop it and fall through to the default below.
+    if (activeCluster.value && !clusters.value.some((c) => c.name === activeCluster.value)) {
+      activeCluster.value = null
+      activeNamespace.value = '_all'
+      persist()
+    }
+    if (clusters.value.length && !activeCluster.value) {
+      const cur = clusters.value.find((c) => c.is_current) ?? clusters.value[0]
+      activeCluster.value = cur?.name ?? null
     }
   }
 
@@ -151,6 +179,7 @@ export const useClusterStore = defineStore('cluster', () => {
 
   return {
     clusters, namespaces, activeCluster, activeNamespace, currentCluster,
-    loadClusters, loadNamespaces, setCluster, setNamespace, restore, reset,
+    loadClusters, refreshClusters, loadNamespaces, setCluster, setNamespace,
+    restore, reset,
   }
 })

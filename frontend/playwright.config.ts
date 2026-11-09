@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 import { loadEnv } from 'vite'
 import {
-  BACKEND_DIR, BACKEND_PY, FAKE_APISERVER, KUBECONFIG_PATH,
+  BACKEND_DIR, BACKEND_PY, E2E_DB_PATH, FAKE_APISERVER, KUBECONFIG_PATH,
   ensureKubeconfig, FAKE_PROD_PORT, FAKE_STAGING_PORT, BACKEND_PORT,
   backendInterpreterAvailable,
 } from './e2e/_cluster-env'
@@ -79,6 +79,20 @@ if (hasBackend) {
         KUBECONFIG_PATH,
         no_proxy: '127.0.0.1,localhost',
         NO_PROXY: '127.0.0.1,localhost',
+        // The cluster-switch spec needs the backend in OPEN mode ("No
+        // authentication: the backend runs in open mode"). Without this the
+        // spawned backend inherits the developer's own backend/.env —
+        // AUTH_PROVIDER=teleport — and the spec lands on the login page
+        // instead of the cluster switcher, failing all five tests with
+        // "element not found". The process environment beats the .env file,
+        // so an empty value here wins over whatever the .env says.
+        AUTH_PROVIDER: '',
+        API_TOKEN: '',
+        // The rest of backend/.env still reaches the spawned backend, and
+        // DATABASE_URL is the one that matters: the default points at the
+        // developer's own ./data/app.db, so the run would migrate it and
+        // write test rows into it. A throwaway file keeps the run isolated.
+        DATABASE_URL: `sqlite+aiosqlite:///${E2E_DB_PATH}`,
       },
     },
   )
@@ -101,9 +115,11 @@ export default defineConfig({
   testDir: './e2e',
   // These target a live dev stack against a real cluster (a real pod, real log
   // lines) and so cannot run here. `logs.spec.ts` has its own config
-  // (playwright.dev.config.ts); `zz-*` are local scratch inspectors pinned to a
-  // hard-coded dev port, and are gitignored.
-  testIgnore: ['**/logs.spec.ts', '**/zz-*.spec.ts'],
+  // (playwright.dev.config.ts); `auth-live.spec.ts` needs the developer's
+  // Teleport credentials and its own dev stack (also playwright.dev.config.ts);
+  // `zz-*` are local scratch inspectors pinned to a hard-coded dev port, and
+  // are gitignored.
+  testIgnore: ['**/logs.spec.ts', '**/auth-live.spec.ts', '**/zz-*.spec.ts'],
   timeout: 60_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,

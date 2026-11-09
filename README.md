@@ -46,9 +46,9 @@ No SaaS, no vendor lock. Your cluster, your data, your model.
 ## ✨ Features
 
 - **Multi-cluster, one UI** — every context in your kubeconfig, switchable live. No restart.
-- **Real-time log stream** — SSE, multi-pod select, ANSI color preserved, deduplicated, downloadable.
+- **Real-time log stream** — SSE, every container of a pod, ANSI color preserved, deduplicated, downloadable.
 - **AI explainer, any model** — OpenAI · Anthropic · Bedrock · Gemini · Ollama · 100+ via LiteLLM.
-- **Keyboard-first** — `⌘K` palette, `g d/p/n/e/f/a` page jumps. Mouse optional.
+- **Keyboard-first** — `⌘K` palette, `g d/p/n/e/f` page jumps. Mouse optional.
 - **Readable in the dark** — a full dark theme (token-level, not inverted CSS), because 3 a.m. is the hour this thing gets opened.
 - **Dense when it needs to be** — sortable pod table, three density tiers, a log pane that owns the viewport.
 - **Pluggable auth** — bearer · session · Teleport `tsh` · your own plugin, one file.
@@ -139,6 +139,12 @@ itself to the plugin's `form_fields()`. `acquire()` returns the kubeconfig to
 write into the session's private directory; per-session isolation, client
 pooling and cleanup are already handled for you.
 
+> **The four cluster names in Teleport mode** (Teleport cluster / K8s
+> registered name / kubeconfig context / the API's `?context=`) are easy to
+> mix up, and mixing them up looks like "logged in, but the page never
+> loads". The mapping and the rules are in
+> [docs/design/teleport-names.md](docs/design/teleport-names.md).
+
 </details>
 
 ## ⚖️ Compare
@@ -146,7 +152,7 @@ pooling and cleanup are already handled for you.
 | | `kubectl` | Dashboard | Lens | **Spotlight** |
 |---|:---:|:---:|:---:|:---:|
 | Live multi-cluster switch | via `kubectx` | manual | yes | **yes** |
-| Real-time multi-pod log stream | `-f` | yes | yes | **yes, deduplicated** |
+| Real-time log stream | `-f` | yes | yes | **yes, deduplicated** |
 | AI log explainer | — | — | — | **yes, any LLM** |
 | Pluggable auth | — | — | partial | **yes, one file** |
 | Type-safe API → UI | — | — | — | **yes, Pydantic → TS** |

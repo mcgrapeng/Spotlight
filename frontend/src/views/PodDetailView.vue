@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, RefreshCw, Bot, AlertCircle, AlertTriangle, Clock } from '@lucide/vue'
-import { podsApi, eventsApi } from '@/api/endpoints'
+import { ArrowLeft, RefreshCw, Bot, AlertCircle, AlertTriangle, Clock, Star } from '@lucide/vue'
+import { toast } from 'vue-sonner'
+import { podsApi, eventsApi, favoritesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
 import { useRelativeTime } from '@/composables/useRelativeTime'
 import { usePodLogs } from '@/composables/usePodLogs'
@@ -100,6 +101,64 @@ const filteredLogsForAI = ref<readonly LogLineOut[]>([])
 // race between component setup and log stream startup.
 watch(unreadCount, (v) => { logUnread.value = v }, { immediate: true })
 
+// ── 收藏 ──────────────────────────────────────────────────────────────────
+// 收藏夹以前只能看不能加：POST /favorites 全仓没有调用方，
+// 空状态却让人「去 Pod 详情页添加」——而那里根本没有收藏按钮。
+const favoriteId = ref<number | null>(null)
+const favBusy = ref(false)
+// The id belongs to the pod that is on screen. A list reply that arrives
+// after the user moved to another pod must not write over the new pod's
+// state — and the star must never offer "remove" for a favourite of a pod
+// that is no longer shown.
+let favSeq = 0
+
+async function syncFavorite() {
+  const p = pod.value
+  if (!p) return
+  const mySeq = ++favSeq
+  favBusy.value = true
+  try {
+    const favs = await favoritesApi.list()
+    if (mySeq !== favSeq) return
+    // A favourite is cluster-scoped: `default/nginx` exists in nearly every
+    // cluster, so matching on the name alone would show pod B's star as
+    // "favourited" and the next click would delete pod A's favourite.
+    const targetCluster = cluster.activeCluster ?? ''
+    favoriteId.value = favs.find(
+      (f) => f.resource_type === 'pod' && f.name === p.name
+        && f.namespace === p.namespace && f.cluster === targetCluster,
+    )?.id ?? null
+  } catch {
+    if (mySeq === favSeq) favoriteId.value = null
+  } finally {
+    if (mySeq === favSeq) favBusy.value = false
+  }
+}
+
+async function toggleFavorite() {
+  const p = pod.value
+  if (!p || favBusy.value) return
+  favBusy.value = true
+  try {
+    if (favoriteId.value !== null) {
+      await favoritesApi.remove(favoriteId.value)
+      favoriteId.value = null
+      toast.success(t('toast.favoriteDeleted'))
+    } else {
+      const created = await favoritesApi.add({
+        resource_type: 'pod', name: p.name, namespace: p.namespace,
+        cluster: cluster.activeCluster ?? '', note: '',
+      })
+      favoriteId.value = created.id
+      toast.success(t('toast.favoriteAdded', { name: p.name }))
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail ?? t('state.error'))
+  } finally {
+    favBusy.value = false
+  }
+}
+
 // Ponytail: 把 load() + onMounted + name/namespace watch 替换成 useResource。
 const { data: pod, loading, error, reload: load } = useResource<PodOut>(
   () => podsApi.get(cluster.activeCluster!, namespace.value, name.value),
@@ -108,6 +167,14 @@ const { data: pod, loading, error, reload: load } = useResource<PodOut>(
     skip: () => !name.value,
   },
 )
+
+// The star reflects whether THIS pod is already in the caller's favorites.
+// The previous pod's id has to go first: it belongs to a favourite of a
+// pod that is no longer on screen, and clicking the star would delete it.
+watch(pod, () => {
+  favoriteId.value = null
+  void syncFavorite()
+}, { immediate: true })
 
 // Pod events fetched lazily on tab switch. Separate resource so switching to
 // Events tab triggers a fetch (not blocked by the pod fetch).
@@ -157,6 +224,17 @@ function back() { router.push({ name: 'pods' }) }
     <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`" class="shrink-0">
       <template #actions>
         <PodStatusPill :phase="pod.phase" class="mr-2" />
+        <Button
+          variant="outline" size="sm" :disabled="favBusy" @click="toggleFavorite"
+          :aria-label="favoriteId !== null ? t('pod.unfavorite') : t('pod.favorite')"
+        >
+          <template #icon>
+            <Star
+              :size="14" :stroke-width="1.75"
+              :class="favoriteId !== null ? 'fill-current text-warning-foreground' : ''"
+            />
+          </template>
+        </Button>
         <Button variant="outline" size="sm" @click="load" :loading="loading" :aria-label="t('pod.refresh')">
           <template #icon>
             <RefreshCw :size="14" :stroke-width="1.75" />

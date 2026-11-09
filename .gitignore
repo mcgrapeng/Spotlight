@@ -183,3 +183,5 @@ frontend/package-lock.json
 .research
 backend/.schemathesis/
 backend/mutants/
+backend/.hypothesis
+backend/.coveragerc

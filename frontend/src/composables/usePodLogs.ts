@@ -40,6 +40,29 @@ export function normalizeStreamPayload(data: unknown): LogLineOut[] {
 }
 
 /**
+ * Merge a newest-first batch into a newest-first panel.
+ *
+ * The server reads a whole window, so a batch can hold lines OLDER than the
+ * panel's oldest one (the backfill asked for fewer lines than the window
+ * contains). Prepending such a batch would put the older lines on top of
+ * the newer ones, so the two lists are merged by timestamp instead. The
+ * timestamps come from the backend in one fixed format, so comparing them
+ * as strings compares them as times.
+ */
+function mergeNewestFirst(batch: LogLineOut[], panel: LogLineOut[]): LogLineOut[] {
+  const out: LogLineOut[] = []
+  let i = 0
+  let j = 0
+  while (i < batch.length && j < panel.length) {
+    if (batch[i].timestamp >= panel[j].timestamp) out.push(batch[i++])
+    else out.push(panel[j++])
+  }
+  while (i < batch.length) out.push(batch[i++])
+  while (j < panel.length) out.push(panel[j++])
+  return out
+}
+
+/**
  * Pod logs composable.
  *
  * Loads `podsApi.historyLogs()` first (backfill), then opens an
@@ -189,14 +212,24 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       }
       seen.add(sig)
     }
+    // Seed OLDEST-first. `seen` evicts its oldest entry when it is full, and
+    // the panel is newest-first — so seeding it in panel order evicted the
+    // NEWEST lines. Past `seenCap` the tail was gone from the set and the
+    // stream's replay (the last `tail` lines, which the server re-reads)
+    // came back as new and was prepended a second time.
+    const seed = (ls: LogLineOut[]) => {
+      for (let i = ls.length - 1; i >= 0; i--) {
+        remember(sigOf(ls[i].timestamp, ls[i].content))
+      }
+    }
     if (sameTarget) {
       // Seed from the panel itself, because the backfill below is skipped on
       // this path and this is the only thing standing between the replay and
       // a doubled panel. `deferred` has to be seeded too: a replayed line
       // that is already waiting in the backlog would otherwise be queued in
       // `pending` and committed a second time on top of it.
-      for (const l of lines.value) remember(sigOf(l.timestamp, l.content))
-      for (const b of deferred) for (const l of b) remember(sigOf(l.timestamp, l.content))
+      seed(lines.value)
+      for (const b of deferred) seed(b)
     }
 
     // Backfill only on a target change. Re-fetching a target already on
@@ -228,7 +261,7 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         }
         flat.reverse()
         lines.value = flat
-        for (const l of flat) remember(sigOf(l.timestamp, l.content))
+        seed(flat)
       } catch (e: any) {
         if (!alive || myGen !== gen) return
         // ponytail: 不用 axios 的原始 message。
@@ -273,7 +306,9 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       const batch = pending.slice().reverse()
       if (opts.autoFollow?.value) {
         // User is at the top — prepend immediately (live tail experience).
-        lines.value = [...batch, ...lines.value]
+        // Merged, not prepended: the server reads a whole window, so the
+        // batch can hold lines older than the panel's oldest one.
+        lines.value = mergeNewestFirst(batch, lines.value)
         if (lines.value.length > max) {
           lines.value = lines.value.slice(0, max)
         }
@@ -317,6 +352,18 @@ export function usePodLogs(opts: UsePodLogsOptions) {
           flushTimer = setTimeout(flush, 100)
         }
       } catch (err) { console.error('parse log', err) }
+    })
+    es.addEventListener('end', () => {
+      // The backend ends the stream when the pod or its only container is
+      // gone — it sends `event: end` and closes the response. The native
+      // EventSource sees EOF and reconnects every ~3s forever, re-running
+      // the container lookup and a log read each time, while the panel
+      // still claims to be streaming. So the stream is closed here and the
+      // panel is told the tail is over.
+      if (!alive || myGen !== gen) return
+      closeStream()
+      if (opts.streaming) opts.streaming.value = false
+      error.value = t('pod.logsDisconnected')
     })
     es.addEventListener('error', () => {
       if (!alive || myGen !== gen) return

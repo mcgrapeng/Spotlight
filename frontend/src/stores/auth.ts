@@ -140,7 +140,18 @@ export const useAuthStore = defineStore('auth', () => {
         // 后,UI 顶部的 ClusterCombobox 还是空的(namespace 选不到、
         // PodListView 拿不到 activeCluster)。setCluster 内部会触发
         // namespaces 重 fetch。
-        useClusterStore().setCluster(r.cluster)
+        //
+        // 用 `context` 而不是 `cluster`:后者是 Teleport 里的 K8s 集群名
+        // ("pvg1s1-cloud"),前者才是会话 kubeconfig 里的 context 名
+        // ("<proxy>-<cluster>")。API 的 ?context= 要的是后者,用错就是 409。
+        const clusterStore = useClusterStore()
+        await clusterStore.setCluster(r.context ?? r.cluster)
+        // 顶栏下拉框的选项来自 /clusters,而 App.vue 挂载时那次调用发生在
+        // 登录之前(没有会话 → 401 → 列表是空的),登录后是 router.replace
+        // 不会再挂载 —— 所以这里必须重新拉一次。走网络而不是缓存:缓存里
+        // 是上一个会话的集群,拿它会把刚选中的 context 判成"看不见"然后
+        // 把选中清掉。
+        await clusterStore.refreshClusters()
         return true
       }
       error.value = t('login.clusterFailed')

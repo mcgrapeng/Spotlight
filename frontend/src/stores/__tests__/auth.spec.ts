@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { authApi } from '@/api/endpoints'
+import { useClusterStore } from '@/stores/cluster'
+import { authApi, clustersApi } from '@/api/endpoints'
 
 vi.mock('@/api/endpoints', () => ({
   authApi: {
@@ -10,6 +11,8 @@ vi.mock('@/api/endpoints', () => ({
     chooseCluster: vi.fn(),
     logout: vi.fn(),
   },
+  clustersApi: { list: vi.fn().mockResolvedValue([]) },
+  namespacesApi: { list: vi.fn().mockResolvedValue([]) },
 }))
 
 /** Teleport-shaped status: password + optional otp fields. */
@@ -152,6 +155,32 @@ describe('auth store', () => {
     expect(store.required).toBe(false)
     expect(store.pendingClusters).toEqual([])
     expect(store.error).toBeNull()
+  })
+
+  it('chooseCluster selects the kubeconfig context, not the Teleport cluster name', async () => {
+    // The API's ?context= wants the kubeconfig context ("<proxy>-<cluster>"),
+    // not the Teleport K8s cluster name ("pvg1s1-cloud") — picking the latter
+    // makes every request 409.
+    vi.mocked(authApi.chooseCluster).mockResolvedValueOnce({
+      ok: true, cluster: 'pvg1s1-cloud', context: 'gt.internal.zhiman.tech-pvg1s1-cloud',
+    })
+    const store = useAuthStore()
+    const ok = await store.chooseCluster('pvg1s1-cloud')
+    expect(ok).toBe(true)
+    expect(useClusterStore().activeCluster).toBe('gt.internal.zhiman.tech-pvg1s1-cloud')
+  })
+
+  it('chooseCluster refreshes the cluster list, so the top bar has options', async () => {
+    // The boot-time loadClusters() ran before the session existed (401 →
+    // an empty list) and the post-login navigation is a router.replace,
+    // which never remounts the app — so nothing loaded /clusters after the
+    // login and the ClusterCombobox stayed empty.
+    vi.mocked(authApi.chooseCluster).mockResolvedValueOnce({
+      ok: true, cluster: 'c1', context: 'ctx-c1',
+    })
+    const store = useAuthStore()
+    await store.chooseCluster('c1')
+    expect(clustersApi.list).toHaveBeenCalled()
   })
 
   it('chooseCluster failure surfaces dict detail', async () => {

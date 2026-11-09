@@ -33,6 +33,15 @@ export const STAGING_POD = `${STAGING_SHORT}-pod-a`
 
 export const KUBECONFIG_PATH = resolve(HERE, '.tmp', 'cluster-switch-kubeconfig.yaml')
 
+/**
+ * The database the spawned backend uses.
+ *
+ * Without this the backend inherits the developer's `backend/.env` and
+ * opens `./data/app.db` — the e2e run then migrates that database and
+ * writes test rows into it.
+ */
+export const E2E_DB_PATH = resolve(HERE, '.tmp', 'e2e-app.db')
+
 const KUBECONFIG = `apiVersion: v1
 kind: Config
 current-context: ${PROD_CONTEXT}

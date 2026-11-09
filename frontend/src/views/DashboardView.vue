@@ -28,6 +28,8 @@ const { formatRel } = useRelativeTime()
 
 const cluster = useClusterStore()
 const stats = ref<DashboardOut | null>(null)
+// The cluster/namespace the snapshot on screen belongs to.
+const statsTarget = ref<string>('')
 const loading = ref(true)
 const error = ref<string | null>(null)
 // ponytail: 刷新失败单独一个错误位，不复用 error。
@@ -39,6 +41,13 @@ const error = ref<string | null>(null)
 //
 // 现在：error 只管「第一次就没数据」，refreshError 管「有数据但刷新失败」。
 const refreshError = ref<string | null>(null)
+// ponytail: 「一屏数据都没有」的消息另有一个位置。
+//
+// `error` 是 useCachedFetch 的（opts.error）：它在每次 load 开头清空自己，
+// 后台静默轮询也算一次 —— 所以写进去的消息一分钟后就自己没了，
+// 而 stats 已经被集群切换清空，模板三个分支一个都不匹配，页面就成了一片空白。
+// 这个 ref 不归那个组合式函数管。
+const loadError = ref<string | null>(null)
 const refreshing = ref(false)
 const lastRefreshed = ref<Date | null>(null)
 
@@ -97,9 +106,19 @@ async function load(silent = false) {
   // Rekey here, not at setup: a `computed(...).value` captured at store setup
   // freezes at 'none' and serves one cluster's dashboard for every other one.
   // 命名空间也进键：快照是按命名空间的，键里没有它就会串。
-  statsFetch.rekey(`dashboard:${cluster.activeCluster}:${cluster.activeNamespace || '_all'}`)
+  const target = `dashboard:${cluster.activeCluster}:${cluster.activeNamespace || '_all'}`
+  statsFetch.rekey(target)
   error.value = null
   refreshError.value = null
+  // A different cluster/namespace is a DIFFERENT snapshot. Keeping the old
+  // one on screen showed cluster A's numbers under cluster B's name — and
+  // the error state never fired, because `stats` was still set.
+  const targetChanged = target !== statsTarget.value
+  if (targetChanged) {
+    stats.value = null
+    lastRefreshed.value = null
+    statsTarget.value = target
+  }
   if (silent) {
     refreshing.value = true
     try {
@@ -108,6 +127,17 @@ async function load(silent = false) {
       const ok = await statsFetch.refresh(true)
       if (ok) {
         lastRefreshed.value = new Date()
+        loadError.value = null
+      } else if (stats.value === null) {
+        // No snapshot on screen: this has to be the error page. `refreshError`
+        // is rendered only inside the `stats` branch, so a failure without a
+        // snapshot must not go there (blank page).
+        //
+        // `stats === null` rather than the targetChanged flag: that flag is
+        // one-shot, and switching a cluster fires TWO loads (the cluster
+        // watcher and the namespace one), so the first of them already
+        // consumed it.
+        loadError.value = t('state.error')
       } else {
         refreshError.value = t('dashboard.refreshFailed')
       }
@@ -123,6 +153,7 @@ async function load(silent = false) {
       if (v) {
         stats.value = v
         lastRefreshed.value = new Date()
+        loadError.value = null
       }
     } finally {
       loading.value = false
@@ -375,7 +406,7 @@ const recentActivity = computed(() => {
   <LoadingState v-if="!stats && loading" />
   <!-- ponytail: 只有「一屏数据都没有」才整页换成错误页。有数据的时候，
        刷新失败只更新 refreshError，快照留在屏幕上。 -->
-  <ErrorState v-else-if="error && !stats" :message="error" @retry="load" />
+  <ErrorState v-else-if="(error || loadError) && !stats" :message="error || loadError || ''" @retry="load" />
   <div v-else-if="stats">
 
     <PageHeader :title="t('route.dashboard')" :subtitle="compactStats">
