@@ -46,20 +46,19 @@ export interface UseLogFiltersOpts {
 }
 
 export function useLogFilters(opts: UseLogFiltersOpts) {
-  const filtered = computed(() => {
-    const qRaw = opts.search.value.trim()
-    const q = qRaw.toLowerCase()
-    const minSev = opts.minSeverity.value
-    const max = opts.max?.value ?? 50000
+  // The lines the SEARCH kept, before the level filter is applied.
+  //
+  // The two chip rows are two dimensions of ONE filter, and each row's
+  // counts have to answer "how many lines would I get if I clicked this
+  // chip" — with the OTHER row's filter already applied. The level chips
+  // count within the current container; the container chips count within
+  // the current level. That needs the search-only set on its own.
+  const searchMatched = computed(() => {
+    const q = opts.search.value.trim().toLowerCase()
     const traceQ = q.startsWith('trace:') ? q.slice('trace:'.length).trim() : null
 
     const out: LogLineOut[] = []
     for (const l of opts.lines.value) {
-      if (opts.unknownOnly?.value) {
-        if (!isUnknownSeverity(l.severity)) continue
-      } else if (minSev > 0 && (SEVERITY_RANK[l.severity.toLowerCase()] ?? 0) < minSev) {
-        continue
-      }
       if (traceQ !== null) {
         // Trace filter path: must match trace_id, content match is skipped
         // so a UUID-string typed in plain search doesn't pull unrelated lines.
@@ -76,6 +75,22 @@ export function useLogFilters(opts: UseLogFiltersOpts) {
         ) continue
       }
       out.push(l)
+    }
+    return out
+  })
+
+  const filtered = computed(() => {
+    const minSev = opts.minSeverity.value
+    const max = opts.max?.value ?? 50000
+
+    const out: LogLineOut[] = []
+    for (const l of searchMatched.value) {
+      if (opts.unknownOnly?.value) {
+        if (!isUnknownSeverity(l.severity)) continue
+      } else if (minSev > 0 && (SEVERITY_RANK[l.severity.toLowerCase()] ?? 0) < minSev) {
+        continue
+      }
+      out.push(l)
       if (out.length >= max) break
     }
     return out
@@ -86,5 +101,5 @@ export function useLogFilters(opts: UseLogFiltersOpts) {
     return q.startsWith('trace:')
   })
 
-  return { filtered, traceFilterActive }
+  return { filtered, searchMatched, traceFilterActive }
 }

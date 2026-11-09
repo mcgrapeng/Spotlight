@@ -56,19 +56,6 @@ export function useLogSeverityCounts(lines: Ref<readonly LogLineOut[]>) {
 }
 
 /**
- * minSeverity thresholds for each chip (matches SEVERITY_RANK semantics).
- *
- * Not `keyof SeverityCounts` any more: the unknown bucket has no rank.
- * Unrecognised lines are not "below info", they are a separate question.
- */
-export const SEVERITY_CHIP_THRESHOLDS: Record<'debug' | 'info' | 'warn' | 'error', number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-}
-
-/**
  * The filter chips actually rendered above the log stream.
  *
  * `SEVERITY_CHIP_THRESHOLDS.debug` is 0 — the same rank as the "all" chip — so

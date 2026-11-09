@@ -365,17 +365,19 @@ export default {
     // ponytail: see the zh-CN note — unclassified lines get their own bucket.
     severityUnknown: 'Unclassified',
     severityUnknownLines: 'Unclassified · {count} lines',
-    containerTabsLabel: 'Container selection',
+    // ponytail: the container row is a filter, not a tab list. It used
+    // role="tablist" / role="tab" with no tabpanel and no arrow-key
+    // navigation, so a screen reader announced a tab. It is a group of
+    // toggle buttons now.
+    containerFilterLabel: 'Filter by container',
     container: 'Container',
+    // The level row already has an "All"; this one says what it filters.
+    containerAll: 'All containers',
     searchPlaceholder: 'Filter (content / container / level) · / to focus search',
     searchLabel: 'Filter logs',
     clearFilterLabel: 'Clear filter',
     searchHistoryLabel: 'Search history',
-    searchHistoryEmpty: 'No recent searches',
     searchHistoryClearAll: 'Clear all',
-    wrapOn: 'Currently: word wrap on (click to switch to no wrap)',
-    wrapOff: 'Currently: no wrap (click to switch to word wrap)',
-    toggleWrapLabel: 'Toggle word wrap',
     pauseLabel: 'Pause (P)',
     resumeLabel: 'Resume (K)',
     followOffLabel: 'Turn off auto-follow',
@@ -413,7 +415,6 @@ export default {
     moreActions: 'More',
     menuToggleWrap: 'Toggle line wrap',
     menuClear: 'Clear the screen',
-    menuShortcuts: 'Keyboard shortcuts',
     clearConfirmTitle: 'Clear the current log?',
     clearConfirmBody: 'The rows on screen are cleared. The logs in the cluster are not affected.',
     clearConfirmOk: 'Clear',

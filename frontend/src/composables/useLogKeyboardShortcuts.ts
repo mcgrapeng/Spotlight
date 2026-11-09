@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref, watchEffect, type Ref } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { keyboardRegionClaimed } from './useKeyboardShortcuts'
 
 export interface LogShortcutHandlers {
@@ -19,15 +19,18 @@ export interface LogShortcutHandlers {
 }
 
 /**
- * LogViewer-scoped keyboard shortcuts. Listens on `document` ONLY while the
- * LogViewer region is hovered (mouseenter/leave toggle), and skips the handler
- * while a typing target has focus. Other parts of the page are unaffected
- * unless the user is hovering the LogViewer.
+ * LogViewer-scoped keyboard shortcuts.
+ *
+ * The shortcuts belong to the panel while the panel is on screen — not while
+ * the mouse happens to be over it. The panel's own placeholder advertises `/`
+ * ("聚焦搜索"), and with a hover gate that key did nothing until the reader
+ * happened to move the pointer onto the log. A keyboard-only reader could
+ * never reach any of them at all.
+ *
+ * The region claims the keyboard while it lives (see `keyboardRegionClaimed`),
+ * so the global `g <letter>` navigation does not fire underneath it.
  */
-export function useLogKeyboardShortcuts(
-  handlers: LogShortcutHandlers,
-  opts: { active: Ref<boolean> } = { active: ref(true) },
-) {
+export function useLogKeyboardShortcuts(handlers: LogShortcutHandlers) {
   const isTyping = (e: KeyboardEvent): boolean => {
     const t = e.target as HTMLElement | null
     if (!t) return false
@@ -38,7 +41,6 @@ export function useLogKeyboardShortcuts(
   }
 
   function onKey(e: KeyboardEvent) {
-    if (!opts.active.value) return
     if (isTyping(e)) {
       // Escape inside the search box: clear and blur, leave to handler.
       if (e.key === 'Escape') handlers.focusSearch?.()
@@ -88,20 +90,13 @@ export function useLogKeyboardShortcuts(
     }
   }
 
-  // ponytail: only attach to document when opts.active flips true. The caller
-  // (LogViewer) toggles active via mouseenter/leave on the scroll area, so
-  // other views never see these key events.
-  watchEffect(() => {
-    if (opts.active.value) {
-      document.addEventListener('keydown', onKey)
-    } else {
-      document.removeEventListener('keydown', onKey)
-    }
-    // Claim the keyboard for the region. The global registry binds `g` as
-    // a navigation prefix; inside the log viewer `g` means "jump to the
-    // next error", and `g p` ("go to pods") would yank the reader off the
-    // pod they are debugging.
-    keyboardRegionClaimed.value = opts.active.value
+  // Claim the keyboard for the region. The global registry binds `g` as
+  // a navigation prefix; inside the log viewer `g` means "jump to the
+  // next error", and `g p` ("go to pods") would yank the reader off the
+  // pod they are debugging.
+  onMounted(() => {
+    document.addEventListener('keydown', onKey)
+    keyboardRegionClaimed.value = true
   })
 
   onBeforeUnmount(() => {

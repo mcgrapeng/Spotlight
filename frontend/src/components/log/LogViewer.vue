@@ -167,7 +167,7 @@ const minSeverity = ref(0)
 // 第五个 rank。
 const unknownOnly = ref(false)
 
-const { filtered } = useLogFilters({
+const { filtered, searchMatched } = useLogFilters({
   lines: toRef(props, 'lines'),
   search,
   minSeverity,
@@ -766,8 +766,18 @@ function toggleExpand(key: string) {
   expanded.value = s
 }
 
-// === Severity counts (4 aggregated buckets, over full unfiltered set) ===
-const counts = useLogSeverityCounts(toRef(props, 'lines'))
+// === Severity counts (4 aggregated buckets) ===
+//
+// The level chips count the lines the reader would GET if they clicked the
+// chip: the current container, within the current search. They used to count
+// the whole buffer, so with sidecar selected the chips still described the
+// other container's lines — three numbers on screen, each about a different
+// set than the one in front of the reader.
+const counts = useLogSeverityCounts(computed(() => {
+  const sc = selectedContainer.value
+  if (!sc) return searchMatched.value
+  return searchMatched.value.filter((l) => l.container === sc)
+}))
 // 芯片显示的是「点了之后会看到几行」，不是该档位自己的行数。
 const chipCounts = computed(() => cumulativeSeverityCounts(counts.value))
 
@@ -780,10 +790,18 @@ const chipCounts = computed(() => cumulativeSeverityCounts(counts.value))
 //
 // 它正在被选中时不能消失：那样面板上就没有任何一枚激活的芯片了。计数
 // 为 0 的芯片照旧留着（禁用状态），它们占着位置，位置就不会跳。
+// How many lines "all levels" would show: the current container, within the
+// current search. The chip next to it used to print the whole buffer's size.
+const levelAllCount = computed(() => {
+  const sc = selectedContainer.value
+  const src = searchMatched.value
+  return sc ? src.filter((l) => l.container === sc).length : src.length
+})
+
 const severityChips = computed(() =>
   SEVERITY_FILTER_CHIPS.filter((chip) => {
     if (minSeverity.value === chip.rank) return true
-    return chipCounts.value[chip.bucket] !== props.lines.length
+    return chipCounts.value[chip.bucket] !== levelAllCount.value
   }),
 )
 
@@ -799,9 +817,13 @@ const severityFilterLabel = computed(() => {
 const selectedContainer = ref<string | null>(null)
 const availableContainers = computed(() => props.containers ?? [])
 
+// The container chips count the lines within the current LEVEL filter, so
+// with ERROR+ active they say how many errors each container holds. They
+// used to count the whole buffer, so the row stayed frozen while the level
+// filter changed the rows underneath it.
 const containerCounts = computed(() => {
   const c: Record<string, number> = {}
-  for (const l of props.lines) c[l.container] = (c[l.container] ?? 0) + 1
+  for (const l of filtered.value) c[l.container] = (c[l.container] ?? 0) + 1
   return c
 })
 
@@ -964,8 +986,7 @@ function toggleAutoFollow() {
   }
 }
 
-// === Keyboard (scoped to LogViewer via mouseenter/leave) ===
-const shortcutsActive = ref(false)
+// === Keyboard (owned by the panel while it is on screen) ===
 const helpOpen = ref(false)
 
 function focusSearchInput() {
@@ -998,9 +1019,16 @@ function jumpToError(dir: 1 | -1) {
   revealGroup(gs[target], target)
 }
 
+/**
+ * Is this line an ERROR?
+ *
+ * It used to include warnings. Then `e` (errors only) and `g` (jump to the
+ * next error) meant different things: press `e`, then `g`, and the reader
+ * landed on a warning out of 1,446 — while 20 actual errors waited further
+ * down. Both now mean error, so the shortcut and the filter agree.
+ */
 function isErrorLine(l: DecoratedLine): boolean {
-  const sev = l.raw.severity.toLowerCase()
-  return SEV_ERROR_KEYS.has(sev) || sev === 'warn' || sev === 'warning'
+  return SEV_ERROR_KEYS.has(l.raw.severity.toLowerCase())
 }
 
 function groupHasError(g: Group): boolean {
@@ -1047,20 +1075,15 @@ useLogKeyboardShortcuts(
     focusSearch: focusSearchInput,
     toggleErrorsOnly,
     togglePause: togglePause,
-    clear: clearAll,
+    // The `c` shortcut must ask before it clears, exactly like the ⋯ menu
+    // does. It used to call clearAll() straight away, so the keyboard path
+    // destroyed the screen without the confirmation the mouse path requires.
+    clear: requestClear,
     jumpError: jumpToError,
     jumpLine,
     toggleHelp: () => { helpOpen.value = !helpOpen.value },
   },
-  { active: shortcutsActive },
 )
-
-function onRegionEnter() {
-  shortcutsActive.value = true
-}
-function onRegionLeave() {
-  shortcutsActive.value = false
-}
 
 async function copyAll() {
   // ponytail: 复制出来的是时间正序 —— 粘进 issue 的时候，第一行就该是
@@ -1081,11 +1104,6 @@ async function copyAll() {
 }
 
 onMounted(() => {
-  // ponytail: keyboard shortcuts are scoped to the LogViewer region via the
-  // mouseenter/leave toggle on shortcutsActive (see useLogKeyboardShortcuts).
-  // Mounting/unmounting of `document` listeners is handled by the composable's
-  // watchEffect. We still need an initial focus state for SSR safety.
-  shortcutsActive.value = false
   // Reduced motion reaches scroll animations too. The global stylesheet
   // shortens CSS animations and transitions, but a programmatic scroll is
   // neither, so the preference is honoured here.
@@ -1690,9 +1708,9 @@ const helpRows = computed(() => [
       >
         <Filter :size="12" :stroke-width="1.75" />
         {{ t('log.filterAll') }}
-        <span class="tabular-nums">{{ lines.length.toLocaleString() }}</span>
+        <span class="tabular-nums">{{ levelAllCount.toLocaleString() }}</span>
       </button>
-      <span class="text-muted-foreground/30 mx-0.5">·</span>
+      <span class="text-muted-foreground/50 mx-0.5">·</span>
       <button
         v-for="chip in severityChips"
         :key="chip.bucket"
@@ -1768,14 +1786,13 @@ const helpRows = computed(() => [
     <div
       v-if="availableContainers.length > 1"
       class="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-background shrink-0 overflow-x-auto whitespace-nowrap"
-      role="tablist"
-      :aria-label="t('log.containerTabsLabel')"
+      role="group"
+      :aria-label="t('log.containerFilterLabel')"
     >
       <span class="text-xs text-muted-foreground uppercase tracking-wider shrink-0 mr-1">{{ t('log.container') }}</span>
       <button
         type="button"
-        role="tab"
-        :aria-selected="selectedContainer === null"
+        :aria-pressed="selectedContainer === null"
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
           selectedContainer === null
@@ -1784,15 +1801,14 @@ const helpRows = computed(() => [
         )"
         @click="selectedContainer = null"
       >
-        {{ t('log.filterAll') }}
-        <span class="tabular-nums opacity-80">{{ lines.length.toLocaleString() }}</span>
+        {{ t('log.containerAll') }}
+        <span class="tabular-nums opacity-80">{{ filtered.length.toLocaleString() }}</span>
       </button>
       <button
         v-for="c in availableContainers"
         :key="c"
         type="button"
-        role="tab"
-        :aria-selected="selectedContainer === c"
+        :aria-pressed="selectedContainer === c"
         :title="c"
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition-colors ease-app dur-fast max-w-[180px] truncate',
@@ -2034,8 +2050,6 @@ const helpRows = computed(() => [
       role="log"
       aria-live="off"
       :aria-label="t('log.outputLabel')"
-      @mouseenter="onRegionEnter"
-      @mouseleave="onRegionLeave"
       @scroll="onScroll"
     >
       <div

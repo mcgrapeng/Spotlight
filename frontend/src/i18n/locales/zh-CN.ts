@@ -396,17 +396,20 @@ export default {
     // 于是「INFO+ 513」说的是 513 行都没被读懂。
     severityUnknown: '未识别',
     severityUnknownLines: '未识别 · {count} 行',
-    containerTabsLabel: '容器选择',
+    // ponytail: 容器这一行是筛选器，不是页签。
+    //
+    // 它原来用 role="tablist" / role="tab" —— 没有 tabpanel，没有
+    // 方向键导航，可读器却会把它念成「页签」。现在是一个按钮组，按钮
+    // 用 aria-pressed 表达「选中了哪个容器」。
+    containerFilterLabel: '按容器筛选',
     container: '容器',
+    // 级别那一行已经有一个「全部」，这一行得说清楚自己筛的是什么。
+    containerAll: '所有容器',
     searchPlaceholder: '过滤（内容 / 容器 / 级别） · / 聚焦搜索',
     searchLabel: '过滤日志',
     clearFilterLabel: '清除过滤',
     searchHistoryLabel: '搜索历史',
-    searchHistoryEmpty: '暂无历史搜索',
     searchHistoryClearAll: '清除全部',
-    wrapOn: '当前：自动换行（点击切换为不换行）',
-    wrapOff: '当前：不换行（点击切换为换行）',
-    toggleWrapLabel: '切换换行',
     pauseLabel: '暂停 (P)',
     resumeLabel: '继续 (K)',
     followOffLabel: '关闭自动跟随',
@@ -443,7 +446,6 @@ export default {
     moreActions: '更多',
     menuToggleWrap: '切换自动换行',
     menuClear: '清空当前屏幕',
-    menuShortcuts: '快捷键',
     clearConfirmTitle: '清空当前日志？',
     clearConfirmBody: '这一屏的内容会被清掉，集群里的日志不受影响。',
     clearConfirmOk: '清空',

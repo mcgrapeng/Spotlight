@@ -188,6 +188,75 @@ describe('LogViewer', () => {
     expect(wrapper.text()).not.toContain('plain text line')
   })
 
+  it('takes the keyboard without waiting for the mouse', async () => {
+    // The panel's own placeholder advertises "/" (聚焦搜索). The shortcuts
+    // used to be gated on the pointer being over the log, so the key it
+    // advertises did nothing until the reader happened to move the mouse.
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(3), unreadCount: 0 },
+      global: { plugins: [i18n] },
+      attachTo: document.body,
+    })
+    await wrapper.vm.$nextTick()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('过滤日志')
+    wrapper.unmount()
+  })
+
+  it('asks before clearing, exactly like the ⋯ menu does', async () => {
+    // The keyboard path used to call clearAll() straight away, so "c"
+    // destroyed the screen without the confirmation the mouse path asks
+    // for.
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(3), unreadCount: 0 },
+      global: { plugins: [i18n] },
+      attachTo: document.body,
+    })
+    await wrapper.vm.$nextTick()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(document.body.textContent ?? '').toContain('清空当前日志？')
+    expect(wrapper.emitted('clear')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('counts each row within the other row’s filter', async () => {
+    // The two chip rows are two dimensions of ONE filter. Their numbers used
+    // to describe the whole buffer, so with ERROR+ active the container row
+    // still said "web 2,334" for lines that were not on screen.
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [
+          line('error', 'boom', 'web'),
+          line('error', 'boom2', 'sidecar'),
+          line('info', 'fine', 'web'),
+        ],
+        unreadCount: 0,
+        containers: ['web', 'sidecar'],
+      },
+      global: { plugins: [i18n] },
+    })
+    const containerRow = () => wrapper.findAll('[role="group"]')[0]!
+    const containerNumbers = () =>
+      containerRow().findAll('button').map((b) => b.text().replace(/\D/g, ''))
+    // No level filter: every line counts.
+    expect(containerNumbers()).toEqual(['3', '2', '1'])
+
+    const errChip = wrapper.findAll('button[aria-pressed]').find((b) =>
+      b.text().toLowerCase().includes('error'),
+    )
+    await errChip!.trigger('click')
+    await wrapper.vm.$nextTick()
+    // ERROR+ active: the containers count the errors only.
+    expect(containerNumbers()).toEqual(['2', '1', '1'])
+    // The level row still describes every level, so the reader can widen back.
+    const levelRow = wrapper.findAll('[role="group"]')[0]!
+    expect(levelRow.exists()).toBe(true)
+    const allChip = wrapper.findAll('button[aria-pressed]').find((b) => b.text().includes('全部'))
+    expect(allChip!.text().replace(/\D/g, '')).toBe('3')
+  })
+
   it('hides the unread pill when unreadCount is 0', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(5), unreadCount: 0 },

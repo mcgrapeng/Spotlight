@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub, flushPromises } from '@vue/test-utils'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h } from 'vue'
 import DashboardView from '../DashboardView.vue'
 import { getI18n } from '@/i18n'
 import { podsApi } from '@/api/endpoints'
-import { useKeyboardShortcuts, keyboardRegionClaimed } from '@/composables/useKeyboardShortcuts'
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useLogKeyboardShortcuts } from '@/composables/useLogKeyboardShortcuts'
 
 const stats = {
@@ -90,17 +90,13 @@ describe('全局快捷键 vs 日志面板快捷键', () => {
           { combo: 'g e', handler: () => navigated.push('g e') },
           { combo: 'g f', handler: () => navigated.push('g f') },
         ])
-        const active = ref(true)
-        useLogKeyboardShortcuts(
-          {
-            jumpError: (dir: 1 | -1) => jumped.push(dir),
-            togglePause: () => paused.push(1),
-            toggleHelp: () => {},
-            focusSearch: () => {},
-            clear: () => {},
-          },
-          { active },
-        )
+        useLogKeyboardShortcuts({
+          jumpError: (dir: 1 | -1) => jumped.push(dir),
+          togglePause: () => paused.push(1),
+          toggleHelp: () => {},
+          focusSearch: () => {},
+          clear: () => {},
+        })
         return () => h('div', 'log area')
       },
     })
@@ -120,15 +116,13 @@ describe('全局快捷键 vs 日志面板快捷键', () => {
     wrapper.unmount()
   })
 
-  it('日志区没激活时，g 前缀照常导航', async () => {
+  it('页面上没有日志区时，g 前缀照常导航', async () => {
     const navigated: string[] = []
     const Harness = defineComponent({
       setup() {
         useKeyboardShortcuts(() => [
           { combo: 'g p', handler: () => navigated.push('g p') },
         ])
-        const active = ref(false)
-        useLogKeyboardShortcuts({}, { active })
         return () => h('div', 'not the log area')
       },
     })
@@ -168,21 +162,28 @@ describe('全局快捷键 vs 日志面板快捷键', () => {
         useKeyboardShortcuts(() => [
           { combo: 'g p', handler: () => navigated.push('g p') },
         ])
-        const active = ref(false)
-        useLogKeyboardShortcuts({}, { active })
         return () => h('div')
+      },
+    })
+    // The log panel claims the keyboard while it is on screen — it does not
+    // wait for the pointer to wander over it.
+    const LogRegion = defineComponent({
+      setup() {
+        useLogKeyboardShortcuts({})
+        return () => h('div', 'log area')
       },
     })
     const wrapper = mount(Harness)
     await flushPromises()
     // The prefix is armed outside the log area…
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true }))
-    // …then the pointer moves into the log viewer before the second key.
-    keyboardRegionClaimed.value = true
+    // …then the log panel mounts and claims the keyboard before the second key.
+    const log = mount(LogRegion)
+    await flushPromises()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', bubbles: true }))
     await flushPromises()
     expect(navigated).toEqual([])
-    keyboardRegionClaimed.value = false
+    log.unmount()
     wrapper.unmount()
   })
 })
