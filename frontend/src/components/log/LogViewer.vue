@@ -1336,7 +1336,13 @@ const SEV_BADGE_CLASS: Record<string, string> = {
   notice: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
   trace: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
   debug: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
-  unknown: chipClasses({ tone: 'neutral', size: 'xs' }),
+  // ponytail: 未识别也是裸的。
+  //
+  // 真实集群里输出没有级别词的 Pod 很常见（Attu、纯 stdout 的应用）。
+  // 那种 Pod 的每一行都会戴一枚灰底药丸，于是整个面板又是一堵灰墙 ——
+  // 和 INFO 底色当初要去掉的是同一个毛病。「未识别」这一档的计数在
+  // 上面那排芯片里已经写着，行首的 `?` 只需要说「没有级别」就够了。
+  unknown: chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' }),
 }
 const SEV_BADGE_TEXT: Record<string, string> = {
   critical: 'CRIT', fatal: 'FATAL', alert: 'ALERT', emergency: 'EMRG',
@@ -1347,7 +1353,7 @@ const SEV_BADGE_TEXT: Record<string, string> = {
   unknown: '?',
 }
 function sevBadgeClass(s: string): string {
-  return SEV_BADGE_CLASS[s.toLowerCase()] ?? chipClasses({ tone: 'neutral', size: 'xs' })
+  return SEV_BADGE_CLASS[s.toLowerCase()] ?? chipClasses({ tone: 'neutral', variant: 'bare', size: 'xs' })
 }
 function sevBadgeText(s: string): string {
   return SEV_BADGE_TEXT[s.toLowerCase()] ?? '?'
