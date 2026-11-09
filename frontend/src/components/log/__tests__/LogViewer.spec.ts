@@ -94,6 +94,54 @@ describe('LogViewer', () => {
     expect(labels.some((l) => l.includes('warn'))).toBe(true)
   })
 
+  it('keeps the severity badge out of the narrow-screen row', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: [line('error', 'boom')], unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    // The badge is the row's third grid cell — it exists from the sm
+    // breakpoint up. It used to be written `hidden sm:inline-flex`, but cn()
+    // is twMerge(clsx(...)) and chipClasses() hands it `inline-flex`, which
+    // wins the display group and deletes `hidden`. The badge then stayed on a
+    // 390px screen, took the content cell, and pushed the message onto a
+    // second row squeezed into 88px.
+    const badge = wrapper.findAll('span').find((s) => s.text() === 'ERROR')
+    expect(badge).toBeTruthy()
+    expect(badge!.attributes('class')).toContain('max-sm:hidden')
+  })
+
+  it('wraps the severity chips instead of scrolling them off a narrow screen', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(20), unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    // ERROR+ is the chip an operator reaches for during an incident. At
+    // 390px it sat 108px past the viewport edge, with no scroll cue, so the
+    // panel looked like it had no errors to filter.
+    const all = wrapper.findAll('button[aria-pressed]').find((b) => b.text().includes('全部'))
+    expect(all).toBeTruthy()
+    const row = all!.element.closest('div')
+    expect(row!.className).toContain('flex-wrap')
+  })
+
+  it('lets the newest-line dot breathe only when a line actually arrives', async () => {
+    const old = line('info', 'old-1')
+    const wrapper = mount(LogViewer, {
+      props: { lines: [old], streaming: true, unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    const dot = () => wrapper.find('span.h-2.w-2.rounded-full[aria-hidden="true"]')
+    expect(dot().exists()).toBe(true)
+    // The stream is open but nothing has arrived. A permanent breath is an
+    // attention tax that carries no information — it used to run forever
+    // because the dot keyed off `streaming` instead of "a line just came in".
+    expect(dot().attributes('class')).not.toContain('animate-pulse')
+
+    await wrapper.setProps({ lines: [line('info', 'fresh'), old] })
+    await wrapper.vm.$nextTick()
+    expect(dot().attributes('class')).toContain('animate-pulse')
+  })
+
   it('hides the unread pill when unreadCount is 0', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(5), unreadCount: 0 },

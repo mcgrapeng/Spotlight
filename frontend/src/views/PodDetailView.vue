@@ -294,7 +294,7 @@ function back() { router.push({ name: 'pods' }) }
 
           <TabsContent value="logs" class="mt-2 flex-1 min-h-0 flex flex-col">
             <div class="flex items-center justify-between mb-2 shrink-0">
-              <h3 class="text-sm font-semibold">{{ t('pod.containerLogs') }}</h3>
+              <h2 class="text-sm font-semibold">{{ t('pod.containerLogs') }}</h2>
               <Button variant="outline" size="sm" @click="openAIAnalyzer">
                 <Bot :size="14" :stroke-width="1.75" class="mr-1" />
                 {{ t('pod.aiAnalyze') }}
@@ -366,7 +366,7 @@ function back() { router.push({ name: 'pods' }) }
           <TabsContent value="details" class="mt-2 flex-1 min-h-0 overflow-y-auto">
             <Card class="p-0">
               <CardContent class="p-4">
-                <h3 class="text-sm font-semibold mb-3">{{ t('pod.containers', { count: pod.containers.length }) }}</h3>
+                <h2 class="text-sm font-semibold mb-3">{{ t('pod.containers', { count: pod.containers.length }) }}</h2>
                 <div class="space-y-2">
                   <div
                     v-for="c in pod.containers"

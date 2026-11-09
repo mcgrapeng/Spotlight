@@ -54,6 +54,10 @@ const emit = defineEmits<{
 // `locale` is destructured so it can be listed in the row v-memo arrays below:
 // v-memo skips the whole row subtree when its deps are equal, and the rows now
 // carry translated chrome — without the locale they would keep the old language.
+//
+// `livePulse` is on the same list for the same reason: the newest-line dot
+// breathes only while a line is arriving, and v-memo would otherwise freeze
+// the dot at its first-rendered class and the pulse would never start.
 const { t, locale } = useI18n()
 
 // === State ===
@@ -1223,6 +1227,10 @@ function flashErrors(ids: string[]) {
 // 而且它不携带任何信息（它一直在闪，所以「闪」本身说明不了什么）。
 //
 // 现在它只在收到新行之后的 2 秒里闪：闪 = 刚刚有东西进来了。
+//
+// 行首「最新一行」那个点用的是同一个信号。它以前自己挂着 animate-pulse，
+// 于是连接开着它就永远在呼吸 —— 同一份注意力税交了两遍，而且第二个
+// 呼吸的点在每一行上，比状态栏那个更靠近读者的视线。
 const livePulse = ref(false)
 let liveTimer: ReturnType<typeof setTimeout> | null = null
 function markLive() {
@@ -1649,7 +1657,13 @@ const helpRows = computed(() => [
 <template>
   <div class="flex flex-col h-full rounded-card border border-border bg-card overflow-hidden font-mono text-xs">
     <!-- Severity filter chips (4 aggregated buckets: ERROR / WARN / INFO / DEBUG) -->
-    <div class="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
+    <!-- ponytail: 窄屏上这排芯片换行，不横向滚。
+
+         事故的时候要按的是 ERROR+。横向滚动的话它在 390px 上完全在屏幕
+         外，而且没有滚动提示 —— 读者看到的是「全部 / INFO+ / WARN+」，以
+         为没有错误可筛。换成两行，六枚芯片全在视野里。
+    -->
+    <div class="flex flex-wrap sm:flex-nowrap items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
       <button
         type="button"
         :aria-pressed="minSeverity === 0"
@@ -2072,6 +2086,18 @@ const helpRows = computed(() => [
           class="log-group"
         >
           <template v-if="group.kind === 'single'">
+            <!-- ponytail: 窄屏这一行只有两列：时间 + 内容。
+
+                 级别徽章是第三列的占位，窄屏上没有第三列 —— 它必须整个
+                 消失，而不是缩在内容列里。
+
+                 以前写的是 `hidden sm:inline-flex`，但 cn() 是
+                 twMerge(clsx(...))：chipClasses() 返回的 `inline-flex`
+                 和 `hidden` 在同一个 display 组里，后来的那个赢，hidden
+                 被静默删掉。徽章于是留在了窄屏上，占着内容列的 1fr，
+                 正文被挤到第二行、压成 88px。`max-sm:hidden` 活下来了
+                 （变体不同 = 不是同一组），窄屏才真的隐藏。
+            -->
             <div
               :class="cn(
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
@@ -2079,7 +2105,7 @@ const helpRows = computed(() => [
                 severityBorderFor(group.lines[0].raw.severity),
                 groupFlashes(group) && 'animate-log-flash',
               )"
-              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale, groupFlashes(group)]"
+              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale, groupFlashes(group), livePulse]"
             >
               <button
                 v-if="group.lines[0].traceId"
@@ -2093,8 +2119,9 @@ const helpRows = computed(() => [
               <span
                 v-if="isNewestLine(group)"
                 :class="cn(
-                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full animate-pulse',
+                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full',
                   isNewestLineError(group) ? 'bg-error' : 'bg-success',
+                  livePulse && 'animate-pulse',
                 )"
                 aria-hidden="true"
               />
@@ -2106,7 +2133,7 @@ const helpRows = computed(() => [
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
               <!-- Col 2: severity badge (sticky) -->
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('max-sm:hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <!-- Col 3: content (inline-prefix chips + ANSI-colored text + truncate toggle) -->
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
@@ -2165,7 +2192,7 @@ const helpRows = computed(() => [
                 severityBorderFor(group.lines[0].raw.severity),
                 groupFlashes(group) && 'animate-log-flash',
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale, groupFlashes(group)]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale, groupFlashes(group), livePulse]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"
@@ -2185,8 +2212,9 @@ const helpRows = computed(() => [
               <span
                 v-if="isNewestLine(group)"
                 :class="cn(
-                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full animate-pulse',
+                  'absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full',
                   isNewestLineError(group) ? 'bg-error' : 'bg-success',
+                  livePulse && 'animate-pulse',
                 )"
                 aria-hidden="true"
               />
@@ -2196,7 +2224,7 @@ const helpRows = computed(() => [
               >
                 {{ fmtLocalTime(group.lines[0].raw.timestamp) }}
               </span>
-              <span :class="cn('hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
+              <span :class="cn('max-sm:hidden sm:inline-flex sticky left-[100px] bg-card z-10 items-center justify-center font-mono tracking-wide whitespace-nowrap', sevBadgeClass(group.lines[0].raw.severity))">{{ sevBadgeText(group.lines[0].raw.severity) }}</span>
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
@@ -2273,7 +2301,7 @@ const helpRows = computed(() => [
                   >
                     {{ fmtLocalTime(line.raw.timestamp) }}
                   </span>
-                  <span class="sticky left-[100px] bg-card z-10" />
+                  <span class="max-sm:hidden sticky left-[100px] bg-card z-10" />
                   <div class="flex items-baseline gap-2 min-w-0">
                     <span class="flex-1 min-w-0 font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? line.raw.content : undefined" v-html="lineHtml(line.raw)" />
                     <button

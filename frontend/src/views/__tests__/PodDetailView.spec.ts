@@ -67,6 +67,17 @@ describe('PodDetailView', () => {
     expect(wrapper.text()).toContain('node-1')
   })
 
+  it('labels the log section as a second-level heading', async () => {
+    const wrapper = mount(PodDetailView, {
+      global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n, createPinia()] },
+    })
+    await flushPromises()
+    // The pod name is the page's h1 (PageHeader). The section labels were
+    // h3, so a screen reader's heading list skipped a level: h1 → h3.
+    const levels = wrapper.findAll('h1, h2, h3, h4').map((h) => h.element.tagName)
+    expect(levels).toEqual(['H1', 'H2'])
+  })
+
   it('adds the pod to the favorites', async () => {
     const { favoritesApi } = await import('@/api/endpoints')
     const wrapper = mount(PodDetailView, {
