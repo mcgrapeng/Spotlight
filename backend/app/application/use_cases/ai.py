@@ -9,6 +9,7 @@ Business rules (single source of truth):
   configured (no fallback).
 """
 from __future__ import annotations
+from dataclasses import replace
 from typing import AsyncIterator
 
 from app.application.dto import AIAnalyzeOut
@@ -19,6 +20,16 @@ from app.domain.value_objects.primitives import ResourceRef
 
 class SingleActiveProviderError(ValueError):
     """Raised when an operation would result in >1 enabled providers."""
+
+
+def _is_placeholder_key(key: str) -> bool:
+    """Whether the key means "the caller did not type one".
+
+    The API only ever hands out a masked key, so an edit round-trip carries
+    `sk-a***b3cd` — a truthy string that is not a key. A real key never
+    contains the mask.
+    """
+    return not key or "***" in key
 
 
 class AIUseCases:
@@ -34,6 +45,24 @@ class AIUseCases:
         return [p for p in await self._repo.list_providers() if p.enabled]
 
     async def upsert_provider(self, cfg: AIProviderConfig) -> AIProviderConfig:
+        if cfg.id is not None:
+            # The API only ever hands out a MASKED key, so an edit round-trip
+            # can never carry the plaintext one. An empty key in the payload
+            # means "keep the stored key", not "erase it" — and the merge has
+            # to happen before validate(), which would otherwise reject the
+            # edit outright ("api_key required").
+            stored = await self._repo.get_provider(cfg.id)
+            # "Keep the stored key" is an EMPTY key or the MASKED one the
+            # API handed out (sk-a***b3cd) — a client that round-trips the
+            # masked value would otherwise overwrite the secret with the
+            # mask. The provider type has to match too: an OpenAI key
+            # re-attached to another provider would be sent to it.
+            if (
+                stored is not None
+                and stored.provider == cfg.provider
+                and _is_placeholder_key(cfg.api_key)
+            ):
+                cfg = replace(cfg, api_key=stored.api_key)
         cfg.validate()
         if cfg.enabled and not await self._can_enable(cfg.id):
             raise SingleActiveProviderError(

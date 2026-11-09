@@ -116,8 +116,11 @@ class FakeFavRepo:
         self._id = 0
         self._store: dict[int, Favorite] = {}
 
-    async def list(self):
-        return sorted(self._store.values(), key=lambda f: f.id or 0, reverse=True)
+    async def list(self, owner: str):
+        return sorted(
+            (f for f in self._store.values() if f.owner == owner),
+            key=lambda f: f.id or 0, reverse=True,
+        )
 
     async def add(self, fav):
         self._id += 1
@@ -125,8 +128,12 @@ class FakeFavRepo:
         self._store[self._id] = saved
         return saved
 
-    async def remove(self, fav_id: int):
-        return self._store.pop(fav_id, None) is not None
+    async def remove(self, fav_id: int, owner: str):
+        row = self._store.get(fav_id)
+        if row is None or row.owner != owner:
+            return False
+        del self._store[fav_id]
+        return True
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -345,3 +352,26 @@ def test_ai_single_active_enforced(client):
         "name": "B", "provider": "openai", "model": "m", "api_key": "k", "enabled": True,
     })
     assert r2.status_code == 409
+
+
+def test_favorites_are_scoped_to_their_owner(client):
+    """A favorite belongs to the user who made it: another user must not
+    see it, and must not be able to delete it by guessing its id."""
+    from app.infrastructure.auth import session as session_store
+    from app.infrastructure.auth.plugins.base import Identity
+
+    r = client.post(
+        "/api/v1/favorites",
+        json={"resource_type": "pod", "name": "p1", "namespace": "default"},
+    )
+    assert r.status_code == 201
+    fav_id = r.json()["id"]
+
+    other = TestClient(app)
+    token = session_store.create_session("token", Identity(username="bob"), 60).token
+    other.cookies.set("spotlight_session", token)
+
+    assert other.get("/api/v1/favorites").json() == []
+    assert other.delete(f"/api/v1/favorites/{fav_id}").status_code == 404
+    # The owner's list still has it.
+    assert len(client.get("/api/v1/favorites").json()) == 1

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+import time
+from threading import Lock
 from typing import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from sse_starlette.sse import EventSourceResponse
 
 from app.application.dto import (
@@ -17,8 +19,13 @@ from app.application.dto import (
 from app.application.use_cases.ai import AIUseCases, SingleActiveProviderError
 from app.domain.entities.ai import AIProviderConfig
 from app.domain.value_objects.primitives import ResourceRef
+from app.infrastructure.ai.providers.litellm_provider import LLMTimeoutError
 from app.infrastructure.logging import get_logger
-from app.interface.api.v1.dependencies import ai_uc, require_permission
+from app.interface.api.v1.dependencies import (
+    ai_uc,
+    current_username,
+    require_permission,
+)
 
 router = APIRouter(tags=["ai"])
 log = get_logger("ai.routes")
@@ -26,6 +33,32 @@ log = get_logger("ai.routes")
 # sqlite INTEGER is int64 — a path id beyond it overflows the driver and
 # turned into a 500 (found by API fuzzing). Out-of-range ids are a 422.
 _MAX_SQL_ID = 2**63 - 1
+
+# Every model call costs the operator money and ships cluster content to an
+# external service, so the model routes get a budget. The login route has had
+# a limiter for ages; these had none, so one script could call them in a loop.
+_AI_WINDOW_SECONDS = 60.0
+_AI_MAX_PER_MINUTE = 20
+_ai_calls: dict[str, list[float]] = {}
+_ai_lock = Lock()
+
+
+def _ai_rate_limited(username: str) -> bool:
+    now = time.monotonic()
+    with _ai_lock:
+        kept = [t for t in _ai_calls.get(username, []) if now - t < _AI_WINDOW_SECONDS]
+        if len(kept) >= _AI_MAX_PER_MINUTE:
+            _ai_calls[username] = kept
+            return True
+        kept.append(now)
+        _ai_calls[username] = kept
+        return False
+
+
+def _limit_model_calls(request: Request) -> None:
+    """Dependency: refuse the call when the caller is over their budget."""
+    if _ai_rate_limited(current_username(request)):
+        raise HTTPException(status_code=429, detail="AI 请求过于频繁，请稍后再试")
 
 
 def _to_entity(p: AIProviderIn, *, id: int | None = None) -> AIProviderConfig:
@@ -147,7 +180,10 @@ async def set_default(
     "/ai/ask",
     response_model=AIAnalyzeOut,
     summary="Answer a cluster-level question with the configured LLM",
-    dependencies=[Depends(require_permission("ai.use"))],
+    dependencies=[
+        Depends(require_permission("ai.use")),
+        Depends(_limit_model_calls),
+    ],
 )
 async def ask(
     payload: AIAskIn,
@@ -163,6 +199,8 @@ async def ask(
     """
     try:
         return await uc.ask(payload.provider_id, payload.question, payload.context)
+    except LLMTimeoutError as e:
+        raise HTTPException(status_code=504, detail="模型响应超时，请稍后再试") from e
     except ValueError as e:
         # ValueError only: a KeyError inside the use case is a server bug
         # and must stay a 5xx, not a 400.
@@ -172,7 +210,10 @@ async def ask(
 @router.post(
     "/ai/ask/stream",
     summary="Answer a cluster-level question, streaming the answer as it arrives",
-    dependencies=[Depends(require_permission("ai.use"))],
+    dependencies=[
+        Depends(require_permission("ai.use")),
+        Depends(_limit_model_calls),
+    ],
 )
 async def ask_stream(
     payload: AIAskIn,
@@ -224,7 +265,10 @@ async def ask_stream(
     "/ai/analyze/{namespace}/{name}",
     response_model=AIAnalyzeOut,
     summary="Analyze pod logs with the configured LLM",
-    dependencies=[Depends(require_permission("ai.use"))],
+    dependencies=[
+        Depends(require_permission("ai.use")),
+        Depends(_limit_model_calls),
+    ],
 )
 async def analyze_logs(
     namespace: str,
@@ -236,6 +280,8 @@ async def analyze_logs(
     ref = ResourceRef(cluster=context or "", namespace=namespace, kind="Pod", name=name)
     try:
         result = await uc.analyze_logs(payload.provider_id, ref, payload.log_lines, payload.question)
+    except LLMTimeoutError as e:
+        raise HTTPException(status_code=504, detail="模型响应超时，请稍后再试") from e
     except (ValueError, LookupError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return AIAnalyzeOut(

@@ -8,6 +8,7 @@ from app.application.use_cases.clusters import ClusterUseCases
 from app.application.use_cases.namespaces import NamespaceUseCases
 from app.application.use_cases.nodes import NodeUseCases
 from app.application.dto import ClusterOut, NamespaceOut, NodeOut
+from app.interface.api.v1.k8s_errors import k8s_call
 from app.interface.api.v1.dependencies import (
     cluster_uc,
     namespace_uc,
@@ -49,7 +50,7 @@ async def list_namespaces(
     context: str | None = Query(default=None),
     uc: NamespaceUseCases = Depends(namespace_uc),
 ):
-    return await uc.list_namespaces(context)
+    return await k8s_call(uc.list_namespaces(context), what="查询命名空间")
 
 
 @router.get(
@@ -61,4 +62,4 @@ async def list_nodes(
     context: str | None = Query(default=None),
     uc: NodeUseCases = Depends(node_uc),
 ):
-    return await uc.list_nodes(context)
+    return await k8s_call(uc.list_nodes(context), what="查询节点")

@@ -25,6 +25,36 @@ if TYPE_CHECKING:
 
 log = get_logger("ai.litellm")
 
+# The browser gives up on the request at 60s (/ai/ask) or 90s (/ai/analyze
+# and the streaming panel). Without an explicit timeout litellm keeps its own
+# default of 600s, so the server would keep calling (and paying) for ten
+# minutes after the user has already walked away. 45s leaves the browser
+# time to receive the error.
+LLM_CALL_TIMEOUT_SECONDS = 45
+
+
+class LLMTimeoutError(RuntimeError):
+    """The model did not answer within the call timeout.
+
+    The timeout is an expected outcome now, so it needs a name the HTTP
+    layer can turn into a 504 — litellm's own exception escapes the route
+    handlers as an opaque 500, and the browser then blames the server
+    instead of saying "the model was too slow".
+    """
+
+
+def _is_timeout_error(e: Exception, litellm_module) -> bool:
+    """Whether the model call gave up because it timed out.
+
+    litellm's own Timeout class is only reachable once litellm is imported
+    (a heavy import), and the stub the tests use has no `exceptions`
+    attribute at all — so the class NAME is what decides.
+    """
+    if type(e).__name__ in ("Timeout", "TimeoutError", "APITimeoutError", "ReadTimeout"):
+        return True
+    timeout_cls = getattr(getattr(litellm_module, "exceptions", None), "Timeout", None)
+    return timeout_cls is not None and isinstance(e, timeout_cls)
+
 
 class LiteLLMAIRepository(AIRepositoryPort):
     def __init__(self, providers: SQLAIProviderRepository):
@@ -54,11 +84,19 @@ class LiteLLMAIRepository(AIRepositoryPort):
 
         messages = self._build_messages(req)
         kwargs = self._build_call_kwargs(cfg, messages)
+        # After the extra dict, so a stored passthrough cannot widen the
+        # guard. The streaming path needs no timeout of its own: the
+        # browser aborts the stream and the generator is cancelled.
+        kwargs["timeout"] = LLM_CALL_TIMEOUT_SECONDS
         started = time.perf_counter()
         try:
             response = await litellm.acompletion(**kwargs)
         except Exception as e:
             log.error("ai.call.failed", error=str(e), provider=cfg.provider, model=cfg.model)
+            if _is_timeout_error(e, litellm):
+                raise LLMTimeoutError(
+                    f"模型响应超时（{LLM_CALL_TIMEOUT_SECONDS}s）"
+                ) from e
             raise
         latency_ms = int((time.perf_counter() - started) * 1000)
         choices = getattr(response, "choices", None) or []

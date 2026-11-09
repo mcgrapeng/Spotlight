@@ -18,6 +18,13 @@ sqlalchemy>=2.0.0
 aiosqlite>=0.20.0
 greenlet>=3.1.0
 httpx>=0.28.0
+# Transitive floors, declared so that no resolver can pick a version with a
+# published CVE: anyio 4.9.0 (PYSEC-2026-4024, PYSEC-2026-4025),
+# certifi 2026.7.22 (PYSEC-2026-4320), idna 3.9.0 (PYSEC-2026-215).
+# Floors, not pins: the CI matrix still installs the newest releases.
+anyio>=4.14.2
+certifi>=2026.10.18
+idna>=3.15
 structlog>=24.4.0
 litellm>=1.81.0,<2
 

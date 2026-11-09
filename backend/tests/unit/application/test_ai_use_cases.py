@@ -206,6 +206,9 @@ async def test_ask_stream_rejects_a_disabled_provider(uc):
 
 async def test_ask_uses_the_cluster_prompt():
     """A context switches the adapter to the cluster prompt, not the log one."""
+    import sys
+    import types
+
     from app.infrastructure.ai.prompts.templates import ASK_SYSTEM_PROMPT, SYSTEM_PROMPT
     from app.infrastructure.ai.providers.litellm_provider import LiteLLMAIRepository
 
@@ -225,7 +228,14 @@ async def test_ask_uses_the_cluster_prompt():
         captured.append(kwargs)
         return _Resp()
 
-    with patch("litellm.acompletion", new=fake_acompletion):
+    # A stand-in module rather than a patch on the real litellm: importing
+    # litellm pulls in a lazy-import machine whose background thread races the
+    # main thread over sys.modules, and that intermittently broke this test
+    # (KeyError: 'litellm' from litellm's own logging thread).
+    fake_litellm = types.ModuleType("litellm")
+    fake_litellm.acompletion = fake_acompletion
+
+    with patch.dict(sys.modules, {"litellm": fake_litellm}):
         adapter = LiteLLMAIRepository(repo)
         await adapter.analyze(saved, type("R", (), {
             "question": "which pod?", "context": "total=1", "pod_ref": None, "log_lines": [],
@@ -239,3 +249,63 @@ async def test_ask_uses_the_cluster_prompt():
     assert captured[0]["messages"][0]["content"] == ASK_SYSTEM_PROMPT
     assert "total=1" in captured[0]["messages"][1]["content"]
     assert captured[1]["messages"][0]["content"] == SYSTEM_PROMPT
+
+
+async def test_an_edit_that_carries_the_masked_key_keeps_the_stored_one():
+    """The API hands out `sk-a***b3cd`, which is truthy — a client that
+    round-trips it would overwrite the secret with the mask."""
+    uc = AIUseCases(FakeAIRepo())
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="Prod", provider="openai", model="gpt-4o",
+        api_key="sk-secret", api_base=None, temperature=0.7,
+        max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    edited = await uc.upsert_provider(AIProviderConfig(
+        id=saved.id, name="Prod", provider="openai", model="gpt-4o",
+        api_key="sk-s***cret", api_base=None, temperature=0.7,
+        max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    assert edited.api_key == "sk-secret"
+
+
+async def test_switching_the_provider_type_does_not_carry_the_old_key():
+    """An OpenAI key re-attached to another provider would be sent to it."""
+    uc = AIUseCases(FakeAIRepo())
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="Prod", provider="openai", model="gpt-4o",
+        api_key="sk-secret", api_base=None, temperature=0.7,
+        max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    with pytest.raises(ValueError):
+        await uc.upsert_provider(AIProviderConfig(
+            id=saved.id, name="Prod", provider="anthropic", model="claude",
+            api_key="", api_base=None, temperature=0.7,
+            max_tokens=1024, is_default=False, enabled=True, extra={},
+        ))
+
+
+async def test_an_edit_without_a_key_keeps_the_stored_one():
+    """The API only ever returns a MASKED key, so an edit round-trip can
+    never carry the plaintext one. An empty key means "keep the stored
+    key" — erasing it would silently break the provider, and validating
+    before the merge would reject the edit outright."""
+    uc = AIUseCases(FakeAIRepo())
+    saved = await uc.upsert_provider(AIProviderConfig(
+        id=None, name="Prod", provider="openai", model="gpt-4o",
+        api_key="sk-secret", api_base=None, temperature=0.7,
+        max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+    assert saved.api_key == "sk-secret"
+
+    edited = await uc.upsert_provider(AIProviderConfig(
+        id=saved.id, name="Prod renamed", provider="openai", model="gpt-4o-mini",
+        api_key="", api_base=None, temperature=0.2,
+        max_tokens=1024, is_default=False, enabled=True, extra={},
+    ))
+
+    assert edited.api_key == "sk-secret"
+    assert edited.model == "gpt-4o-mini"
+    assert edited.name == "Prod renamed"

@@ -8,11 +8,13 @@ its read timeout and then died of an exception, reconnected by the browser,
 forever. A preloaded read returns in about a second, so this polls those.
 
 These tests pin the properties that matter: overlap between consecutive polls
-is not re-sent, a quiet pod backs off instead of hammering the apiserver, a
-deleted pod ends the stream, and a transient error does not.
+is not re-sent, a poll never lets the apiserver truncate the window it
+reads, a quiet pod backs off instead of hammering the apiserver, a deleted
+pod ends the stream, and a transient error does not.
 """
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from typing import List
@@ -56,9 +58,11 @@ class _Api(_OneContainerPod):
     def __init__(self, script: List[str]) -> None:
         self.script = script
         self.calls: List[float] = []
+        self.kwargs: List[dict] = []
 
     def read_namespaced_pod_log(self, **kw):  # noqa: N802 - SDK name
         self.calls.append(time.monotonic())
+        self.kwargs.append(kw)
         return self.script.pop(0) if self.script else ""
 
 
@@ -106,6 +110,76 @@ def test_consecutive_polls_do_not_resend_overlapping_lines(monkeypatch):
     # The content carries the LINE, not the apiserver's timestamp prefix —
     # the history path strips it, so the follow-stream has to as well.
     assert got == ["line-a", "line-b"]
+
+
+def test_read_window_covers_the_longest_backoff():
+    """The invariant the quiet-pod line loss came from.
+
+    The gap between two polls is the READ plus the SLEEP — a poll that wakes
+    after the backoff re-reads a window that has to reach back over that
+    whole gap, or the lines written while the previous poll was still
+    reading fall out of the window and are gone for good. A window narrower
+    than (read + sleep) silently drops every line written into a quiet gap
+    — reproduced against a live pod, where probe lines written between polls
+    never reached the panel.
+    """
+    assert (
+        adapter_mod._STREAM_SINCE_SECONDS
+        >= adapter_mod._STREAM_MAX_INTERVAL + adapter_mod._STREAM_READ_TIMEOUT
+    )
+
+
+def test_a_poll_never_lets_the_apiserver_truncate_the_window(monkeypatch):
+    """The apiserver returns the last N lines OF the window.
+
+    The window itself is computed by the node
+    (pkg/kubelet/kuberuntime/kuberuntime_logs.go), where `since` and `tail`
+    commute: the answer is the last `tail` lines of the window, not the
+    window cut down to `tail`. So a poll that asks for a tail DROPS the
+    window's oldest lines whenever the pod bursts, and the next poll's
+    window has already moved past them — the burst is lost for good.
+
+    The follow poll must therefore not ask for a tail at all.
+    """
+    monkeypatch.setattr(adapter_mod.time, "sleep", lambda s: None)
+    api = _Api(["2026-01-01T00:00:00Z x\n"] * 5)
+
+    _drive(_repo(api), threading.Event(), want=1)
+
+    assert api.kwargs, "no polls were made"
+    assert all(kw.get("tail_lines") is None for kw in api.kwargs), api.kwargs
+
+
+def test_the_history_read_still_honours_the_requested_tail():
+    """The client's tail contract lives on the backfill, not on the poll.
+
+    The follow poll reads the whole window so a burst cannot be truncated
+    away; the history read still asks the apiserver for exactly the number
+    of lines the client asked for.
+    """
+    api = _Api(["2026-01-01T00:00:00Z x\n"])
+
+    asyncio.run(_repo(api).read_logs(REF, None, 123, None))
+
+    assert [kw.get("tail_lines") for kw in api.kwargs] == [123]
+
+
+def test_every_poll_reads_the_full_window(monkeypatch):
+    """What the loop actually asks the apiserver for.
+
+    Pins the `since_seconds` the polls send, so a future edit cannot narrow
+    the window without this file noticing.
+    """
+    monkeypatch.setattr(adapter_mod.time, "sleep", lambda s: None)
+    api = _Api(["2026-01-01T00:00:00Z x\n"] * 5)
+
+    _drive(_repo(api), threading.Event(), want=1)
+
+    assert api.kwargs, "no polls were made"
+    assert {kw["since_seconds"] for kw in api.kwargs} == {
+        adapter_mod._STREAM_SINCE_SECONDS
+    }
+    assert {kw["timestamps"] for kw in api.kwargs} == {True}
 
 
 def test_a_quiet_pod_backs_off_instead_of_polling_every_two_seconds(monkeypatch):

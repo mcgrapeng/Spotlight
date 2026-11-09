@@ -14,6 +14,7 @@ from app.interface.api.v1.dependencies import (
     pod_uc,
     require_permission,
 )
+from app.interface.api.v1.k8s_errors import k8s_call
 
 router = APIRouter(tags=["pods"])
 log = get_logger("api.pods")
@@ -32,7 +33,10 @@ async def list_pods(
     label_selector: str | None = Query(default=None),
     uc: PodUseCases = Depends(pod_uc),
 ):
-    return await uc.list_pods(context, namespace, status, search, label_selector)
+    return await k8s_call(
+        uc.list_pods(context, namespace, status, search, label_selector),
+        what="查询 Pod",
+    )
 
 
 @router.get(
@@ -48,7 +52,10 @@ async def stats(
     # ponytail: namespace 进快照。仪表盘之前永远是全集群口径，而侧边栏
     # 徽标是按命名空间算的 —— 同一个屏幕上两个「告警」数打架。顶栏选了
     # 什么命名空间，这一页就说那个命名空间的事。
-    return await uc.build(context, namespace)
+    return await k8s_call(
+        uc.build(context, namespace),
+        what="查询集群概览",
+    )
 
 
 @router.get(

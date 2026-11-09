@@ -56,6 +56,23 @@ async def test_the_stream_and_the_history_agree():
     assert streamed[0].content == history[0].content
 
 
+def test_the_keyword_filter_matches_a_literal_substring():
+    # The keyword used to be able to be a regex. Python's engine backtracks,
+    # so a pattern like (a+)+$ over a long log line hangs the request — and
+    # the filter was one wiring away from the API. It is a literal now.
+    from app.application.dto import LogStreamParams
+
+    entry = LogStreamParams(
+        timestamp="2026-10-20T10:00:00.000Z", content="connection refused",
+        container="app", severity="error",
+    )
+    assert apply_filter(entry, LogFilter(keyword="refused")) is True
+    assert apply_filter(entry, LogFilter(keyword="REFUSED")) is True
+    assert apply_filter(entry, LogFilter(keyword="refus")) is True
+    assert apply_filter(entry, LogFilter(keyword="timeout")) is False
+    assert apply_filter(entry, LogFilter(keyword="refu.*")) is False
+
+
 def test_the_since_filter_compares_instants_not_strings():
     # The client sends its own ISO shape; the entries carry milliseconds.
     # A lexicographic comparison dropped the wrong lines around the

@@ -25,6 +25,7 @@ _ENV_LEAK_VARS = (
     "TELEPORT_CLUSTER",
     "TELEPORT_AUTH",
     "TELEPORT_AUTOLOGIN_PASSWORD",
+    "AUTH_PROVIDER",
     "API_TOKEN",
 )
 
@@ -53,9 +54,15 @@ def _isolate_env(monkeypatch):
     monkeypatch.delenv("TELEPORT_AUTOLOGIN_PASSWORD", raising=False)
     get_settings.cache_clear()
     sess._sessions.clear()
+    # The model-call budget is per-process state too: a test that spends it
+    # would otherwise make the next test see a 429 it never asked for.
+    from app.interface.api.v1.routes import ai as ai_routes
+
+    ai_routes._ai_calls.clear()
     yield
     get_settings.cache_clear()
     sess._sessions.clear()
+    ai_routes._ai_calls.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

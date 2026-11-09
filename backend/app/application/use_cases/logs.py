@@ -1,7 +1,6 @@
 """Log use case: read & stream pod logs with severity classification + filtering."""
 from __future__ import annotations
 
-import re
 from typing import Iterator
 
 from app.application.dto import LogStreamParams
@@ -78,9 +77,6 @@ def apply_filter(entry: LogStreamParams, flt: LogFilter) -> bool:
     if flt.keyword:
         haystack = entry.content.lower() if flt.case_insensitive else entry.content
         needle = flt.keyword.lower() if flt.case_insensitive else flt.keyword
-        if flt.regex:
-            if not re.search(needle, haystack):
-                return False
-        elif needle not in haystack:
+        if needle not in haystack:
             return False
     return True

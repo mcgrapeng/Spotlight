@@ -14,7 +14,6 @@ class LogFilter:
     severities: frozenset[str] = field(default_factory=frozenset)  # subset of LogSeverity
     since: str | None = None  # ISO timestamp
     container: str | None = None
-    regex: bool = False  # interpret keyword as regex
     case_insensitive: bool = True
 
     def is_active(self) -> bool:

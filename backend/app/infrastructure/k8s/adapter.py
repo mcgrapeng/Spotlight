@@ -21,10 +21,29 @@ from kubernetes.client.exceptions import ApiException
 
 # Follow-stream tuning. See KubernetesRepository.stream_logs for why each of
 # these exists — the numbers are measured against a real apiserver, not guessed.
-_STREAM_SINCE_SECONDS = 5      # window each poll re-reads
-_STREAM_READ_TIMEOUT = 10.0   # a preloaded read is ~1s; this is the safety net
+#
+# THE INVARIANT: the read window must cover the longest gap between two
+# polls, and that gap is the READ plus the SLEEP. A poll wakes after the
+# backoff and re-reads a window that has to reach back over that whole gap,
+# or the lines written while the previous poll was still reading fall out of
+# the window and are gone for good. (Reproduced against a live pod: probe
+# lines written into the gap never reached the panel while neighbours
+# written during a busy burst did.) The window is DERIVED from the interval
+# AND the read timeout so the two cannot drift apart again — see
+# test_stream_logs_poll.test_read_window_covers_the_longest_backoff.
+#
+# The window itself is computed by the node
+# (pkg/kubelet/kuberuntime/kuberuntime_logs.go), where `since` and `tail`
+# commute: the answer is the last `tail` lines OF the window, not the
+# window cut down to `tail`. That is why the follow poll asks for NO tail
+# at all — see stream_logs.
 _STREAM_MIN_INTERVAL = 2.0    # while the pod is producing
-_STREAM_MAX_INTERVAL = 15.0   # once it goes quiet
+_STREAM_MAX_INTERVAL = 8.0    # once it goes quiet; worst-case tail lag ≈ 9s
+_STREAM_READ_TIMEOUT = 10.0   # a preloaded read is ~1s; this is the safety net
+_STREAM_SKEW_MARGIN = 2.0     # clock skew between the apiserver and the node
+_STREAM_SINCE_SECONDS = int(
+    _STREAM_MAX_INTERVAL + _STREAM_READ_TIMEOUT + _STREAM_SKEW_MARGIN
+)
 _STREAM_DEDUP_WINDOW = 4096   # signatures kept to cover poll overlap
 
 
@@ -331,9 +350,14 @@ class KubernetesAdapter(K8sRepositoryPort):
         A preloaded read is self-terminating and returns in about a second, so
         this loop never blocks in a socket read. It sleeps between polls, and
         the interval backs off when a pod is quiet: 2s while lines are
-        arriving (so a live tail still feels live), up to 15s once it goes
-        quiet. An idle log panel costs one API call every 15s instead of a
+        arriving (so a live tail still feels live), up to 8s once it goes
+        quiet. An idle log panel costs one API call every 8s instead of a
         permanently held connection.
+
+        The re-read window (`_STREAM_SINCE_SECONDS`) is deliberately wider
+        than the longest gap between two polls (the read plus the sleep), so
+        a line written into a quiet gap is still inside the window the next
+        poll reads. See the constants block above for the invariant.
 
         Dedup happens HERE, over a bounded recent window, because consecutive
         polls overlap by design (`since_seconds` re-reads the tail). Doing it
@@ -342,6 +366,13 @@ class KubernetesAdapter(K8sRepositoryPort):
         Terminates when the pod's container is gone (the apiserver answers 400)
         or when `stop_event` is set, which is what lets the SSE endpoint send a
         real `end` instead of dying of a timeout.
+
+        `tail_lines` is part of the port's signature but the follow poll
+        deliberately does NOT use it: the apiserver returns the last `tail`
+        lines OF the window, so a burst bigger than the tail loses its oldest
+        lines for good — the next poll's window has already moved past them.
+        The client's tail contract is honoured by the history backfill
+        (`read_logs`), which is where the panel's initial lines come from.
         """
         api, _ = self._pool.get(self._session_token, self._kubeconfig_path, ref.cluster or None)
 
@@ -367,7 +398,13 @@ class KubernetesAdapter(K8sRepositoryPort):
                 try:
                     raw = api.read_namespaced_pod_log(
                         name=ref.name, namespace=ref.namespace,
-                        container=target, tail_lines=tail_lines,
+                        container=target,
+                        # NO tail_lines: the apiserver returns the last
+                        # `tail` lines OF the window, so a burst bigger
+                        # than the tail is truncated away for good — the
+                        # next poll's window has already moved past it.
+                        # The window is small (seconds), so reading it
+                        # whole is cheap; the read timeout is the backstop.
                         since_seconds=_STREAM_SINCE_SECONDS,
                         timestamps=True,
                         _request_timeout=_STREAM_READ_TIMEOUT,
