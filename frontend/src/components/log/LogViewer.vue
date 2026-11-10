@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { foldRuns, normalize } from '@/lib/logFold'
 import { chipClasses } from '@/lib/chip'
 import { useLogFilters } from '@/composables/useLogFilters'
 import { useLogSeverityCounts, SEVERITY_FILTER_CHIPS, cumulativeSeverityCounts } from '@/composables/useLogSeverityCounts'
@@ -179,26 +180,7 @@ const { filtered, searchMatched } = useLogFilters({
 
 defineExpose({})
 
-// === Fold duplicate consecutive lines (logreduce-style) ===
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g, 'UUID')
-    .replace(/\b0x[a-f0-9]+\b/g, '0xN')
-    // IPv4 整体归一化（端口单独走下面那条），否则两个客户端地址
-    // 会把同一条 health check 分成两组。
-    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, 'ip')
-    // 附带的数字：紧跟 `:` `/` `.` 的（端口、版本号、路径段），
-    // 以及带单位的量（100ms、512MB、12%）。它们是同一条消息里的
-    // 噪声，折叠掉是对的。
-    .replace(/(?<=[:/.])\d+/g, 'N')
-    .replace(/\b\d+(?:\.\d+)?(ms|s|m|h|kb|mb|gb|tb|%|px|b)\b/g, 'N$1')
-    // 裸数字是事件本身：`user 123 logged in` 和 `user 456 logged in`
-    // 是两条不同的事件，`200 OK` 和 `500 OK` 也是。归一化掉它们，
-    // 面板就会把故障折叠进正常里。
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+// 折叠规则（normalize / foldRuns）在 lib/logFold.ts：纯函数，单独可测。
 
 // === Trace_id extraction + hash → HSL hue (same UUID → same color) ===
 const TRACE_ID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i
@@ -331,48 +313,18 @@ function foldSig(line: DecoratedLine): string {
   return line.isJson ? '\u0000json\u0000' + lineId(line.raw) : cachedSig(line.raw)
 }
 
-const groups = computed<Group[]>(() => {
-  const out: Group[] = []
-  let i = 0
-  const arr = displayedLines.value
-  while (i < arr.length) {
-    const sig = foldSig(arr[i])
-    let j = i + 1
-    while (j < arr.length && foldSig(arr[j]) === sig) j++
-    if (j - i >= 3) {
-      // Run key = the OLDEST line of the run (slice tail). displayedLines is
-      // newest-first and prepends only extend runs at their front, so the
-      // tail is the stable anchor across SSE flushes.
-      const key = lineId(arr[j - 1].raw)
-      out.push({
-        kind: 'run',
-        key,
-        lines: arr.slice(i, j),
-        expanded: expanded.value.has(key),
-      })
-      i = j
-    } else {
-      for (let k = i; k < j; k++) {
-        out.push({
-          kind: 'single',
-          key: lineId(arr[k].raw),
-          lines: [arr[k]],
-          expanded: false,
-        })
-      }
-      i = j
-    }
-  }
-  // ponytail: 日志按时间正序渲染，最新的在最后。
-  // props.lines 是最新在前（SSE 层把新批次 prepend 到数组头），而渲染按
-  // `kubectl logs -f` 的约定来：新的在底部。这样新行追加在视口下方，
-  // 你正在读的那一行不会因为每来一条日志就整体下移一行 —— 追一个
-  // stack trace 时这是持续的干扰。
-  //
-  // 组内的行保持最新在前：折叠行显示的是这一组里最新一条的时间戳，
-  // 那是「它还在发生吗」的信号。
-  return out.reverse()
-})
+const groups = computed<Group[]>(() =>
+  // ponytail: 日志按时间正序渲染，最新的在最后（`kubectl logs -f` 的约定，
+  // 追 stack trace 时不会每来一行就整体下移）。props.lines 是最新在前，
+  // 所以组在这里反一次。组内的行保持最新在前：折叠行显示的是这一组里
+  // 最新一条的时间戳，那是「它还在发生吗」的信号。
+  foldRuns(
+    displayedLines.value,
+    foldSig,
+    (l) => lineId(l.raw),
+    (key) => expanded.value.has(key),
+  ).reverse(),
+)
 
 // === Virtual scroll (NEWEST AT BOTTOM, the tail is the bottom) ===
 //
