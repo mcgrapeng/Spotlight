@@ -231,6 +231,60 @@ def test_a_quiet_pod_backs_off_instead_of_polling_every_two_seconds(monkeypatch)
     assert waited[-1] > 2.0, waited
 
 
+def test_a_slow_but_live_pod_keeps_the_tail_live(monkeypatch):
+    """A pod that writes a line every few seconds is not quiet.
+
+    The backoff keyed on "did this poll emit" — so a pod with a gap between
+    lines looked silent on every poll that happened to catch no line, and
+    the interval doubled to the max. Measured against a live pod writing one
+    line every ten seconds: the tail was median 7.17s stale and up to 7.9s,
+    with the panel still claiming it was live. "Live" stopped meaning live.
+
+    The pod IS producing, so the poll has to stay live. The quiet-pod test
+    above still pins the other half: a pod that produces nothing backs off.
+    """
+    waited: List[float] = []
+    monkeypatch.setattr(adapter_mod.time, "sleep", lambda s: waited.append(s))
+
+    class _Done(BaseException):
+        pass
+
+    class _Slow(_OneContainerPod):
+        """One line every fourth poll — a ten-second cadence at two-second polls.
+
+        The first poll emits: a follow stream's first poll re-reads the
+        window and always finds the pod's recent lines, so the stream starts
+        busy and only afterwards has to recognise a slow producer as busy.
+        """
+
+        def __init__(self):
+            self.calls = 0
+
+        def read_namespaced_pod_log(self, **kw):
+            self.calls += 1
+            if self.calls > 12:
+                raise _Done
+            # 第一轮就产出（follow 流的第一轮重读窗口、必然有内容），
+            # 之后每四轮一行 —— 十秒一行、两秒一轮的节奏。
+            return "2026-01-01T00:00:00Z tick\n" if self.calls % 4 == 1 else ""
+
+    class _EternalStop:
+        def is_set(self):
+            return False
+
+        def wait(self, s):
+            waited.append(s)
+            return False
+
+    with pytest.raises(_Done):
+        list(_repo(_Slow()).stream_logs(REF, None, 200, stop_event=_EternalStop()))
+
+    assert waited, "the loop never slept"
+    # The gap between two polls is what a new line waits. Anything over the
+    # live interval is the tail going stale.
+    assert max(waited) <= adapter_mod._STREAM_MIN_INTERVAL, waited
+
+
 def test_a_deleted_pod_ends_the_stream_instead_of_retrying_forever(monkeypatch):
     # 404 is the apiserver saying the container is gone — a real end of stream,
     # which is what lets the SSE endpoint send `end` rather than looping on an

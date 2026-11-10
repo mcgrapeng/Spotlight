@@ -39,7 +39,17 @@ from kubernetes.client.exceptions import ApiException
 # is why the follow poll asks for exactly as many lines as the panel can
 # hold: see stream_logs.
 _STREAM_MIN_INTERVAL = 2.0    # while the pod is producing
-_STREAM_MAX_INTERVAL = 8.0    # once it goes quiet; worst-case tail lag ≈ 9s
+_STREAM_MAX_INTERVAL = 8.0    # once it goes quiet
+# 距上次产出多久以内，都算「正在产出」。
+#
+# 退避必须按**最近产出时间**判断，不能按「这一轮有没有产出」——一个每
+# 10 秒写一行的 Pod，在两次之间的空档里会被当成"安静"，于是轮询退到
+# 8 秒，新日志最多等 8-9 秒才上屏（对着真实集群实测：中位 7.17 秒、
+# 最大 7.9 秒，而面板还写着「实时」）。"实时"就不成其为实时了。
+#
+# 这个窗口让「写得慢但在写」的 Pod 保持 2 秒轮询。真正安静的 Pod 仍然
+# 退避到 _STREAM_MAX_INTERVAL，空面板一次 API 调用还是 8 秒一次。
+_STREAM_ACTIVE_WINDOW = 30.0
 _STREAM_READ_TIMEOUT = 10.0   # a preloaded read is ~1s; this is the safety net
 _STREAM_SKEW_MARGIN = 2.0     # clock skew between the apiserver and the node
 _STREAM_SINCE_SECONDS = int(
@@ -430,6 +440,8 @@ class KubernetesAdapter(K8sRepositoryPort):
         recent: Deque[int] = deque()
         seen: set[int] = set()
         interval = _STREAM_MIN_INTERVAL
+        # None = 从没产出过：一开始就按"安静"退避。
+        last_output: float | None = None
 
         while True:
             if stop_event is not None and stop_event.is_set():
@@ -511,8 +523,18 @@ class KubernetesAdapter(K8sRepositoryPort):
             # Busy pod -> poll again promptly so a live tail stays live; quiet
             # pod -> back off, because an idle log panel should not cost an API
             # call every two seconds for the rest of the shift.
+            #
+            # 「忙碌」按最近产出时间判断，不是按这一轮有没有产出：一个写得
+            # 慢但在写的 Pod，两轮之间必然有空档，按后者判断它每一轮都被
+            # 当成安静，退避到最大间隔，于是它的尾巴一直是旧的。
+            if emitted:
+                last_output = time.monotonic()
+            busy = (
+                last_output is not None
+                and time.monotonic() - last_output < _STREAM_ACTIVE_WINDOW
+            )
             interval = (
-                _STREAM_MIN_INTERVAL if emitted
+                _STREAM_MIN_INTERVAL if busy
                 else min(interval * 2, _STREAM_MAX_INTERVAL)
             )
 
