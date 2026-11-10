@@ -184,8 +184,18 @@ function normalize(text: string): string {
   return text
     .toLowerCase()
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g, 'UUID')
-    .replace(/\b\d+\b/g, 'N')
     .replace(/\b0x[a-f0-9]+\b/g, '0xN')
+    // IPv4 整体归一化（端口单独走下面那条），否则两个客户端地址
+    // 会把同一条 health check 分成两组。
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, 'ip')
+    // 附带的数字：紧跟 `:` `/` `.` 的（端口、版本号、路径段），
+    // 以及带单位的量（100ms、512MB、12%）。它们是同一条消息里的
+    // 噪声，折叠掉是对的。
+    .replace(/(?<=[:/.])\d+/g, 'N')
+    .replace(/\b\d+(?:\.\d+)?(ms|s|m|h|kb|mb|gb|tb|%|px|b)\b/g, 'N$1')
+    // 裸数字是事件本身：`user 123 logged in` 和 `user 456 logged in`
+    // 是两条不同的事件，`200 OK` 和 `500 OK` 也是。归一化掉它们，
+    // 面板就会把故障折叠进正常里。
     .replace(/\s+/g, ' ')
     .trim()
 }

@@ -484,6 +484,66 @@ describe('LogViewer', () => {
     expect(bodyText).toContain('仅显示 error')
   })
 
+  // 折叠签名曾把每个数字都换成 N，于是 `user 123 logged in` 和
+  // `user 456 logged in` 会并成一组：两条不同的事件被藏成一行，而
+  // 面板上那一行看起来纹丝不动。折叠要折叠「字面重复」，不是「看着像」。
+  describe('fold grouping', () => {
+    it('keeps lines apart when a bare number differs — that number is the event', () => {
+      const wrapper = mount(LogViewer, {
+        props: {
+          lines: [
+            line('info', 'user 123 logged in'),
+            line('info', 'user 456 logged in'),
+            line('info', 'user 789 logged in'),
+          ],
+          unreadCount: 0,
+        },
+        global: { plugins: [i18n] },
+      })
+      const badge = wrapper.findAll('span').find((s) => /^×\d+$/.test(s.text().trim()))
+      expect(badge).toBeUndefined()
+    })
+
+    it('still folds a health check whose only difference is the client port', () => {
+      // 折叠存在的理由就是这种噪声：同一个探针每十秒打一次，只有
+      // 临时端口不同。折叠要折叠它，否则一屏全是同一条。
+      const wrapper = mount(LogViewer, {
+        props: {
+          lines: [
+            line('info', 'INFO: 10.0.0.192:54566 - "GET /api/health HTTP/1.1" 200 OK'),
+            line('info', 'INFO: 10.0.0.192:49612 - "GET /api/health HTTP/1.1" 200 OK'),
+            line('info', 'INFO: 10.0.0.192:51111 - "GET /api/health HTTP/1.1" 200 OK'),
+          ],
+          unreadCount: 0,
+        },
+        global: { plugins: [i18n] },
+      })
+      const badge = wrapper.findAll('span').find((s) => /^×\d+$/.test(s.text().trim()))
+      expect(badge?.text().trim()).toBe('×3')
+    })
+
+    it('does not fold a 500 into the 200s around it', () => {
+      // 状态码是裸数字：它决定这一行是正常还是故障。把 500 折进 200
+      // 里，故障就从面板上消失了。
+      const wrapper = mount(LogViewer, {
+        props: {
+          lines: [
+            line('info', 'GET /api/health 200 OK'),
+            line('info', 'GET /api/health 200 OK'),
+            line('info', 'GET /api/health 200 OK'),
+            line('error', 'GET /api/health 500 OK'),
+            line('error', 'GET /api/health 500 OK'),
+            line('error', 'GET /api/health 500 OK'),
+          ],
+          unreadCount: 0,
+        },
+        global: { plugins: [i18n] },
+      })
+      const badges = wrapper.findAll('span').filter((s) => /^×\d+$/.test(s.text().trim()))
+      expect(badges.map((b) => b.text().trim())).toEqual(['×3', '×3'])
+    })
+  })
+
   it('fold group header shows a large ×N badge with severity tint', () => {
     const wrapper = mount(LogViewer, {
       props: {
