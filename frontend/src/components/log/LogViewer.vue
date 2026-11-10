@@ -13,6 +13,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { foldRuns, normalize } from '@/lib/logFold'
+import { virtualWindow } from '@/lib/logVirtual'
 import { chipClasses } from '@/lib/chip'
 import { useLogFilters } from '@/composables/useLogFilters'
 import { useLogSeverityCounts, SEVERITY_FILTER_CHIPS, cumulativeSeverityCounts } from '@/composables/useLogSeverityCounts'
@@ -440,46 +441,19 @@ function indexAt(px: number): number {
 function recomputeVirtualRange(): void {
   const el = scrollEl.value
   if (!el) return
-  const n = groups.value.length
-  if (n === 0) {
-    if (virtualRange.value.start !== 0 || virtualRange.value.end !== 0) {
-      virtualRange.value = { start: 0, end: 0 }
-    }
-    syncSpacers()
-    return
-  }
-  const top = el.scrollTop
-  const viewH = el.clientHeight
-  // While the reader is FOLLOWING the tail, the window MUST include the
-  // last group: the model cannot know how tall a group really is until it
-  // has been rendered, and the tail is exactly the part it has not seen.
-  // A window that stops short of the last group leaves the reader a
-  // screenful of the wrong thing — a folded run of forty identical lines
-  // is estimated at one row and is really forty, so the reader lands
-  // hundreds of pixels above the newest line.
-  //
-  // The test is the FOLLOW STATE, not the geometric position: a reader
-  // who is following sits at the model's end, but the model's end moves
-  // as the tail gets measured, so the geometric test would fail the
-  // moment the model corrects itself and the reader would be stranded.
-  if (autoFollow.value) {
-    const end = n
-    const start = Math.max(0, n - Math.max(1, Math.ceil(viewH / LINE_HEIGHT) + BUFFER * 2))
-    if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
-      virtualRange.value = { start, end }
-    }
-    syncSpacers()
-    return
-  }
-  // The offset table is a prefix sum, so the boundary rows are a binary
-  // search away. Using it keeps the window on real group boundaries
-  // instead of drifting further off the more the estimate is wrong.
-  const first = indexAt(top)
-  const last = indexAt(top + viewH)
-  const start = Math.max(0, first - BUFFER)
-  const end = Math.min(n, last + BUFFER + 1)
-  if (start !== virtualRange.value.start || end !== virtualRange.value.end) {
-    virtualRange.value = { start, end }
+  // 窗口的算法（跟随尾巴时必须含最后一组、不跟随时贴滚动位置、两头夹住）
+  // 在 lib/logVirtual.ts：纯计算，单独可测。这里只管读 DOM 和发给渲染层。
+  const next = virtualWindow({
+    count: groups.value.length,
+    scrollTop: el.scrollTop,
+    viewportHeight: el.clientHeight,
+    autoFollow: autoFollow.value,
+    lineHeight: LINE_HEIGHT,
+    buffer: BUFFER,
+    indexAt,
+  })
+  if (next.start !== virtualRange.value.start || next.end !== virtualRange.value.end) {
+    virtualRange.value = next
   }
   syncSpacers()
 }
