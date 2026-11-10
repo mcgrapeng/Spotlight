@@ -251,6 +251,29 @@ class KubernetesAdapter(K8sRepositoryPort):
         for p in pods.items:
             if p.spec.node_name:
                 pod_count[p.spec.node_name] = pod_count.get(p.spec.node_name, 0) + 1
+        # ponytail: 节点列表为空，但 pod 明明跑在某些节点上 —— 那不是
+        # 「集群没有节点」，是节点列表被裁掉了。
+        #
+        # Teleport 的 kubernetes_resources 按角色裁剪资源：没有 nodes
+        # 权限时，`list_node` 不是回 403，而是**回一个空数组**。于是
+        # 这里如实返回 []，前端渲染成「这个集群没有节点」——一个运维
+        # 工具把权限问题说成了事实，读者会以为集群是健康的。这比报错
+        # 危险得多。
+        #
+        # 判定信号是 pod 的 spec.nodeName：pod 能被读到（列表有权限）
+        # 却指向了列表里没有的节点，说明节点存在但被裁。反过来，集群
+        # 真的没有节点时，不会有任何 pod 引用 nodeName（没有节点就没有
+        # pod 能被调度上去）。实测该集群 78 个 pod 全部带 nodeName，
+        # 指向 3 个节点，而 list_node 返回空 —— 正是这个形状。
+        #
+        # 抛 403 而不是自己合成一条「节点列表为空」的提示：前端已有的
+        # 403 处理会把它变成「没有权限查询节点」，而权限错误该由它说。
+        if not nodes.items and pod_count:
+            raise ApiException(
+                status=403,
+                reason="Forbidden",
+                http_resp=None,
+            )
         return map_nodes_batch(nodes.items, pod_count_by_node=pod_count, cluster=ctx)
 
     # ── logs ─────────────────────────────────────────────────

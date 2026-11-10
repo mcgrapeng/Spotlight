@@ -7,6 +7,7 @@ wiring lives here.
 from __future__ import annotations
 
 import secrets
+from pathlib import Path
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
@@ -198,7 +199,30 @@ def k8s_repo(s: Session = Depends(current_session)) -> KubernetesAdapter:
     if s.kubeconfig_path.exists():
         return KubernetesAdapter(s.token, str(s.kubeconfig_path))
     if s.token == session_store.DEV_TOKEN:
-        return KubernetesAdapter(s.token, None)
+        # ponytail: 开放模式的 dev 会话没有自己的 kubeconfig，于是用服务端
+        # 那份 —— 而且要先看 KUBECONFIG_PATH。
+        #
+        # 之前这里传的是 None，于是 SDK 按自己的默认规则去找 $KUBECONFIG /
+        # ~/.kube/config，完全绕过了 KUBECONFIG_PATH。而 .env.example 把
+        # 这个设置写成「Path to the kubeconfig the backend reads」——
+        # 一个有文档的设置在主路径上静默失效：配了 NLB 那份直连 kubeconfig，
+        # 后端仍然去读那份过期的 Teleport 凭据，于是 namespaces/pods/nodes/
+        # events 全部 403，只剩直接读磁盘的 /clusters 还是 200。
+        #
+        # 口径和 token 插件（plugins/token.py::_host_kubeconfig）保持一致：
+        # KUBECONFIG_PATH → $KUBECONFIG → ~/.kube/config。
+        host = get_settings().kubeconfig_path
+        if not host:
+            return KubernetesAdapter(s.token, None)
+        if not Path(host).exists():
+            # 配了却不生效，还不吭声 —— 这是最难查的一类故障。
+            # 这次那 403 本质上就是「配了 A、读了 B、还不吭声」：
+            # 文件名打错 / 被删 / 挂载没生效，都会走到这里。宁可报错。
+            raise HTTPException(
+                status_code=500,
+                detail=f"配置的 kubeconfig 不存在: {host}",
+            )
+        return KubernetesAdapter(s.token, host)
     raise HTTPException(
         status_code=409,
         detail="尚未选择集群，请先完成集群选择",
