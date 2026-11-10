@@ -151,6 +151,12 @@ _RESERVED_EXTRA_KEYS = (
     "temperature",
     "messages",
     "stream",
+    # `model` 同样是目的地的一部分。LiteLLM 用 model 的 provider 前缀
+    # 决定往哪儿发（"openai/gpt-4o" → 厂商的公开 API），所以一个
+    # extra={"model": "openai/gpt-4o"} 就能绕过已校验的 api_base，
+    # 把本该发到内网模型的内容发到厂商那边去 —— 而界面上那个地址
+    # 仍然显示着内网地址。model 是 provider 自己的设置，不是透传项。
+    "model",
     # The timeout is the guard that stops the server calling (and paying for)
     # a model long after the browser gave up. A passthrough may not set it
     # or widen it.

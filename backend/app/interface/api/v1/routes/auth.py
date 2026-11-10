@@ -146,9 +146,20 @@ async def status(
     sess = _resolve_session(request)
     # The permission list is only meaningful for a caller with an identity:
     # an anonymous pre-login request has nobody to resolve.
+    #
+    # Open mode is the exception, and it is NOT an exception in the
+    # permissive direction: with no auth plugin configured, the permission
+    # guard treats every request as the shared `dev` identity (see
+    # `current_username`), which is admin. Reporting an empty list here
+    # would say "you may do nothing" while the API grants everything —
+    # and any UI that started trusting this list would break exactly the
+    # self-hosted, no-auth deployment the product is built for.
     permissions: list[str] = []
     if sess is not None:
         effective = await uc.effective_permissions(sess.identity.username)
+        permissions = list(effective.permissions)
+    elif plugin is None:
+        effective = await uc.effective_permissions(session_store.DEV_TOKEN)
         permissions = list(effective.permissions)
     return StatusOut(
         configured=plugin is not None,

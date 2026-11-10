@@ -55,8 +55,14 @@ def test_extra_may_not_override_the_validated_fields():
     # key and the cluster's log content are posted to. `timeout` is the
     # guard that stops the server calling (and paying for) a model long
     # after the browser gave up: a passthrough may not set it either.
+    #
+    # `model` is here for the same reason as api_base: LiteLLM reads the
+    # provider prefix off the model string ("openai/gpt-4o" → the vendor's
+    # public API), so extra={"model": "openai/gpt-4o"} would route an
+    # Ollama-configured provider to the vendor while the interface still
+    # showed the operator's own address.
     for key in ("api_base", "base_url", "api_key", "max_tokens",
-                "temperature", "messages", "stream", "timeout"):
+                "temperature", "messages", "stream", "timeout", "model"):
         with pytest.raises(ValueError):
             _cfg(extra={key: "x"}).validate()
 

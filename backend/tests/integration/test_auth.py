@@ -126,6 +126,25 @@ def test_status_no_provider(monkeypatch):
     assert out["auth_required"] is False
 
 
+def test_status_reports_the_open_mode_permissions(monkeypatch):
+    """开放模式下，这个列表必须说门禁实际会放行的事。
+
+    没有鉴权插件时，权限门禁把每个请求都当成共享的 `dev` 身份
+    （admin）。这里若返回空列表，前端就会以为「什么权限都没有」——
+    而任何开始信任这个列表的界面，都会在这个产品最主打的自托管
+    无鉴权部署上把功能藏起来。
+    """
+    monkeypatch.setenv("AUTH_PROVIDER", "")
+    monkeypatch.setenv("API_TOKEN", "")
+    get_settings.cache_clear()
+    out = _status_via_dependency()
+    assert out["configured"] is False
+    assert out["auth_required"] is False
+    # 门禁放行一切，列表也得说放行一切。
+    assert "pods.read" in out["permissions"]
+    assert "ai.use" in out["permissions"]
+
+
 def test_status_client_session_bearer(fake_plugin, monkeypatch):
     monkeypatch.setenv("AUTH_PROVIDER", "token")
     monkeypatch.setenv("API_TOKEN", "s3cret")

@@ -287,6 +287,13 @@ async def ask_stream(
     summary="Analyze pod logs with the configured LLM",
     dependencies=[
         Depends(require_permission("ai.use")),
+        # 日志分析会把日志原文发给模型，所以它需要读日志的权限。
+        #
+        # 只有 ai.use 不够：那会让「有权用模型、但无权读日志」的角色
+        # 也能把日志内容（哪怕是粘贴进来的）送到外部模型去。而日志是
+        # 集群读取里敏感的那一半——viewer 角色被故意排除在 pods.logs
+        # 之外，就是这个原因。
+        Depends(require_permission("pods.logs")),
         Depends(_limit_model_calls),
     ],
 )
