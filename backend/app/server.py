@@ -17,6 +17,7 @@ pass `--proxy-headers --forwarded-allow-ips=<...>` if you use it directly.
 from __future__ import annotations
 
 import uvicorn
+from uvicorn.supervisors import ChangeReload
 
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.logging import get_logger
@@ -41,6 +42,13 @@ def build_config(**overrides) -> uvicorn.Config:
         forwarded_allow_ips=trusted or None,
     )
     cfg.update(overrides)
+    # uvicorn 只在 app 是 import 字符串时才重载：
+    # `should_reload` 的定义就是 `isinstance(self.app, str) and self.reload`。
+    # 传 app 对象的话 `--reload` 被静默忽略（uvicorn.run() 会警告一句，
+    # 而这里直接用 Server()，连那句警告都没有）—— 改了代码必须手动重启，
+    # 而没重启的改动会读起来像「这个改动没生效」。
+    if cfg.get("reload"):
+        cfg["app"] = "app.main:app"
     return uvicorn.Config(**cfg)
 
 
@@ -79,7 +87,20 @@ def main() -> None:
     # Server(config) rather than uvicorn.run(config): `run()` re-wraps its first
     # argument in a fresh Config, so a Config instance gets treated as the ASGI
     # app — which swallows --port and breaks the lifespan.
-    uvicorn.Server(cfg).run()
+    #
+    # But `Server.run()` does NOT install the reload supervisor: uvicorn puts
+    # that in `uvicorn.run()` only (`ChangeReload(config, target=server.run,
+    # sockets=[sock]).run()`), and `Server.run()` is just
+    # `asyncio_run(self.serve(...))`. Calling it directly therefore ignored
+    # `--reload` silently — no warning, because the "pass the app as an import
+    # string" check lives in `uvicorn.run()` too. Every edit needed a manual
+    # restart, and a change that was not restarted read as a bug in the change.
+    server = uvicorn.Server(cfg)
+    if cfg.should_reload:
+        sock = cfg.bind_socket()
+        ChangeReload(cfg, target=server.run, sockets=[sock]).run()
+    else:
+        server.run()
 
 
 if __name__ == "__main__":
