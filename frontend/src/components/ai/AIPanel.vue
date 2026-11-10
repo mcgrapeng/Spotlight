@@ -108,9 +108,11 @@ interface ClusterSnapshot {
   total: number
   running: number
   failed: number
-  nodesReady: number
-  nodesTotal: number
-  warningEvents: number
+  // null = 读不到。这句话既显示在面板上，也发给模型：把读不到写成 0，
+  // 模型就会据此说「集群有 0 个节点」。
+  nodesReady: number | null
+  nodesTotal: number | null
+  warningEvents: number | null
 }
 
 const snapshot = ref<ClusterSnapshot | null>(null)
@@ -167,9 +169,9 @@ async function buildContext(): Promise<{ raw: string; summary: ClusterSnapshot }
       total: stats.total_pods,
       running: stats.running,
       failed: stats.failed,
-      nodesReady: stats.nodes_ready,
-      nodesTotal: stats.nodes_total,
-      warningEvents: stats.warning_events,
+      nodesReady: stats.nodes_ready ?? null,
+      nodesTotal: stats.nodes_total ?? null,
+      warningEvents: stats.warning_events ?? null,
     },
   }
 }
@@ -369,12 +371,17 @@ const contextSummary = computed(() => {
   return t('ai.askContextSummary', {
     cluster: s.cluster,
     namespace: s.namespace,
+    nodes:
+      s.nodesReady === null || s.nodesTotal === null
+        ? t('dashboard.nodesUnreadable')
+        : t('dashboard.nodesReadyCount', { ready: s.nodesReady, total: s.nodesTotal }),
+    warnings:
+      s.warningEvents === null
+        ? t('ai.warningsUnreadable')
+        : t('ai.warningsCount', { count: formatNumber(s.warningEvents) }),
     total: formatNumber(s.total),
     running: formatNumber(s.running),
     failed: formatNumber(s.failed),
-    nodesReady: s.nodesReady,
-    nodesTotal: s.nodesTotal,
-    warnings: formatNumber(s.warningEvents),
   })
 })
 

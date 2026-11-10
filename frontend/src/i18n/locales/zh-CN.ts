@@ -47,7 +47,9 @@ export default {
     // 原来这一行是「287 个 Pod · 258 运行中 · 0 失败 · 3/3 节点 · 25 警告」，
     // 而这五个数字在下面各出现一次（阶段图例、行动卡）。首屏 22 个数字里
     // 有 8 个是重复的，重复的那部分全在这一行。
-    compactStats: '{total} 个 Pod · {nodesReady}/{nodesTotal} 节点就绪',
+    compactStats: '{total} 个 Pod · {nodes}',
+    nodesReadyCount: '{ready}/{total} 节点就绪',
+    nodesUnreadable: '节点信息不可读',
     refresh: '刷新',
     refreshFailed: '刷新失败，仍是上一次的数据',
     actionRequired: '还有 {count} 项需要处理',
@@ -464,7 +466,9 @@ export default {
     // ponytail: 面板原来把整份机器快照（英文 markdown，给模型看的）直接
     // 糊在面板上，占掉四成高度，读者一句都用不上。先给一句人话摘要，
     // 原始快照收进一个折叠里。
-    askContextSummary: '集群 {cluster} · 命名空间 {namespace} · {total} 个 Pod（{running} 运行中 / {failed} 失败）· 节点 {nodesReady}/{nodesTotal} 就绪 · {warnings} 个告警',
+    askContextSummary: '集群 {cluster} · 命名空间 {namespace} · {total} 个 Pod（{running} 运行中 / {failed} 失败）· {nodes} · {warnings}',
+    warningsCount: '{count} 个告警',
+    warningsUnreadable: '告警数不可读',
     askContextShow: '查看原始上下文',
     askContextHide: '收起原始上下文',
     askQuestionLabel: '问题',

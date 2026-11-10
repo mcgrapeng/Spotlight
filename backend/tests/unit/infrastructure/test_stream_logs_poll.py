@@ -129,6 +129,18 @@ def test_read_window_covers_the_longest_backoff():
     )
 
 
+def test_the_read_window_shrinks_with_the_poll_interval():
+    """窗口自适应，但每次都必须盖住一整轮（睡眠 + 读 + 时钟偏差）。
+
+    少一秒，写进空档里的那行就掉出窗口，永远到不了面板。
+    """
+    for interval in (adapter_mod._STREAM_MIN_INTERVAL, adapter_mod._STREAM_MAX_INTERVAL):
+        w = adapter_mod._window_seconds(interval)
+        assert w >= interval + adapter_mod._STREAM_READ_TIMEOUT, (interval, w)
+    # 活跃轮询的窗口要比最长退避的那个小，不然自适应没意义。
+    assert adapter_mod._window_seconds(adapter_mod._STREAM_MIN_INTERVAL) < adapter_mod._STREAM_SINCE_SECONDS
+
+
 def test_a_poll_is_capped_at_the_panels_own_buffer(monkeypatch):
     """The apiserver answers with the last N lines OF the window.
 
@@ -171,11 +183,13 @@ def test_the_history_read_still_honours_the_requested_tail():
     assert [kw.get("tail_lines") for kw in api.kwargs] == [123]
 
 
-def test_every_poll_reads_the_full_window(monkeypatch):
+def test_every_poll_reads_a_whole_window(monkeypatch):
     """What the loop actually asks the apiserver for.
 
     Pins the `since_seconds` the polls send, so a future edit cannot narrow
-    the window without this file noticing.
+    the window without this file noticing. The window now shrinks with the
+    poll interval, so what is pinned is the invariant: every poll's window
+    covers one whole poll, and never exceeds the longest backoff's needs.
     """
     monkeypatch.setattr(adapter_mod.time, "sleep", lambda s: None)
     api = _Api(["2026-01-01T00:00:00Z x\n"] * 5)
@@ -183,9 +197,12 @@ def test_every_poll_reads_the_full_window(monkeypatch):
     _drive(_repo(api), threading.Event(), want=1)
 
     assert api.kwargs, "no polls were made"
-    assert {kw["since_seconds"] for kw in api.kwargs} == {
-        adapter_mod._STREAM_SINCE_SECONDS
+    smallest = adapter_mod._window_seconds(adapter_mod._STREAM_MIN_INTERVAL)
+    assert smallest >= adapter_mod._STREAM_MIN_INTERVAL + adapter_mod._STREAM_READ_TIMEOUT
+    assert {kw["since_seconds"] for kw in api.kwargs} <= {
+        adapter_mod._STREAM_SINCE_SECONDS, smallest
     }
+    assert all(kw["since_seconds"] >= smallest for kw in api.kwargs)
     assert {kw["timestamps"] for kw in api.kwargs} == {True}
 
 

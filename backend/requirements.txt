@@ -25,6 +25,9 @@ httpx>=0.28.0
 anyio>=4.14.2
 certifi>=2026.10.18
 idna>=3.15
+# Secret at rest: the AI provider API key is encrypted before it
+# reaches the database (app/infrastructure/crypto/secret_box.py).
+cryptography>=42.0.0
 structlog>=24.4.0
 litellm>=1.81.0,<2
 

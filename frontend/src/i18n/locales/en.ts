@@ -36,7 +36,9 @@ export default {
     updatedTitle: '{stamp} · {rel}',
     // ponytail: scale only — see the zh-CN note. Every number in this line
     // used to be repeated further down the same screen.
-    compactStats: '{total} pods · {nodesReady}/{nodesTotal} nodes ready',
+    compactStats: '{total} pods · {nodes}',
+    nodesReadyCount: '{ready}/{total} nodes ready',
+    nodesUnreadable: 'node info not readable',
     refresh: 'Refresh',
     refreshFailed: 'Refresh failed — still showing the last snapshot',
     actionRequired: '{count} more to handle',
@@ -450,7 +452,9 @@ export default {
     askContextLabel: 'Context',
     askContextLoading: 'Collecting cluster state…',
     askContextFailed: 'Could not collect the cluster context',
-    askContextSummary: 'Cluster {cluster} · namespace {namespace} · {total} pods ({running} running / {failed} failed) · {nodesReady}/{nodesTotal} nodes ready · {warnings} alerts',
+    askContextSummary: 'cluster {cluster} · namespace {namespace} · {total} pods ({running} running / {failed} failed) · {nodes} · {warnings}',
+    warningsCount: '{count} warnings',
+    warningsUnreadable: 'warning count not readable',
     askContextShow: 'Show the raw context',
     askContextHide: 'Hide the raw context',
     askQuestionLabel: 'Question',

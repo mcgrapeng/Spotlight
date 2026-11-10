@@ -23,6 +23,10 @@ from app.infrastructure.config.settings import get_settings
 from app.infrastructure.logging import get_logger
 from app.main import app
 
+# 端口的默认值只写一次。之前 argparse 的默认和 build_config 的默认各写
+# 一遍 8002，改端口的人会漏掉其中一处。
+DEFAULT_PORT = 8002
+
 log = get_logger("server")
 
 
@@ -32,7 +36,7 @@ def build_config(**overrides) -> uvicorn.Config:
     cfg = dict(
         app=app,
         host="0.0.0.0",
-        port=8002,
+        port=DEFAULT_PORT,
         # Honour X-Forwarded-For, but only from peers we were told to trust.
         # Leaving `forwarded_allow_ips` at uvicorn's default would trust
         # 127.0.0.1 implicitly — which is right for a local sidecar and wrong
@@ -57,7 +61,7 @@ def main() -> None:
 
     p = argparse.ArgumentParser(description="Run the Spotlight API server.")
     p.add_argument("--host", default="0.0.0.0")
-    p.add_argument("--port", type=int, default=8002)
+    p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--reload", action="store_true")
     p.add_argument(
         "--log-level", default=None,

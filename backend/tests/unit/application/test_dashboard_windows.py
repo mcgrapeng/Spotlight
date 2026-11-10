@@ -52,6 +52,41 @@ def _warning(name: str, last_seen: str) -> K8sEvent:
     )
 
 
+@pytest.mark.asyncio
+async def test_one_unreadable_source_does_not_take_down_the_whole_snapshot():
+    """节点列表被访问控制裁掉时 `list_nodes` 抛 403。
+
+    Pod 数和告警数仍然读得到。之前任何一份失败就把整块总览变成错误页，
+    读者看到「查询集群概览失败」——而他要的那两个数就在那儿。
+    """
+
+    class TrimmedRepo(FakeRepo):
+        async def list_nodes(self, cluster):
+            raise RuntimeError("Forbidden: nodes trimmed by the access control")
+
+    out = await DashboardUseCases(f"scope-{uuid4().hex}", TrimmedRepo([])).build(None)
+
+    # 读不到的那份是 None，不是 0 —— 0 是关于集群的假事实。
+    assert out.nodes_total is None
+    assert out.nodes_ready is None
+    # 其余照常。
+    assert out.total_pods == 0
+    assert out.namespaces_count == 1
+    assert out.warning_events == 0
+
+
+@pytest.mark.asyncio
+async def test_a_pod_read_failure_still_fails_the_snapshot():
+    """Pod 是这一页的核心。没有它，这一页没什么可说的。"""
+
+    class BrokenRepo(FakeRepo):
+        async def list_pods(self, *a):
+            raise RuntimeError("apiserver unreachable")
+
+    with pytest.raises(RuntimeError):
+        await DashboardUseCases(f"scope-{uuid4().hex}", BrokenRepo([])).build(None)
+
+
 async def _build(events):
     # A fresh scope per call: DashboardUseCases caches the whole snapshot
     # per (scope, cluster), and a shared scope would hand every test the

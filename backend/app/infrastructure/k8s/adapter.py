@@ -49,7 +49,7 @@ _STREAM_MAX_INTERVAL = 8.0    # once it goes quiet
 #
 # 这个窗口让「写得慢但在写」的 Pod 保持 2 秒轮询。真正安静的 Pod 仍然
 # 退避到 _STREAM_MAX_INTERVAL，空面板一次 API 调用还是 8 秒一次。
-_STREAM_ACTIVE_WINDOW = 30.0
+_STREAM_ACTIVE_WINDOW_DEFAULT = 30.0
 _STREAM_READ_TIMEOUT = 10.0   # a preloaded read is ~1s; this is the safety net
 _STREAM_SKEW_MARGIN = 2.0     # clock skew between the apiserver and the node
 _STREAM_SINCE_SECONDS = int(
@@ -61,6 +61,33 @@ _STREAM_SINCE_SECONDS = int(
 # lines the tail drops are exactly the ones the panel would have dropped
 # anyway.
 _STREAM_MAX_TAIL = 10_000
+
+
+def _window_seconds(interval: float) -> int:
+    """Re-read window for the next poll: one whole poll, plus clock skew.
+
+    shortcut: `read_namespaced_pod_log` only exposes `since_seconds`, not
+    `sinceTime`, so every poll still re-reads the overlap and the dedup set
+    below throws the duplicates away. An incremental read would ask for
+    `sinceTime=<newest line seen>` and cut the transferred lines by the
+    ratio of the window to the interval, but that needs a raw call past the
+    SDK's method. Until a cluster's log volume makes this cost matter, the
+    window is bounded here instead: the tail cap above keeps any single
+    response to the panel's own buffer size.
+    """
+    return int(interval + _STREAM_READ_TIMEOUT + _STREAM_SKEW_MARGIN)
+
+
+def _active_window() -> float:
+    """距上次产出多久以内算「还在写」。
+
+    可配置：每 40 秒写一行的 Pod 在一个 30 秒的窗口里会被判成安静，
+    于是它的尾巴又是旧的。真有这种日志时调大它即可，代价是安静下来的
+    面板多轮几次。"""
+    try:
+        return float(get_settings().log_stream_active_window)
+    except Exception:
+        return _STREAM_ACTIVE_WINDOW_DEFAULT
 # The dedup has to cover one whole poll, or the lines the next poll re-reads
 # come back as duplicates. A hash keeps that memory small: 10k full lines
 # would be megabytes per open panel.
@@ -253,12 +280,17 @@ class KubernetesAdapter(K8sRepositoryPort):
     async def list_nodes(self, cluster: Optional[str]) -> list[Node]:
         api, ctx = self._pool.get(self._session_token, self._kubeconfig_path, cluster)
         # Run the two K8s calls in parallel — both are bound by network RTT.
+        # return_exceptions：Pod 只是给节点补一个「上面跑了几个 Pod」的计数。
+        # 计数拿不到不该让节点列表整个取不到。
         nodes, pods = await asyncio.gather(
             run_in_threadpool(lambda: api.list_node(_request_timeout=self._timeout)),
             run_in_threadpool(lambda: api.list_pod_for_all_namespaces(_request_timeout=self._timeout)),
+            return_exceptions=True,
         )
+        if isinstance(nodes, BaseException):
+            raise nodes
         pod_count: dict[str, int] = {}
-        for p in pods.items:
+        for p in ([] if isinstance(pods, BaseException) else pods.items):
             if p.spec.node_name:
                 pod_count[p.spec.node_name] = pod_count.get(p.spec.node_name, 0) + 1
         # ponytail: 节点列表为空，但 pod 明明跑在某些节点上 —— 那不是
@@ -278,7 +310,10 @@ class KubernetesAdapter(K8sRepositoryPort):
         #
         # 抛 403 而不是自己合成一条「节点列表为空」的提示：前端已有的
         # 403 处理会把它变成「没有权限查询节点」，而权限错误该由它说。
-        if not nodes.items and pod_count:
+        # Pod 读不到时也算「看不出来的空」：一个集群至少有一个节点，
+        # 空列表本身就是可疑的，而验证它的 Pod 计数又拿不到 —— 这时候
+        # 说「没有权限」比说「没有节点」安全（后者是关于集群的假事实）。
+        if not nodes.items and (pod_count or isinstance(pods, BaseException)):
             raise ApiException(
                 status=403,
                 reason="Forbidden",
@@ -458,7 +493,12 @@ class KubernetesAdapter(K8sRepositoryPort):
                         # lines OF the window) and drops only the lines the
                         # panel would have dropped anyway.
                         tail_lines=_STREAM_MAX_TAIL,
-                        since_seconds=_STREAM_SINCE_SECONDS,
+                        # The window has to cover one whole poll: the sleep
+                        # plus the read, plus skew between the apiserver and
+                        # the node. It shrinks with the interval, so an
+                        # active pod (2s polls) re-reads 14s instead of the
+                        # 20s the longest backoff needs.
+                        since_seconds=_window_seconds(interval),
                         timestamps=True,
                         _request_timeout=_STREAM_READ_TIMEOUT,
                         _preload_content=True,
@@ -531,7 +571,7 @@ class KubernetesAdapter(K8sRepositoryPort):
                 last_output = time.monotonic()
             busy = (
                 last_output is not None
-                and time.monotonic() - last_output < _STREAM_ACTIVE_WINDOW
+                and time.monotonic() - last_output < _active_window()
             )
             interval = (
                 _STREAM_MIN_INTERVAL if busy

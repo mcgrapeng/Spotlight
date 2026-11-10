@@ -37,6 +37,9 @@ class Session:
         return self.dir / "kubeconfig.yaml"
 
 
+# shortcut: 进程内存储。单进程部署（app/server.py 只起一个 worker）下它是
+# 共享状态，没问题；起多个 worker 就会变成每进程一份，同一个人的请求落到
+# 不同进程会被当成「未登录」。真要多 worker 时挪进 SQLite（数据已经在那儿）。
 _sessions: dict[str, Session] = {}
 
 

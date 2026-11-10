@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { podTone } from '@/lib/container'
 import type { PodOut } from '@/api/types'
 
 export type PodSortKey = 'name' | 'namespace' | 'phase' | 'containers' | 'restarts' | 'node' | 'age'
@@ -27,6 +28,12 @@ export function parseAgeToMinutes(age: string | null | undefined): number {
   return total
 }
 
+/** 判定的严重度：坏了 > 要人看一眼 > 正常。 */
+function verdictRank(p: PodOut): number {
+  const tone = podTone(p.containers ?? [])
+  return tone === 'error' ? 2 : tone === 'warning' ? 1 : 0
+}
+
 function readyCount(p: PodOut): number {
   return p.containers.filter((c) => c.ready).length
 }
@@ -40,7 +47,10 @@ function compare(a: PodOut, b: PodOut, key: PodSortKey): number {
     case 'age':
       return parseAgeToMinutes(a.age) - parseAgeToMinutes(b.age)
     case 'phase':
-      return a.phase.localeCompare(b.phase)
+      // 状态列显示的是判定，排序也该按判定。按 phase 排，273 个 Running
+      // 挤在一起，唯一坏掉的那个就排在它们中间 —— 值班的人按「状态」
+      // 找不到该看的那个。
+      return verdictRank(b) - verdictRank(a) || a.phase.localeCompare(b.phase)
     case 'node':
       return (a.node ?? '').localeCompare(b.node ?? '')
     case 'namespace':

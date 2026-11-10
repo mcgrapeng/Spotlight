@@ -53,10 +53,12 @@ class DashboardOut(BaseModel):
     pending: int
     failed: int
     succeeded: int
-    warning_events: int
-    nodes_total: int
-    nodes_ready: int
-    namespaces_count: int
+    # None = 读不到，不是 0。这四份数据各自独立：节点被访问控制裁掉时，
+    # Pod 数和告警数仍然是真的。把「读不到」写成 0，就是关于集群的假事实。
+    warning_events: int | None = None
+    nodes_total: int | None = None
+    nodes_ready: int | None = None
+    namespaces_count: int | None = None
     restart_top: list[RestartTopItem]
     # Inlined from /events?limit=500 — the dashboard's "recent activity"
     # list previously triggered a second K8s API call.

@@ -93,6 +93,44 @@ async def test_empty_node_list_with_pods_on_nodes_raises_403():
 
 
 @pytest.mark.asyncio
+async def test_a_pod_count_failure_does_not_take_down_the_node_list():
+    """Pod 只是给节点补「上面跑了几个 Pod」的计数。
+
+    计数拿不到不该让节点列表整个取不到：节点页因此白屏，而节点数据
+    明明读得到。
+    """
+
+    class _PodsBroken(_FakeApi):
+        def list_pod_for_all_namespaces(self, **_kw):
+            raise RuntimeError("pods read failed")
+
+    ad = KubernetesAdapter(session_token="t", kubeconfig_path=None)
+    ad._pool = _FakePool(_PodsBroken(nodes=[_FakeNode("a"), _FakeNode("b")], pods=[]))
+
+    assert len(await ad.list_nodes(None)) == 2
+
+
+@pytest.mark.asyncio
+async def test_an_empty_node_list_is_a_denial_even_when_pods_cannot_confirm_it():
+    """Pod 读不到、节点又是空的 —— 分不清「真没节点」和「被裁了」。
+
+    一个集群至少有一个节点。这时候说「没有权限」比说「没有节点」安全：
+    后者是关于集群的假事实。
+    """
+
+    class _PodsBroken(_FakeApi):
+        def list_pod_for_all_namespaces(self, **_kw):
+            raise RuntimeError("pods read failed")
+
+    ad = KubernetesAdapter(session_token="t", kubeconfig_path=None)
+    ad._pool = _FakePool(_PodsBroken(nodes=[], pods=[]))
+
+    with pytest.raises(ApiException) as exc:
+        await ad.list_nodes(None)
+    assert exc.value.status == 403
+
+
+@pytest.mark.asyncio
 async def test_a_cluster_that_really_has_no_nodes_stays_empty():
     """No nodes AND no pod on any node → genuinely empty, not a denial."""
     ad = _adapter(nodes=[], pods=[_FakePod(None)])

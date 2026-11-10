@@ -43,6 +43,8 @@ _ai_calls: dict[str, list[float]] = {}
 _ai_lock = Lock()
 
 
+# shortcut: 限流计数在进程内。单进程下每分钟 20 次是每用户 20 次；多 worker
+# 下会变成每进程 20 次。同上，真要多 worker 时挪进共享存储。
 def _ai_rate_limited(bucket: str) -> bool:
     """Whether this caller is over their model-call budget.
 

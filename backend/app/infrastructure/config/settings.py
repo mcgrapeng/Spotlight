@@ -75,6 +75,9 @@ class Settings(BaseSettings):
 
     # Cache TTLs (seconds). 0 disables.
     cache_ttl_pods: int = 5
+    # 日志跟随：距上次产出多久以内算「还在写」，保持 2 秒轮询。
+    # 慢日志的 Pod 会被这个值判成安静，尾巴于是旧了；调大它即可。
+    log_stream_active_window: float = 30.0
     cache_ttl_nodes: int = 30
     cache_ttl_events: int = 10
     cache_ttl_namespaces: int = 60

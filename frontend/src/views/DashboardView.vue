@@ -260,8 +260,8 @@ const actionItems = computed<Array<{
     })
   }
 
-  if (stats.value?.nodes_ready !== undefined && stats.value.nodes_total > 0) {
-    const notReady = stats.value.nodes_total - stats.value.nodes_ready
+  if (stats.value?.nodes_ready != null && (stats.value.nodes_total ?? 0) > 0) {
+    const notReady = stats.value.nodes_total! - stats.value.nodes_ready
     if (notReady > 0) {
       items.push({
         severity: 'critical',
@@ -373,13 +373,15 @@ const restItems = computed(() => actionItems.value.slice(1))
 const compactStats = computed(() => {
   const s = stats.value
   if (!s) return ''
+  // 节点读不到时说「不可读」，不显示 0/null：那是关于集群的假事实。
+  const nodes =
+    s.nodes_ready === null || s.nodes_ready === undefined ||
+    s.nodes_total === null || s.nodes_total === undefined
+      ? t('dashboard.nodesUnreadable')
+      : t('dashboard.nodesReadyCount', { ready: s.nodes_ready, total: s.nodes_total })
   return t('dashboard.compactStats', {
     total: formatNumber(s.total_pods),
-    running: formatNumber(s.running),
-    failed: formatNumber(s.failed),
-    nodesReady: s.nodes_ready,
-    nodesTotal: s.nodes_total,
-    warnings: s.warning_events,
+    nodes,
   })
 })
 

@@ -716,13 +716,13 @@ export interface components {
             /** Succeeded */
             succeeded: number;
             /** Warning Events */
-            warning_events: number;
+            warning_events?: number | null;
             /** Nodes Total */
-            nodes_total: number;
+            nodes_total?: number | null;
             /** Nodes Ready */
-            nodes_ready: number;
+            nodes_ready?: number | null;
             /** Namespaces Count */
-            namespaces_count: number;
+            namespaces_count?: number | null;
             /** Restart Top */
             restart_top: components["schemas"]["RestartTopItem"][];
             /** Recent Warns */

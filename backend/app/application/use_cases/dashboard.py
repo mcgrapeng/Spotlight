@@ -85,12 +85,27 @@ class DashboardUseCases:
         # 节点数仍然是集群级的：节点不属于任何命名空间。
         cache = _cache_for(self._scope, cluster, namespace)
         async def _load() -> DashboardOut:
+            # return_exceptions：这四份数据互相独立，一份读不到不该让整块
+            # 总览页变成错误页。具体场景：节点列表被访问控制裁掉时
+            # `list_nodes` 抛 403，而 Pod 数和告警数明明读得到——之前整页
+            # 挂掉，读者看到的是「查询集群概览失败」。
+            #
+            # Pod 是这一页的核心，它失败才算整块失败。
             pods, nodes, events, namespaces = await asyncio.gather(
                 self._k8s.list_pods(cluster, namespace, LabelSelector(), None, None),
                 self._k8s.list_nodes(cluster),
                 self._k8s.list_events(cluster, namespace, None, 500),
                 self._k8s.list_namespaces(cluster),
+                return_exceptions=True,
             )
+            if isinstance(pods, BaseException):
+                raise pods
+            nodes_ok = None if isinstance(nodes, BaseException) else nodes
+            events_ok = None if isinstance(events, BaseException) else events
+            ns_ok = None if isinstance(namespaces, BaseException) else namespaces
+            nodes = nodes_ok or []
+            events = events_ok or []
+            namespaces = ns_ok or []
             phase_counter = Counter(p.phase for p in pods)
             restart_top = sorted(
                 ((f"{p.namespace}/{p.name}", p.restart_count) for p in pods if p.restart_count > 0),
@@ -111,13 +126,15 @@ class DashboardUseCases:
                 pending=phase_counter.get("Pending", 0),
                 failed=phase_counter.get("Failed", 0),
                 succeeded=phase_counter.get("Succeeded", 0),
-                warning_events=sum(
-                    1 for e in warnings
-                    if _within_window(e.last_seen, _WARNING_WINDOW, now)
+                warning_events=(
+                    None if events_ok is None else
+                    sum(1 for e in warnings if _within_window(e.last_seen, _WARNING_WINDOW, now))
                 ),
-                nodes_total=len(nodes),
-                nodes_ready=sum(1 for n in nodes if n.is_ready),
-                namespaces_count=len(namespaces),
+                nodes_total=None if nodes_ok is None else len(nodes),
+                nodes_ready=(
+                    None if nodes_ok is None else sum(1 for n in nodes if n.is_ready)
+                ),
+                namespaces_count=None if ns_ok is None else len(namespaces),
                 restart_top=[{"pod": k, "restarts": v} for k, v in restart_top],
                 recent_warns=[EventOut.model_validate(e) for e in recent_warns],
             )

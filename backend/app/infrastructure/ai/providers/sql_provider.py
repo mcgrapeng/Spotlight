@@ -10,6 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.entities.ai import AIProviderConfig
 from app.infrastructure.persistence.models.orm import AIProviderRow
 
+from pathlib import Path
+
+from app.infrastructure.config.settings import get_settings
+from app.infrastructure.crypto.secret_box import open_secret, seal
+
+
+def _secret_file() -> Path:
+    """主密钥文件放在数据库旁边。数据库在哪，密钥就在哪。"""
+    url = get_settings().database_url
+    raw = url.split('///', 1)[-1] if '///' in url else './data/app.db'
+    return Path(raw).resolve().parent / '.secret_key'
 
 class SQLAIProviderRepository:
     def __init__(self, session: AsyncSession):
@@ -45,7 +56,8 @@ class SQLAIProviderRepository:
         row.name = cfg.name
         row.provider = cfg.provider
         row.model = cfg.model
-        row.api_key = cfg.api_key
+        # 落盘前封起来：这把 key 能花钱，数据库泄露就是密钥泄露。
+        row.api_key = seal(cfg.api_key, _secret_file())
         row.api_base = cfg.api_base
         row.temperature = cfg.temperature
         row.max_tokens = cfg.max_tokens
@@ -91,7 +103,7 @@ class SQLAIProviderRepository:
                 extra = {}
         return AIProviderConfig(
             id=row.id, name=row.name, provider=row.provider, model=row.model,
-            api_key=row.api_key, api_base=row.api_base,
+            api_key=open_secret(row.api_key, _secret_file()), api_base=row.api_base,
             temperature=row.temperature, max_tokens=row.max_tokens,
             is_default=row.is_default, enabled=row.enabled, extra=extra,
         )
@@ -100,7 +112,7 @@ class SQLAIProviderRepository:
     def _from_entity(cfg: AIProviderConfig) -> AIProviderRow:
         return AIProviderRow(
             name=cfg.name, provider=cfg.provider, model=cfg.model,
-            api_key=cfg.api_key, api_base=cfg.api_base,
+            api_key=seal(cfg.api_key, _secret_file()), api_base=cfg.api_base,
             temperature=cfg.temperature, max_tokens=cfg.max_tokens,
             is_default=cfg.is_default, enabled=cfg.enabled,
             extra_json=json.dumps(cfg.extra) if cfg.extra else None,
