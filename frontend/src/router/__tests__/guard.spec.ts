@@ -15,6 +15,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { flushPromises } from '@vue/test-utils'
 import { authApi } from '@/api/endpoints'
 
 // Every test here calls `freshRouter()`, which does `vi.resetModules()` and
@@ -61,6 +62,9 @@ describe('router auth guard', () => {
     const { router, useAuthStore } = await freshRouter()
 
     await router.push('/login')
+    // The guard's status fetch is async; assert after it settles. Under
+    // parallel load the push resolved first and the count read 0 (flaky).
+    await flushPromises()
 
     // The bug: this call never happened on the public-route path.
     expect(statusMock).toHaveBeenCalledTimes(1)
