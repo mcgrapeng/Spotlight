@@ -429,6 +429,34 @@ describe('LogViewer', () => {
     expect(wrapper.emitted('retry')).toBeTruthy()
   })
 
+  it('says the stream is disconnected, not that the reader paused it', () => {
+    // 三种状态，不是两种。连接断了的时候写「已暂停」是在撒谎 ——「暂停」
+    // 是读者自己按的，这里是他没按但流断了。事故时读者正是靠这行字判断
+    // 「是我暂停的」还是「工具断了」。
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [line('info', 'partial line that came through')],
+        streaming: false,
+        unreadCount: 0,
+        error: '日志连接中断',
+      },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.text()).toContain('连接已断开')
+    expect(wrapper.text()).not.toContain('已暂停')
+    // And it must not claim to be live either.
+    expect(wrapper.text()).not.toContain('实时')
+  })
+
+  it('still says "已暂停" when the reader paused it and nothing failed', () => {
+    const wrapper = mount(LogViewer, {
+      props: { lines: makeLines(3), streaming: false, unreadCount: 0 },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.text()).toContain('已暂停')
+    expect(wrapper.text()).not.toContain('连接已断开')
+  })
+
   it('renders the download button (disabled when filtered set is empty)', () => {
     const wrapper = mount(LogViewer, {
       props: { lines: makeLines(3), unreadCount: 0, podName: 'demo', namespace: 'ns' },

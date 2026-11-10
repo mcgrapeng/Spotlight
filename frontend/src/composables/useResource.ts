@@ -1,5 +1,6 @@
 import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { getI18n } from '@/i18n'
+import { readApiError } from '@/lib/apiError'
 
 interface Options<T> {
   /** Reactive dependency to watch. When it changes, load() refires. */
@@ -32,6 +33,15 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
   const data = ref<T | null>(null) as Ref<T | null>
   const loading = ref(false)
   const error = ref<string | null>(null)
+  /**
+   * HTTP 状态码，和缺哪个权限。
+   *
+   * 视图靠这两个把「没权限读」和「读失败」分开：前者不能说成「这里是
+   * 空的」，也不能配重试按钮（重试不会授予权限）。403 那一档是这个
+   * 界面里一种**独立的状态**，不是错误页的一种文案。
+   */
+  const errorStatus = ref<number | null>(null)
+  const errorPermission = ref<string | null>(null)
 
   // Orders concurrent loads, same contract as useCachedFetch.load() and
   // usePodList.load(): a response (or a failure) from a superseded load must
@@ -54,11 +64,15 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
       if (mySeq === seq) {
         loading.value = false
         error.value = null
+        errorStatus.value = null
+        errorPermission.value = null
       }
       return
     }
     loading.value = true
     error.value = null
+    errorStatus.value = null
+    errorPermission.value = null
     try {
       const value = await fetcher()
       if (!alive || mySeq !== seq) return
@@ -69,13 +83,13 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
       // "Request failed with status code 500" 出现在中文界面上是噪声：
       // 读者要的是「加载失败」加上后端说的原因（如果有）。
       // 后端没给 detail 时给状态码——重复一遍「加载失败」等于什么都没说。
-      const status = e?.response?.status
-      const detail = e?.response?.data?.detail
       // The backend sends a plain sentence for most failures, but an object
       // for the permission denial. Printing an object gives the reader
       // "[object Object]", so read the sentence out of the shape and fall
       // back to the status code when the shape carries none.
-      const message = typeof detail === 'string' ? detail : detail?.message
+      const { status, message, permission } = readApiError(e)
+      errorStatus.value = status
+      errorPermission.value = permission
       error.value = message
         ?? (status ? `HTTP ${status}` : t('state.error'))
     } finally {
@@ -95,5 +109,5 @@ export function useResource<T>(fetcher: () => Promise<T>, opts: Options<T> = {})
 
   onBeforeUnmount(() => { alive = false })
 
-  return { data, loading, error, reload: load }
+  return { data, loading, error, errorStatus, errorPermission, reload: load }
 }

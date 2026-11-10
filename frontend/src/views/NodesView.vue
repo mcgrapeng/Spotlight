@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle } from '@lucide/vue'
+import { RefreshCw, Server, Cpu, MemoryStick, Box, AlertTriangle, AlertCircle, ShieldAlert } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
+import PermissionDenied from '@/components/common/PermissionDenied.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, parseCPU, parseMemory, formatMillicores, formatMiB } from '@/lib/utils'
@@ -21,6 +22,8 @@ const { t } = useI18n()
 const nodes = ref<NodeOut[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+const errorStatus = ref<number | null>(null)
+const errorPermission = ref<string | null>(null)
 
 const nodesFetch = useCachedFetch<NodeOut[]>({
   key: '',
@@ -28,9 +31,22 @@ const nodesFetch = useCachedFetch<NodeOut[]>({
   data: nodes,
   loading,
   error,
+  errorStatus,
+  errorPermission,
   errorFallback: t('state.error'),
   ttlMs: 60_000,
 })
+
+/**
+ * 403 = 节点列表被访问控制裁掉了，不是「集群没有节点」。
+ *
+ * 这两件事必须分开：前者是权限问题，重试不会变好，而且它会伪装成
+ * 「集群是空的」——对一个运维工具来说，把权限问题说成事实比报错
+ * 危险得多，读者会以为集群健康。后端在节点列表为空但 Pod 明明引用了
+ * 节点时抛 403（见 adapter.list_nodes），这里把它翻译成一句话，
+ * 并且不给出无用的「重试」按钮。
+ */
+const permissionDenied = computed(() => errorStatus.value === 403)
 
 async function load() {
   if (!cluster.activeCluster) return
@@ -52,6 +68,9 @@ const ready = computed(() => nodes.value.filter((n) => n.status === 'Ready').len
 const notReady = computed(() => nodes.value.length - ready.value)
 const totalPods = computed(() => nodes.value.reduce((sum, n) => sum + n.pod_count, 0))
 const subtitle = computed(() => {
+  // 权限被拒时不说节点数量：0 个节点不是「尚无节点」这个事实，
+  // 而是没读到这个列表。副标题在这里重复那个假陈述，比什么都不说更糟。
+  if (permissionDenied.value) return t('nodes.subtitleDenied')
   const total = nodes.value.length
   if (!total) return t('nodes.subtitleEmpty')
   const pct = Math.round((ready.value / total) * 100)
@@ -150,7 +169,23 @@ function podOverloaded(n: NodeOut): boolean {
       <StatCard :label="t('nodes.statPods')" :value="totalPods" />
     </div>
 
-    <ErrorState v-if="error" :message="error" @retry="load" />
+    <!--
+      权限不足是它自己的一种状态，不是「加载失败」：重试不会授予权限，
+      而「没有节点」是一个关于集群的错误事实。两者分开说。
+
+      与 Pod 列表 / 事件页共用同一个组件——同一件事，三处说法必须一致。
+      这里换成了节点特有的那套文案（被裁的是 nodes 资源，不是泛泛的
+      「没权限」）。
+    -->
+    <PermissionDenied
+      v-if="permissionDenied"
+      :permission="errorPermission"
+      :title="t('nodes.permissionTitle')"
+      :description="t('nodes.permissionDescription')"
+      :hint="t('nodes.permissionHint')"
+    />
+
+    <ErrorState v-else-if="error" :message="error" @retry="load" />
 
     <div
       v-else-if="nodeDisplays.length"
@@ -191,7 +226,7 @@ function podOverloaded(n: NodeOut): boolean {
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
                 <Server :size="14" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
-                <h3 class="text-base font-semibold font-mono truncate">{{ d.node.name }}</h3>
+                <h2 class="text-base font-semibold font-mono truncate">{{ d.node.name }}</h2>
               </div>
               <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <span v-if="d.node.roles.length" class="font-mono">{{ d.node.roles.join(', ') }}</span>
@@ -211,10 +246,13 @@ function podOverloaded(n: NodeOut): boolean {
 
           <!-- Pod 数：核心指标，放大显示 -->
           <div>
+            <!-- 「当前运行」是补充说明，不是层级。它原来用 opacity-70 降权 ——
+                 那是用透明度做层级，代价是对比度。改成 muted-foreground 的
+                 实色：它和「Pods」是同一句话里的两个词，本来就该同级。 -->
             <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Box :size="12" :stroke-width="1.75" />
               Pods
-              <span class="text-xs opacity-70">{{ t('nodes.podsRunning') }}</span>
+              <span class="text-xs">{{ t('nodes.podsRunning') }}</span>
             </div>
             <div class="mt-1 flex items-baseline gap-2">
               <span :class="cn(

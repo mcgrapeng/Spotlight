@@ -20,8 +20,9 @@ import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
+import ReasonChip from '@/components/common/ReasonChip.vue'
 import { cn } from '@/lib/utils'
-import { containerDotClass } from '@/lib/container'
+import { containerDotClass, containerTone, podTone } from '@/lib/container'
 import { restartTextClass } from '@/lib/restart'
 import dayjs from '@/utils/dayjs'
 import type { PodOut, LogLineOut, EventOut } from '@/api/types'
@@ -34,15 +35,74 @@ const cluster = useClusterStore()
 const { t } = useI18n()
 const tab = ref('logs')
 const logsTabActive = ref(tab.value === 'logs')
-/** 容器就绪数 —— 事实条上那个 n/n。 */
-const readyContainers = computed(
-  () => pod.value?.containers.filter((c) => c.ready).length ?? 0,
+
+/**
+ * 事实条上那个 n/n —— 数的是「没坏的容器」，不是 `c.ready`。
+ *
+ * `c.ready` 是 K8s 的瞬时快照：容器正在 crash loop 而 ready 还没翻转
+ * 的那一段时间里，ready 仍是 true。于是这个数字会说「1/1 都好」，
+ * 而同一屏的状态点是红的、标题区的芯片是「CrashLoopBackOff」——
+ * 三个数互相打架。现在它们数的是同一件事（containerTone）。
+ */
+const healthyContainers = computed(
+  () => (pod.value?.containers ?? []).filter((c) => containerTone(c) === 'success').length,
 )
 
 /** 容器状态点，和 Pods 表格里的圆点用同一套判定。 */
 function containerDot(c: { ready?: boolean; state?: string; reason?: string | null }): string {
   return containerDotClass(c)
 }
+
+/**
+ * 真正坏掉的容器。
+ *
+ * phase 会撒谎：一个 CrashLoopBackOff 的 Pod，phase 仍然是 Running
+ * （Pod 本身没退出循环，是里面的容器在循环）。所以详情页不能只显示
+ * phase —— 那是读者被总览页指过来之后唯一能看到的真相，而这个界面
+ * 必须告诉他「哪儿坏了」。判定复用 lib/container.ts 的那份，Pods
+ * 表格的圆点用的是同一个函数，两边不会给出相反的答案。
+ */
+const brokenContainers = computed(
+  () => (pod.value?.containers ?? []).filter((c) => containerTone(c) === 'error'),
+)
+
+/** Pod 级 reason（Evicted / NodeAffinity 之类）。和容器 reason 是两回事。 */
+const podReason = computed(() => pod.value?.reason ?? null)
+
+/**
+ * 标题区的判定：容器坏了就说容器的原因，没坏就说 phase。
+ *
+ * 原因值原样显示（CrashLoopBackOff / ImagePullBackOff / OOMKilled…）——
+ * 它们是 K8s API 字段值，读者要能拿去敲 kubectl，和事件页的 reason
+ * 同一个处理。
+ *
+ * 标签只用原因，不带容器名：390px 上「redis · CrashLoopBackOff」是
+ * 165px，加上两个 40px 的按钮就把标题挤成 0 宽（实测过）。哪个容器
+ * 坏了由事实条的容器组说（它紧挨着「容器 ● 1/2」），两处各说一件事。
+ */
+const verdictLabel = computed(() => brokenContainers.value[0]?.reason ?? null)
+
+/**
+ * 标题区胶囊的色调：与 Pod 列表的状态列**同一个**判定。
+ *
+ * 之前这里只看「有没有容器坏了」，于是「在跑但没就绪」的 Pod 在列表里
+ * 是琥珀、在详情页是绿色——同一个 Pod 两个颜色。凌晨三点从列表点进详情，
+ * 第一眼看到的是绿色「运行中」。
+ */
+const verdictTone = computed(() => podTone(pod.value?.containers ?? []))
+
+/**
+ * 容器状态的读屏文本：每个容器的名字 + 状态 + 原因。
+ *
+ * 之前那一组状态点是 aria-hidden 的，读屏只会念出「容器 1/1」——
+ * 一个正在 crash loop 的容器被读成一个健康容器。格式和 Pods 表格
+ * 那一行的 title 一致（`name: waiting (ImagePullBackOff)`）。
+ */
+const containerStateLabel = computed(() =>
+  (pod.value?.containers ?? [])
+    .map((c) => `${c.name}: ${c.state}${c.reason ? ` (${c.reason})` : ''}`)
+    .join('; '),
+)
 
 /** Map a container's K8s state/reason to a phase pill. Never label a
  *  CrashLoopBackOff / ImagePullBackOff container as "Pending". */
@@ -89,7 +149,7 @@ function openAIAnalyzer() {
 // toggle and scroll-to-top detection. A single ref is the source of truth.
 const logAutoFollow = ref(true)
 
-const { lines: logLines, unreadCount, error: logError, start: logStart } = usePodLogs({
+const { lines: logLines, unreadCount, error: logError, errorPermission: logErrorPermission, start: logStart } = usePodLogs({
   cluster, namespace, name, enabled: logsTabActive,
   streaming: logStreaming,
   autoFollow: logAutoFollow,
@@ -223,7 +283,31 @@ function back() { router.push({ name: 'pods' }) }
 
     <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`" class="shrink-0">
       <template #actions>
-        <PodStatusPill :phase="pod.phase" class="mr-2" />
+        <!--
+          标题区只放一个状态元素，而且坏的时���它不是 phase。
+
+          phase 会撒谎：一个 CrashLoopBackOff 的 Pod，phase 仍然是 Running。
+          所以坏的时候显示判定（故障原因），不坏的时候才显示 phase ——
+          标题区的右上角永远不会是「一片绿 + 真相在两行之下」。
+
+          标签只用原因，不带容器名：390px 上「redis · CrashLoopBackOff」
+          是 165px，加上两个 40px 的按钮就把标题挤成 0 宽（实测过）。
+          哪个容器坏了由事实条的容器组说（它紧挨着「容器 ● 1/2」），
+          两处各说一件事，不重复。
+        -->
+        <ReasonChip
+          v-if="verdictLabel"
+          :term="verdictLabel"
+          tone="error"
+          size="sm"
+          class="mr-2"
+        />
+        <PodStatusPill
+          v-else
+          :phase="pod.phase"
+          :tone-override="verdictTone"
+          class="mr-2"
+        />
         <Button
           variant="outline" size="sm" :disabled="favBusy" @click="toggleFavorite"
           :aria-label="favoriteId !== null ? t('pod.unfavorite') : t('pod.favorite')"
@@ -267,21 +351,42 @@ function back() { router.push({ name: 'pods' }) }
       </div>
       <!-- 容器降级到事实条上的一个概况（几个状态点 + n/n）。
            之前容器独占左边 280px 一栏，日志被挤得看不全；
-           逐个容器的镜像 / 状态 / reason 挪到「详情」页签里。 -->
+           逐个容器的镜像 / 状态 / reason 挪到「详情」页签里。
+           那组状态点原来是 aria-hidden 的，读屏只会念「容器 1/1」——
+           一个正在 crash loop 的容器被读成一个健康的。现在整组给一个
+           名字（role=img + aria-label），状态和原因一起念出来。 -->
       <div class="flex items-baseline gap-1.5">
         <span class="text-muted-foreground">{{ t('pod.metaContainers') }}</span>
         <span class="flex items-center gap-1.5">
-          <span class="flex items-center gap-1" aria-hidden="true">
+          <span role="img" :aria-label="containerStateLabel" class="flex items-center gap-1">
             <span
               v-for="c in pod.containers"
               :key="c.name"
               class="block size-1.5 rounded-full"
               :class="containerDot(c)"
+              :title="`${c.name}: ${c.state}${c.reason ? ` (${c.reason})` : ''}`"
             />
           </span>
-          <span class="font-mono tabular-nums font-medium">{{ readyContainers }}/{{ pod.containers.length }}</span>
+          <span
+            class="font-mono tabular-nums font-medium"
+            :class="brokenContainers.length ? 'text-error' : ''"
+          >{{ healthyContainers }}/{{ pod.containers.length }}</span>
         </span>
       </div>
+      <!--
+        判定在标题区（右上角）。这里只留两件事：
+        容器组（「容器 ● 1/2」+ 每个容器的名字和原因），以及 Pod 自己的
+        reason（Evicted / NodeAffinity 之类）—— 它是 Pod 层面的事实，
+        和容器的原因不是一回事，两个都坏的时候两个都要说。
+        两处不重复同一个字符串：标题区说「坏了、什么原因」，这里说
+        「几个容器、哪个容器、Pod 自己怎么了」。
+      -->
+      <ReasonChip
+        v-if="podReason"
+        :term="podReason"
+        tone="error"
+        size="xs"
+      />
     </div>
 
     <div class="flex-1 min-h-0 mt-4 flex flex-col">
@@ -311,6 +416,7 @@ function back() { router.push({ name: 'pods' }) }
                 :pod-name="name"
                 :namespace="namespace"
                 :error="logError"
+                :error-permission="logErrorPermission"
                 @update:filtered="filteredLogsForAI = $event"
                 @clear="logLines = []"
                 @consume-unread="logUnread = 0"
@@ -345,9 +451,13 @@ function back() { router.push({ name: 'pods' }) }
                       :label="t(`eventType.${ev.type}`, ev.type)"
                       size="xs"
                     />
-                    <span class="inline-flex items-center rounded-sm px-1.5 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">
-                      {{ ev.reason }}
-                    </span>
+                    <ReasonChip
+                      :term="ev.reason"
+                      :context="ev.involved_name"
+                      size="xs"
+                      tone="neutral"
+                      class="font-mono text-foreground"
+                    />
                   </div>
                   <p class="text-sm text-muted-foreground mt-1">{{ ev.message }}</p>
                   <div class="text-xs text-muted-foreground mt-1 flex gap-3">
@@ -375,11 +485,25 @@ function back() { router.push({ name: 'pods' }) }
                   >
                     <div class="min-w-0 flex-1">
                       <div class="font-mono text-xs font-medium truncate">{{ c.name }}</div>
+                      <!-- 只留镜像名。reason 由右边的芯片说（带解释），
+                           两处都写同一个串，读者会以为是两件事。 -->
                       <div class="text-xs text-muted-foreground truncate">
-                        {{ c.image }}<span v-if="c.reason"> · {{ c.reason }}</span>
+                        {{ c.image }}
                       </div>
                     </div>
-                    <PodStatusPill :phase="containerPhase(c)" />
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <!-- 坏掉的容器：reason 用 error 芯片，别再塞在灰字里 ——
+                           读者来这个页签就是为了知道哪个容器坏了、为什么。
+                           芯片本身可点开术语解释。 -->
+                      <ReasonChip
+                        v-if="containerTone(c) === 'error'"
+                        :term="c.reason ?? c.state"
+                        :context="c.name"
+                        tone="error"
+                        size="xs"
+                      />
+                      <PodStatusPill :phase="containerPhase(c)" />
+                    </div>
                   </div>
                 </div>
 

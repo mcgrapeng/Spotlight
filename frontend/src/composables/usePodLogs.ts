@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
+import { readApiError } from '@/lib/apiError'
 import { useI18n } from 'vue-i18n'
 import { logsApi, podsApi } from '@/api/endpoints'
 import { splitLogLines } from '@/domain/services/logFormat'
@@ -79,6 +80,15 @@ export function usePodLogs(opts: UsePodLogsOptions) {
   // objects, so deep reactivity would waste proxy overhead on every field of every line.
   const lines = shallowRef<LogLineOut[]>([])
   const streaming = ref(false)
+  /**
+   * 这次读取失败的原因：HTTP 状态码，和缺哪个权限。
+   *
+   * 「没权限读日志」和「日志连接断了」是两件事：前者要找管理员要权限，
+   * 后者要找网络。混成一句话，读者会去查错的方向。而前者配「重试」按钮
+   * 更糟——重试不会授予权限。
+   */
+  const errorStatus = ref<number | null>(null)
+  const errorPermission = ref<string | null>(null)
   const error = ref<string | null>(null)
   const unreadCount = ref(0)
 
@@ -283,7 +293,12 @@ export function usePodLogs(opts: UsePodLogsOptions) {
         //
         // 后端现在每个错误都带 detail（"Pod 或容器不存在…"），用它；
         // 没有 detail 的（网络断了之类）用本地文案。
-        error.value = e?.response?.data?.detail ?? t('pod.logsLoadFailed')
+        // detail 在权限拒绝时是一个对象
+      // （{code, permission, message}）——直接塞进界面会渲染出 JSON。
+      const { status, message, permission } = readApiError(e)
+      errorStatus.value = status
+      errorPermission.value = permission
+      error.value = message ?? (status ? `HTTP ${status}` : t('pod.logsLoadFailed'))
       }
     }
 
@@ -374,6 +389,9 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       if (!alive || myGen !== gen) return
       closeStream()
       if (opts.streaming) opts.streaming.value = false
+      // 权限拒绝不会因为重连而变好，而「日志连接中断」会把读者引去查网络
+      // ——方向错了。已经说清楚是权限问题，就别覆盖它。
+      if (errorPermission.value) return
       error.value = t('pod.logsDisconnected')
     })
     es.addEventListener('error', () => {
@@ -386,7 +404,16 @@ export function usePodLogs(opts: UsePodLogsOptions) {
       // like an error to the client — only the terminal CLOSED state is
       // worth surfacing to the user.
       if (es && es.readyState === 2 /* CLOSED */) {
+        // 写的是父组件那个 ref（opts.streaming），不是本地的 streaming。
+        //
+        // 之前这里写的是本地那个，于是 PodDetailView 的 logStreaming 仍是
+        // true：面板底部一颗绿的「实时」，正文写着「日志连接中断」，工具栏
+        // 的暂停按钮显示成播放图标（因为 LogViewer 读的是本地值）。
+        // 同一块屏幕上三个互相矛盾的状态声明——恰恰是事故时读者最需要
+        // 相信的那块面板。上面 end 分支写的正是 opts.streaming，两边对齐。
+        if (opts.streaming) opts.streaming.value = false
         streaming.value = false
+        if (errorPermission.value) return
         error.value = t('pod.logsDisconnected')
       }
     })
@@ -415,5 +442,5 @@ export function usePodLogs(opts: UsePodLogsOptions) {
 
   function clear() { lines.value = []; unreadCount.value = 0; deferred.length = 0 }
 
-  return { lines, streaming, error, unreadCount, start, close: closeStream, clear }
+  return { lines, streaming, error, errorStatus, errorPermission, unreadCount, start, close: closeStream, clear }
 }

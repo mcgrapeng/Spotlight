@@ -6,11 +6,13 @@ import { Plus, Star, Trash2, Pencil, AlertTriangle } from '@lucide/vue'
 import { aiApi } from '@/api/endpoints'
 import { useResource } from '@/composables/useResource'
 import PageHeader from '@/components/common/PageHeader.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
+import PermissionDenied from '@/components/common/PermissionDenied.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import AIProviderForm from '@/components/ai/AIProviderForm.vue'
 import type { AIProviderOut, AIProviderIn } from '@/api/types'
@@ -26,7 +28,7 @@ const editing = ref<(Partial<AIProviderIn> & { id?: number }) | undefined>()
 const deleteConfirm = ref<{ id: number; name: string } | null>(null)
 const deleting = ref(false)
 
-const { data: _raw, loading, error, reload: load } = useResource<AIProviderOut[]>(
+const { data: _raw, loading, error, errorStatus, errorPermission, reload: load } = useResource<AIProviderOut[]>(
   () => aiApi.listProviders(),
 )
 const providers = computed(() => _raw.value ?? [])
@@ -123,6 +125,12 @@ async function setDefault(p: AIProviderOut) {
   </PageHeader>
 
   <LoadingState v-if="loading && providers.length === 0" />
+  <!-- 权限不足：不给「重试」——重试不会授予权限。 -->
+  <PermissionDenied
+    v-else-if="errorStatus === 403"
+    :permission="errorPermission"
+    :subject="t('ai.subject')"
+  />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="providers.length === 0"
@@ -134,12 +142,12 @@ async function setDefault(p: AIProviderOut) {
     <Card v-for="p in providers" :key="p.id" class="p-0">
       <CardContent class="p-4">
         <div class="flex items-center gap-3">
-          <span
+          <StatusChip
             v-if="p.enabled"
-            class="inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-semibold bg-success-bg text-success border border-success-border"
-          >
-            {{ t('ai.enabled') }}
-          </span>
+            tone="success"
+            size="sm"
+            :label="t('ai.enabled')"
+          />
           <span
             v-if="p.is_default"
             class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-semibold bg-foreground text-background"

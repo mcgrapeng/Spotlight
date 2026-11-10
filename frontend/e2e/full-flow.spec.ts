@@ -77,6 +77,45 @@ test('AppHeader renders cluster + namespace comboboxes and no AI button', async 
 })
 
 // ─────────────────────────────────────────────────────────────────────────
+// 1b. The AI panel has a visible entry point
+// ─────────────────────────────────────────────────────────────────────────
+test('the sidebar exposes a visible "问 AI" button that opens the AI panel', async ({ page }) => {
+  const errors = attachErrorRecorder(page)
+  await installApiMocks(page)
+  await page.goto('/dashboard', { waitUntil: 'networkidle' })
+
+  // 这个面板之前只有 ⌘J 和 ⌘K 两个入口，两个都是键盘和弦：新用户
+  // 看不到它，手机上根本没有和弦键，于是产品最能吹的那件事在手机上
+  // 是结构性不可达的。现在侧栏有一个带文字的按钮。
+  const ask = page.getByRole('button', { name: '问 AI' })
+  await expect(ask).toBeVisible()
+  // 带文字，不是一个只有图标的按钮。
+  await expect(ask).toHaveText(/问 AI/)
+
+  await ask.click()
+  // The panel opens as a dialog with its own heading.
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '问 Spotlight' })).toBeVisible()
+
+  expect(filterCritical(errors)).toHaveLength(0)
+})
+
+test('the AI entry is reachable from the mobile drawer', async ({ page }) => {
+  await installApiMocks(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/dashboard', { waitUntil: 'networkidle' })
+
+  // 手机上顶栏是两行 grid，没有放这个按钮的位置；它在抽屉里。
+  await page.getByRole('button', { name: '打开菜单' }).click()
+  const ask = page.getByRole('button', { name: '问 AI' })
+  await expect(ask).toBeVisible()
+
+  await ask.click()
+  // 抽屉要先收起，不能和 AI 面板叠在一起。
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+})
+
+// ─────────────────────────────────────────────────────────────────────────
 // 2. Dashboard metrics
 // ─────────────────────────────────────────────────────────────────────────
 test('Dashboard leads with the one thing to handle, then the counts', async ({ page }) => {

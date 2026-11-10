@@ -165,9 +165,14 @@
     --dur-base: 200ms;
 
     /* === 外壳尺寸（Pod 详情页 log-first 布局用） === */
-    /* AppLayout 的顶栏是 h-11 md:h-14，内容容器是 py-6 md:py-8。
-       Pod 详情页要把自己撑到视口高度，日志区才能拿到剩余的全部空间，
-       所以这里把这两段固定高度暴露成变量，而不是在组件里硬算 px。 */
+    /* AppLayout 的顶栏和内容容器的内边距，Pod 详情页要把自己撑到视口
+       高度，日志区才能拿到剩余的全部空间，所以这里把这两段暴露成变量，
+       而不是在组件里硬算 px。
+
+       --app-header-h 是兜底值（JS 写不进来时用）。AppHeader 组件会用
+       ResizeObserver 把顶栏的真实高度写进这个变量 —— 移动端顶栏是两行
+       grid，写死的单行高度会让页面比视口高出几十像素，把日志面板的
+       状态条推出屏幕外。 */
     --app-header-h: 2.75rem;
     --app-content-pad: 1.5rem;
     --app-chrome-h: calc(var(--app-header-h) + var(--app-content-pad) * 2);

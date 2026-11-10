@@ -186,3 +186,9 @@ backend/.schemathesis/
 backend/mutants/
 backend/.hypothesis
 backend/.coveragerc
+# impeccable 的工具目录：配置和设计规范进版本库，运行时状态不进。
+# design.json 是 DESIGN.md 的机器可读 sidecar（PRODUCT.md 里点名引用），
+# config.json 记录 buildPath 决策 —— 丢一个就等于丢掉一个已确认的决定。
+.impeccable/live/server.json
+.impeccable/live/roots.json
+.impeccable/live/sessions/

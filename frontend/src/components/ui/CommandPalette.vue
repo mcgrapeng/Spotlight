@@ -2,7 +2,7 @@
 import { computed, defineComponent, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useMagicKeys, whenever } from '@vueuse/core'
+import { onKeyStroke, useMagicKeys, whenever } from '@vueuse/core'
 import {
   CommandDialog, CommandInput, CommandList,
   CommandEmpty, CommandGroup, CommandItem, CommandSeparator,
@@ -28,10 +28,20 @@ const shortcutsOpen = ref(false)
 
 const keys = useMagicKeys()
 const cmdK = computed(() => keys['Meta+K']?.value || keys['Ctrl+K']?.value)
-const shiftSlash = computed(() => keys['Shift+/']?.value)  // ? key on US layout
 
 whenever(cmdK, () => { open.value = true })
-whenever(shiftSlash, () => {
+
+// ponytail: `?` 按 e.key 匹配，不用 vueuse 的 'Shift+/' 查表。
+//
+// 那个查表展开成 `keys['shift'] && keys['/']`，而 updateRefs 只按 e.code
+// 和 e.key 写 ref。美式键盘上 Shift+/ 的 e.key 是 '?'、e.code 是 'Slash'
+// —— keys['/'] 永远不会被置位，于是这个 computed 永远是 false。
+//
+// 结果：面板印着「? (Shift+/)」，而那个键永远打不开它。实测（真实按键
+// Shift + Slash）：没有任何 dialog 打开。而 useLogKeyboardShortcuts 用的是
+// `e.key === '?'`，所以日志面板自己的帮助是能用的 —— 两个面板，一个通
+// 一个不通。
+onKeyStroke('?', () => {
   // "?" typed inside a text field is a character, not a shortcut
   if (isTypingTarget(document.activeElement)) return
   // The log viewer has its own `?` panel, and it is the accurate one
@@ -77,14 +87,23 @@ const actions = computed(() => [
   },
 ])
 
-const shortcuts = computed(() => [
+// ponytail: 全局键和日志面板内的键分开列。
+//
+// 之前这 11 条是一张平铺的表，其中 6 条（f/e/p/c/g/G、⌘F）只由
+// useLogKeyboardShortcuts 注册 —— 而那个 composable 只在 LogViewer 挂载
+// 时存在。在总览页按 e，DOM 一个字节都不变。一个把「教了不存在的操作」
+// 写在注释里的教训，被平铺的表又犯了一次。
+//
+// 现在分组，且第二组标出「仅在日志面板内」。面板是这产品唯一的帮助
+// 界面，它教的东西必须是真能按的。
+const globalShortcuts = computed(() => [
   { combo: '⌘ K / Ctrl K', desc: t('palette.shortcuts.openPalette') },
   { combo: 'g then d/p/n/e/f', desc: t('palette.shortcuts.quickNav') },
   { combo: '⌘ J / Ctrl J', desc: t('palette.shortcuts.openAi') },
   { combo: '? (Shift+/)', desc: t('palette.shortcuts.showPanel') },
-  // ponytail: 这一组以前写的是「k/K 暂停流、l/L 切换跟随、c 复制全部」。
-  // 三个键都对不上实现：暂停是 p，自动跟随根本没有快捷键，c 是清空日志
-  // 不是复制。面板在教一套不存在的操作。
+])
+
+const logShortcuts = computed(() => [
   { combo: 'f / /', desc: t('log.help.focusSearch') },
   { combo: 'e', desc: t('log.help.errorsOnly') },
   { combo: 'p', desc: t('log.help.pause') },
@@ -301,7 +320,19 @@ defineExpose({
         {{ t('palette.shortcutsTitle') }}
       </DialogTitle>
       <dl class="space-y-2">
-        <div v-for="s in shortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">
+        <div v-for="s in globalShortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">
+          <dt class="font-mono text-xs bg-muted px-2 py-0.5 rounded-sm shrink-0 min-w-[140px] text-center">
+            {{ s.combo }}
+          </dt>
+          <dd class="text-muted-foreground">{{ s.desc }}</dd>
+        </div>
+      </dl>
+      <!-- 日志面板内的键：只有 LogViewer 挂载时才注册，别处按了没反应。 -->
+      <p class="mt-4 mb-2 text-xs font-medium text-muted-foreground">
+        {{ t('palette.shortcuts.logPanelScope') }}
+      </p>
+      <dl class="space-y-2">
+        <div v-for="s in logShortcuts" :key="s.combo" class="flex items-center gap-3 text-sm">
           <dt class="font-mono text-xs bg-muted px-2 py-0.5 rounded-sm shrink-0 min-w-[140px] text-center">
             {{ s.combo }}
           </dt>

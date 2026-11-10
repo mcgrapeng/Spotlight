@@ -90,6 +90,10 @@ export default {
     Normal: 'Normal',
   },
   pods: {
+    // When the list is not readable, the subtitle must not say "0" \u2014
+    // that is a false fact about the cluster.
+    subtitleDenied: 'Pod list not readable',
+    subject: 'the pod list',
     subtitle: '{count} · {namespace}',
     filterAll: 'All',
     filtersLabel: 'Pod list filters',
@@ -121,6 +125,7 @@ export default {
     largeListHint: '{count} pods loaded at once (the list is currently fetched whole and sorted/filtered in the browser)',
     viewDetail: 'View details for {name}',
     containersReady: '{ready} of {total} containers ready',
+    containerNotReady: 'running, but not ready',
     containerReady: 'ready',
     restartsCount: '{count} restarts',
     loading: 'Loading pods…',
@@ -134,6 +139,7 @@ export default {
   nodes: {
     subtitle: '{total} nodes · {ready} Ready · {pct}% online',
     subtitleEmpty: 'No nodes yet',
+    subtitleDenied: 'Node list not readable',
     refresh: 'Refresh',
     issueNotReady: 'NotReady · node offline',
     issueCpuHeadroom: 'CPU over-committed · only {pct}% allocatable',
@@ -152,8 +158,17 @@ export default {
     loading: 'Loading nodes…',
     emptyTitle: 'No nodes',
     emptyDescription: 'This cluster has not registered any node yet',
+    // A filtered node list is not "this cluster has no nodes". The two
+    // need different words and different exits, or the reader mistakes a
+    // permission problem for a fact about the cluster.
+    permissionTitle: 'Not allowed to view nodes',
+    permissionDescription:
+      'Your current identity cannot read the node list. This does not mean the cluster has no nodes — pods are running on nodes that the access control has filtered out. Ask an admin to add read access to nodes for your role.',
+    permissionHint: 'Node details are still available from the pod detail page',
   },
   events: {
+    subtitleDenied: 'Event list not readable',
+    permissionTitle: 'Not allowed to view the event list',
     subtitle: '{namespace} · {filtered} / {total} events',
     refresh: 'Refresh',
     filterByType: 'Filter by type',
@@ -170,6 +185,9 @@ export default {
     collapse: 'Collapse',
     expand: 'Expand',
     viewDetail: 'View details',
+    // A row of links all announced as "View details" tells a screen
+    // reader nothing about which one is which.
+    viewDetailOf: 'View {name} details',
   },
   favorites: {
     subtitle: '{count} favorites',
@@ -177,6 +195,185 @@ export default {
     emptyDescription: "Click the star on a Pod's detail page to add a favorite",
     open: 'Open {name}',
     delete: 'Delete',
+  },
+  // "Not allowed to read" is its own state, not "failed to load" and not
+  // "this is empty". Three surfaces share this wording (pods / events / nodes).
+  permission: {
+    title: 'Not allowed to read this data',
+    titleWith: 'Not allowed to view {subject}',
+    description: 'Your current identity cannot read this \u2014 it is not empty, the access control filtered it out.',
+    hint: 'Ask an admin to add {permission} to your role. Retrying will not grant permission.',
+    hintGeneric: 'Ask an admin to add the matching permission to your role. Retrying will not grant permission.',
+  },
+  term: {
+    // The explanation hangs off the term's own chip rather than a separate
+    // icon: the pod-detail header has 111px left for the title, and an
+    // extra icon would take it.
+    clickToExplain: 'click to see what this term means',
+    // Two sentences per term: what it is, and what to do next. Explaining
+    // only what it is leaves the reader knowing and still stuck.
+    explain: {
+      BackOff: {
+        what: "The event-level wording for the same thing: the container keeps restarting and the delay between attempts is growing.",
+        next: "This is CrashLoopBackOff seen from the event side — go and read the container log.",
+      },
+      Completed: {
+        what: "The container ran to completion and exited normally.",
+        next: "This is normally not a fault — init containers and one-shot tasks look exactly like this.",
+      },
+      ContainersNotReady: {
+        what: "The pod was created but its containers are not ready — kubelet started them, and they have not passed their readiness probes.",
+        next: "Open the detail page to see which container is not ready and what it is stuck on.",
+      },
+      CrashLoopBackOff: {
+        what: "The container keeps failing to start; kubelet retries with a growing delay between attempts — hence \"back-off\".",
+        next: "Read the last few lines of the container log: usually the start command is wrong, a config is missing, or a dependency is not up yet.",
+      },
+      CreateContainerConfigError: {
+        what: "The container cannot start because its configuration is wrong: a referenced ConfigMap or Secret is missing, or an env var is absent.",
+        next: "Check that the ConfigMaps and Secrets this pod references exist and that the names match.",
+      },
+      CreateContainerError: {
+        what: "The container process could not be created — usually the start command does not exist.",
+        next: "Check the container's command / args, and whether that path really exists inside the image.",
+      },
+      Created: {
+        what: "The container was created successfully (but not started yet).",
+        next: "Watch for Started to follow.",
+      },
+      ErrImagePull: {
+        what: "Pulling the image failed outright — this one has not started backing off yet, so it is more specific than ImagePullBackOff.",
+        next: "The credentials, the image name or the registry address are wrong. It failed once and stopped; kubelet then backs off, so you will see ImagePullBackOff next.",
+      },
+      Error: {
+        what: "The container exited with a non-zero status code.",
+        next: "Find the last few lines before it exited in the log — they usually carry the reason.",
+      },
+      Evicted: {
+        what: "The pod was evicted from its node, usually because of memory pressure.",
+        next: "Read the node's events; if needed raise the pod's memory request or give it QoS guarantees.",
+      },
+      Failed: {
+        what: "Something failed. The event message says what.",
+        next: "The message carries the detail (Failed to pull image / Failed to create pod sandbox…); follow it.",
+      },
+      FailedAttachVolume: {
+        what: "The volume could not be attached to the node — a different step from FailedMount: this one is the node-side attach.",
+        next: "Check the node's disk and mount points, and any leftovers for that volume on the node.",
+      },
+      FailedCreatePodSandBox: {
+        what: "The pod's sandbox (the network namespace and mounts it needs) could not be created.",
+        next: "Usually a CNI plugin or disk pressure; start with the node's state.",
+      },
+      FailedMount: {
+        what: "A volume could not be mounted.",
+        next: "Check whether the PVC is still Pending, and whether the node has leftover mounts.",
+      },
+      FailedScheduling: {
+        what: "The scheduler could not place this pod: not enough resources, an affinity mismatch, a taint on the node, or a volume that is not ready yet.",
+        next: "The event message says what was missing — work from that.",
+      },
+      FailedToRetrieveImagePullSecret: {
+        what: "The Secret used to pull images could not be read.",
+        next: "Check that the imagePullSecrets referenced by the ServiceAccount exist.",
+      },
+      ImagePullBackOff: {
+        what: "The image cannot be pulled; kubelet retries with a growing delay.",
+        next: "Check the image name and tag, the pull credentials for a private registry, and the node's network path to the registry.",
+      },
+      InspectFailed: {
+        what: "kubelet failed while reading the container's status.",
+        next: "Usually a container runtime problem: look at the node's state and the kubelet log on that node.",
+      },
+      InvalidImageName: {
+        what: "The image name is invalid — malformed, so kubelet does not even try.",
+        next: "Check the image name format (registry / tag / capitalisation).",
+      },
+      Killing: {
+        what: "The container is being terminated — usually because the pod is being updated or deleted, but a failed liveness probe also restarts it this way.",
+        next: "Read the messages around this event: an update or a delete emits Killing first, and so does a probe restart.",
+      },
+      KubeletNotReady: {
+        what: "The node's kubelet stopped reporting status in time.",
+        next: "Fix the node first: kubelet is down, its certificate expired, or the node's network broke.",
+      },
+      NetworkNotReady: {
+        what: "The pod's network is not ready yet — the CNI plugin has not attached it.",
+        next: "Check the node's network plugin; on a healthy node this resolves itself.",
+      },
+      NodeHasDiskPressure: {
+        what: "The node is out of disk and kubelet starts evicting pods.",
+        next: "Free disk (images, logs, temp files); add capacity if it keeps happening.",
+      },
+      NodeHasMemoryPressure: {
+        what: "The node is short on memory and kubelet starts evicting pods.",
+        next: "See who is holding the memory on that node; set accurate requests so pods are not packed together.",
+      },
+      NodeNotReady: {
+        what: "The node itself is not ready — kubelet or the network is unwell.",
+        next: "This is not the pod's problem; fix the node.",
+      },
+      OOMKilled: {
+        what: "The container exceeded its memory limit and was killed by the kernel.",
+        next: "First check whether it is leaking; only raise the limit once you know it is not.",
+      },
+      PodCompleted: {
+        what: "All of this pod's containers ran to completion and exited.",
+        next: "This is normally not a fault — Jobs and one-shot tasks look like this. Read the log for the output.",
+      },
+      Preempted: {
+        what: "The pod was preempted by a higher-priority pod.",
+        next: "Adjust the priority or the resource request so it is not evicted.",
+      },
+      Pulled: {
+        what: "The container image was pulled successfully.",
+        next: "Next the container is created and started.",
+      },
+      Pulling: {
+        what: "The container image is being pulled.",
+        next: "This step is commonly slow or it fails outright; ImagePullBackOff is what it looks like when the pull never succeeds.",
+      },
+      RunContainerError: {
+        what: "The container runtime itself failed (not the application).",
+        next: "Read the event message; it is usually about mounts or a runtime plugin.",
+      },
+      SawCompletedJob: {
+        what: "The controller saw a Job that has already completed — usually this pod's parent Job.",
+        next: "This is normally not a fault; the controller is wrapping up.",
+      },
+      ScalingReplicaSet: {
+        what: "A ReplicaSet was scaled up or down, usually by a HorizontalPodAutoscaler reacting to a metric.",
+        next: "To find out why it scaled, look at the HPA's metrics and events.",
+      },
+      Scheduled: {
+        what: "The scheduler placed the pod on a node.",
+        next: "This is only the beginning. The container can still get stuck pulling the image, preparing a volume, or starting up.",
+      },
+      Started: {
+        what: "The container has started.",
+        next: "Started is not the same as healthy — check the readiness state and the log.",
+      },
+      SuccessfulCreate: {
+        what: "The pod's sandbox (the runtime it needs) was created.",
+        next: "The node accepted it; next check whether Started arrives.",
+      },
+      SuccessfulDelete: {
+        what: "A delete succeeded.",
+        next: "If you did not do it, check the object's audit trail.",
+      },
+      SuccessfulUpdate: {
+        what: "An update succeeded — usually a Deployment rolling out a new replica.",
+        next: "To see what changed, look at the object's recent revisions.",
+      },
+      Terminating: {
+        what: "The pod is being deleted.",
+        next: "If it is stuck, look for leftover mounts on the node.",
+      },
+      Unhealthy: {
+        what: "A liveness or readiness probe failed. kubelet emits one of these events per failed probe.",
+        next: "A failing liveness probe restarts the container; a failing readiness probe marks the pod not-ready. Check the probe config first (path, port), then whether the app is genuinely stuck.",
+      },
+    },
   },
   pod: {
     backToPods: 'Back to Pods',
@@ -233,6 +430,22 @@ export default {
     fieldBaseUrl: 'Base URL (optional)',
     formSetDefault: 'Set as the default provider',
     askTitle: 'Ask Spotlight',
+    // Where the content goes. There is no hard constraint on where the
+    // model runs (self-hosted in-cluster or an external API), so these
+    // three are chosen by the current configuration.
+    subject: 'the AI model settings',
+    askAdmin: 'Ask an admin to add {permission} to your role.',
+    sendsLogsTo: 'This sends the pod\u2019s log excerpt to ',
+    sendsContextTo: 'This sends your question and a summary of the current cluster to ',
+    // The judgement is about the shape of the address, not a fact:
+    // split-horizon DNS and private IPs across segments are both
+    // counterexamples. So the wording is "looks like", not an assertion.
+    endpointLocal: '. {host} looks like an address on your own network, so content does not go off it.',
+    // No api_base (the default endpoint of a local provider such as Ollama):
+    // there is no address to print.
+    endpointLocalNoAddress: '. It goes to a default endpoint on this machine, so content does not go off it.',
+    endpointDefaultRoute: '. It goes through LiteLLM\u2019s default route (the vendor endpoint for the provider, usually a public API).',
+    endpointExternal: '. {host} looks like it is outside your network, so content is sent there.',
     askDescription: 'Ask with the current cluster context',
     askContextLabel: 'Context',
     askContextLoading: 'Collecting cluster state…',
@@ -256,7 +469,7 @@ export default {
     askNoActiveCluster: 'No cluster is selected',
     logAnalysisTitle: 'AI log analysis',
     logAnalysisDescription: 'Send a log excerpt to an AI model to find the root cause',
-    logExcerpt: 'Log excerpt ({count} chars)',
+    logExcerpt: 'Log excerpt (last {lines} lines / {count} chars)',
     aiAnalyze: 'AI analysis',
     analyzing: 'AI is analyzing…',
     analyze: 'Analyze',
@@ -299,6 +512,13 @@ export default {
     openMenu: 'Open menu',
     home: 'Spotlight home',
     drawerTitle: 'Navigation menu',
+    // The badge counts the last 5 minutes. Without the window, "2" reads
+    // like a total.
+    warningBadgeHint: 'Warnings in the last 5 minutes ({count})',
+    // The button names the action; the panel keeps the product name.
+    // Same string for both → a screen reader hears "Ask Spotlight" twice
+    // and cannot tell the button from the panel it just opened.
+    askAi: 'Ask AI',
   },
   route: {
     login: 'Sign in',
@@ -429,6 +649,7 @@ export default {
     localTimeHint: 'The time column shows this machine\u2019s time zone',
     live: 'Live',
     paused: 'Paused',
+    disconnected: 'Disconnected',
     scrollHint: 'Scroll down for the latest',
     autoFollow: 'Auto-follow',
     help: {
@@ -436,7 +657,7 @@ export default {
       errorsOnly: 'Show errors only (press again to cancel)',
       pause: 'Pause / resume',
       clear: 'Clear logs',
-      jumpError: 'Next / previous error·warn line',
+      jumpError: 'Next / previous error line',
       scroll: 'Scroll down / up 5 lines',
       toggle: 'Show / hide the shortcut sheet',
     },
@@ -462,6 +683,7 @@ export default {
       showPanel: 'Show the shortcuts panel',
       openAi: 'Open the AI assistant',
       searchNative: 'Search (browser default)',
+      logPanelScope: 'Only inside the log panel',
     },
     actions: {
       refresh: 'Refresh the current page',

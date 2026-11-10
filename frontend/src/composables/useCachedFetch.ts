@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue'
+import { readApiError } from '@/lib/apiError'
 
 interface CacheEnvelope<T> {
   value: T
@@ -20,6 +21,20 @@ export interface CachedFetchOptions<T> {
    * caller that shows this to a reader passes its own localized string.
    */
   errorFallback?: string
+  /**
+   * HTTP status of the last failure, or null.
+   *
+   * `error` alone cannot tell a permission denial from a timeout from a
+   * dead backend: all three are just a sentence. A caller that must react
+   * differently to them — no retry button on a 403, because retrying does
+   * not grant permission — binds this and reads the status.
+   */
+  errorStatus?: Ref<number | null>
+  /**
+   * 缺哪个权限（403 时）。和 errorStatus 一起绑，视图靠它把「没权限读」
+   * 和「读失败」分开——前者不给重试按钮，也不能说成「这里是空的」。
+   */
+  errorPermission?: Ref<string | null>
 }
 
 export interface CachedFetchHandle<T> {
@@ -109,6 +124,8 @@ export function useCachedFetch<T>(opts: CachedFetchOptions<T>): CachedFetchHandl
     const mine = ++seq
     opts.loading.value = true
     opts.error.value = null
+    if (opts.errorStatus) opts.errorStatus.value = null
+    if (opts.errorPermission) opts.errorPermission.value = null
     try {
       const value = await opts.fetcher()
       if (target !== key || mine !== seq) return false   // superseded — discard
@@ -120,8 +137,16 @@ export function useCachedFetch<T>(opts: CachedFetchOptions<T>): CachedFetchHandl
       // ponytail: silent = "this is a background poll, don't tear the page
       // down". The error text still goes to `error` for a normal load.
       if (target === key && mine === seq && !silent) {
-        const err = e as { response?: { data?: { detail?: string } }; message?: string }
-        opts.error.value = err?.response?.data?.detail
+        const err = e as {
+          response?: { status?: number; data?: { detail?: string } }
+          message?: string
+        }
+        if (opts.errorStatus) opts.errorStatus.value = err?.response?.status ?? null
+        // detail 在权限拒绝时是一个对象 —— 直接塞进 error ref，界面上
+        // 会渲染出原始 JSON。
+        const { message, permission } = readApiError(err)
+        if (opts.errorPermission) opts.errorPermission.value = permission
+        opts.error.value = message
           ?? opts.errorFallback
           ?? err?.message
           ?? 'load failed'

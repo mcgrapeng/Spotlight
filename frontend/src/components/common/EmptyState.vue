@@ -25,7 +25,10 @@ const heading = computed(() => props.title ?? t('state.empty'))
         <Inbox :size="iconSize" class="text-muted-foreground" :stroke-width="1.5" />
       </slot>
     </div>
-    <h3 class="text-base font-semibold text-foreground mb-1">{{ heading }}</h3>
+    <!-- h2 不是 h3：这一块在页面的 h1（PageHeader）之下就是顶级内容，
+         用 h3 会让读屏的标题列表从 h1 直接跳到 h3（检测器 skipped-heading）。
+         PodDetailView 早先修过同一类跳级，这里的级别跟它一致。 -->
+    <h2 class="text-base font-semibold text-foreground mb-1">{{ heading }}</h2>
     <p v-if="description" class="text-sm text-muted-foreground max-w-md">{{ description }}</p>
     <div v-if="$slots.default" class="mt-4 w-full max-w-md">
       <slot />

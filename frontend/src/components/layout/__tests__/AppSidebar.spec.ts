@@ -15,6 +15,7 @@ vi.mock('vue-router', () => ({
 
 import { mount } from '@vue/test-utils'
 import { RouterLinkStub } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { eventsApi } from '@/api/endpoints'
 import { getI18n } from '@/i18n'
 import AppSidebar from '../AppSidebar.vue'
@@ -28,7 +29,10 @@ function mountSidebar() {
   // resolve — register the stub globally instead. Its `to` prop is what a
   // test reads to learn where a nav item points.
   return mount(AppSidebar, {
-    global: { plugins: [i18n], components: { RouterLink: RouterLinkStub } },
+    global: {
+      plugins: [i18n, createPinia()],
+      components: { RouterLink: RouterLinkStub },
+    },
   })
 }
 
@@ -175,10 +179,51 @@ describe('AppSidebar preferences', () => {
     vi.mocked(eventsApi.list).mockResolvedValue([])
     const wrapper = mount(AppSidebar, {
       props: { collapsed: true },
-      global: { plugins: [i18n], components: { RouterLink: RouterLinkStub } },
+      global: {
+        plugins: [i18n, createPinia()],
+        components: { RouterLink: RouterLinkStub },
+      },
     })
     await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
     expect(wrapper.find('[role="group"][aria-label="主题"]').exists()).toBe(false)
     expect(wrapper.find('[role="group"][aria-label="Language / 语言"]').exists()).toBe(false)
+  })
+})
+
+describe('AppSidebar AI entry', () => {
+  it('exposes a visible "问 AI" button that opens the AI panel', async () => {
+    // 这个面板之前只有 ⌘J 和 ⌘K 两个入口，两个都是键盘和弦：新用户
+    // 看不到，手机上根本没有和弦键。产品最该被看见的能力，在手机上
+    // 是结构性不可达的。
+    vi.mocked(eventsApi.list).mockResolvedValue([])
+    const wrapper = mountSidebar()
+    await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
+
+    const btn = wrapper.find(`button[aria-label="${i18n.global.t('nav.askAi')}"]`)
+    expect(btn.exists()).toBe(true)
+    // It must carry a visible label, not just an icon.
+    expect(btn.text()).toContain(i18n.global.t('nav.askAi'))
+
+    const { useAiStore } = await import('@/stores/ai')
+    const ai = useAiStore()
+    expect(ai.open).toBe(false)
+    await btn.trigger('click')
+    expect(ai.open).toBe(true)
+  })
+
+  it('keeps the button reachable when the sidebar is collapsed', async () => {
+    // 折叠态只有 48px 内容盒，文字标签放不下 —— 但按钮不能因此消失，
+    // 只收成图标，靠 aria-label 保留名字。
+    vi.mocked(eventsApi.list).mockResolvedValue([])
+    const wrapper = mount(AppSidebar, {
+      props: { collapsed: true },
+      global: {
+        plugins: [i18n, createPinia()],
+        components: { RouterLink: RouterLinkStub },
+      },
+    })
+    await vi.waitFor(() => expect(eventsApi.list).toHaveBeenCalled())
+    const btn = wrapper.find(`button[aria-label="${i18n.global.t('nav.askAi')}"]`)
+    expect(btn.exists()).toBe(true)
   })
 })

@@ -25,7 +25,8 @@ defineEmits<{
     <div class="rounded-full bg-error-bg p-4 mb-4">
       <AlertCircle :size="32" class="text-error" :stroke-width="1.5" />
     </div>
-    <h3 class="text-base font-semibold text-foreground mb-1">{{ heading }}</h3>
+    <!-- h2 不是 h3：同 EmptyState —— 页面 h1 下面不该跳级。 -->
+    <h2 class="text-base font-semibold text-foreground mb-1">{{ heading }}</h2>
     <p v-if="message && message !== heading" class="text-sm text-muted-foreground max-w-md mb-4">{{ message }}</p>
     <Button size="sm" @click="$emit('retry')">{{ t('state.retry') }}</Button>
   </div>

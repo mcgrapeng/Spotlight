@@ -80,3 +80,57 @@ describe('NodesView', () => {
     expect(wrapper.text()).not.toContain('node-a')
   })
 })
+
+describe('NodesView permission denial', () => {
+  /**
+   * 节点列表被裁掉 ≠ 集群没有节点。
+   *
+   * Teleport 按角色裁剪资源，没有 nodes 读权限时 `list_node` 回的是
+   * **空数组**而不是 403。于是接口答 200 []，界面说「当前集群尚未
+   * 注册任何 Node」—— 一个关于集群的假事实。对运维工具来说，把权限
+   * 问题说成事实比报错危险：读者会以为集群是健康的。
+   */
+  async function mountWithDeniedNodes() {
+    const { nodesApi } = await import('@/api/endpoints')
+    ;(nodesApi.list as any).mockRejectedValue({
+      response: { status: 403, data: { detail: '没有权限查询节点' } },
+    })
+    const wrapper = mount(NodesView, {
+      global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('says it is a permission problem, not that the cluster has no nodes', async () => {
+    const wrapper = await mountWithDeniedNodes()
+    expect(wrapper.text()).toContain('没有权限查看节点')
+    // The empty-state copy is a false statement here — it must not appear.
+    // Checked against the empty state's own strings, not the whole text:
+    // the permission explanation deliberately contains the phrase "集群没有节点"
+    // to say what it is NOT.
+    expect(wrapper.text()).not.toContain('尚未注册任何 Node')
+    expect(wrapper.findAll('h3').map((h) => h.text())).not.toContain('没有节点')
+  })
+
+  it('offers no retry button — retrying does not grant permission', async () => {
+    const wrapper = await mountWithDeniedNodes()
+    const retry = wrapper.findAll('button').find((b) => b.text().includes('重试'))
+    expect(retry).toBeFalsy()
+  })
+
+  it('still shows the generic error state for other failures', async () => {
+    const { nodesApi } = await import('@/api/endpoints')
+    ;(nodesApi.list as any).mockRejectedValue({
+      response: { status: 500, data: { detail: '查询节点：K8s API 请求失败' } },
+    })
+    const wrapper = mount(NodesView, {
+      global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('没有权限查看节点')
+    const retry = wrapper.findAll('button').find((b) => b.text().includes('重试'))
+    expect(retry).toBeTruthy()
+  })
+})

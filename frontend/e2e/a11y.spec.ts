@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { installApiMocks } from './_fixtures'
 
 /**
- * Accessibility audit — axe-core sweep over the 6 main pages of the SPA.
+ * Accessibility audit — axe-core sweep over the 7 main pages of the SPA.
  *
  * Strategy: serve the production build, mock `/api/v1/*` so the UI never
  * touches a real backend, then run axe-core with WCAG 2.0 A + AA rules on

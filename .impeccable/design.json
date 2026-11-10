@@ -1,0 +1,533 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T10:25:00Z",
+  "title": "Design System: Spotlight",
+  "extensions": {
+    "colorMeta": {
+      "cockpit-dark": {
+        "role": "neutral",
+        "displayName": "石墨底",
+        "canonical": "hsl(240 6% 8%)",
+        "tonalRamp": [
+          "#0A0A0C",
+          "#131316",
+          "#1B1B1D",
+          "#27272A",
+          "#313135",
+          "#6B6B70",
+          "#9F9FA8",
+          "#F5F5F5"
+        ]
+      },
+      "cockpit-card": {
+        "role": "neutral",
+        "displayName": "石墨面板",
+        "canonical": "hsl(240 5% 11%)",
+        "tonalRamp": [
+          "#0A0A0C",
+          "#131316",
+          "#1B1B1D",
+          "#27272A",
+          "#313135",
+          "#6B6B70",
+          "#9F9FA8",
+          "#F5F5F5"
+        ]
+      },
+      "cockpit-muted": {
+        "role": "neutral",
+        "displayName": "石墨次级",
+        "canonical": "hsl(240 4% 16%)",
+        "tonalRamp": [
+          "#0A0A0C",
+          "#131316",
+          "#1B1B1D",
+          "#27272A",
+          "#313135",
+          "#6B6B70",
+          "#9F9FA8",
+          "#F5F5F5"
+        ]
+      },
+      "cockpit-ink": {
+        "role": "neutral",
+        "displayName": "夜航墨",
+        "canonical": "hsl(0 0% 96%)",
+        "tonalRamp": [
+          "#131316",
+          "#1B1B1D",
+          "#27272A",
+          "#313135",
+          "#6B6B70",
+          "#9F9FA8",
+          "#C9C9CE",
+          "#F5F5F5"
+        ]
+      },
+      "cockpit-ink-dim": {
+        "role": "neutral",
+        "displayName": "石墨次字",
+        "canonical": "hsl(240 5% 64%)",
+        "tonalRamp": [
+          "#1B1B1D",
+          "#27272A",
+          "#313135",
+          "#4E4E56",
+          "#6B6B70",
+          "#9F9FA8",
+          "#C9C9CE",
+          "#F5F5F5"
+        ]
+      },
+      "cockpit-line": {
+        "role": "neutral",
+        "displayName": "石墨线",
+        "canonical": "hsl(240 4% 20%)",
+        "tonalRamp": [
+          "#0A0A0C",
+          "#131316",
+          "#1B1B1D",
+          "#27272A",
+          "#313135",
+          "#4E4E56",
+          "#8A8A90",
+          "#C9C9CE"
+        ]
+      },
+      "signal-ok": {
+        "role": "primary",
+        "displayName": "就绪绿",
+        "canonical": "hsl(142 58% 55%)",
+        "tonalRamp": [
+          "#0A2416",
+          "#0E3D25",
+          "#157E3C",
+          "#2AA055",
+          "#4ACF7B",
+          "#7FE0A5",
+          "#A9EDC4",
+          "#D6F7E4"
+        ]
+      },
+      "signal-watch": {
+        "role": "secondary",
+        "displayName": "警示琥珀",
+        "canonical": "hsl(38 90% 60%)",
+        "tonalRamp": [
+          "#2A1C06",
+          "#4A2F0B",
+          "#986206",
+          "#C98A1C",
+          "#F5B13D",
+          "#F8C670",
+          "#FADB9F",
+          "#FDEECB"
+        ]
+      },
+      "signal-fault": {
+        "role": "secondary",
+        "displayName": "故障红",
+        "canonical": "hsl(0 82% 66%)",
+        "tonalRamp": [
+          "#2A0B0B",
+          "#4A1414",
+          "#8E1F1F",
+          "#C73A3A",
+          "#EF6161",
+          "#F38D8D",
+          "#F8B8B8",
+          "#FBDDDD"
+        ]
+      },
+      "signal-info": {
+        "role": "tertiary",
+        "displayName": "信息蓝",
+        "canonical": "hsl(217 91% 66%)",
+        "tonalRamp": [
+          "#0A1A33",
+          "#123059",
+          "#0B60EA",
+          "#3C82F0",
+          "#5996F7",
+          "#8AB4F9",
+          "#B5D1FB",
+          "#DCE8FD"
+        ]
+      },
+      "daylight-ground": {
+        "role": "neutral",
+        "displayName": "白昼底",
+        "canonical": "hsl(0 0% 98%)",
+        "tonalRamp": [
+          "#FAFAFA",
+          "#F4F4F5",
+          "#E4E4E7",
+          "#D4D4D8",
+          "#A1A1AA",
+          "#71717A",
+          "#4E4E56",
+          "#18181B"
+        ]
+      },
+      "daylight-panel": {
+        "role": "neutral",
+        "displayName": "白昼面板",
+        "canonical": "hsl(0 0% 100%)",
+        "tonalRamp": [
+          "#FAFAFA",
+          "#F4F4F5",
+          "#E4E4E7",
+          "#D4D4D8",
+          "#A1A1AA",
+          "#71717A",
+          "#4E4E56",
+          "#18181B"
+        ]
+      },
+      "daylight-ink": {
+        "role": "neutral",
+        "displayName": "白昼墨",
+        "canonical": "hsl(240 6% 10%)",
+        "tonalRamp": [
+          "#FFFFFF",
+          "#F4F4F5",
+          "#E4E4E7",
+          "#D4D4D8",
+          "#A1A1AA",
+          "#71717A",
+          "#4E4E56",
+          "#18181B"
+        ]
+      },
+      "daylight-ink-dim": {
+        "role": "neutral",
+        "displayName": "白昼次字",
+        "canonical": "hsl(240 5% 32%)",
+        "tonalRamp": [
+          "#FFFFFF",
+          "#F4F4F5",
+          "#E4E4E7",
+          "#D4D4D8",
+          "#A1A1AA",
+          "#71717A",
+          "#4E4E56",
+          "#18181B"
+        ]
+      },
+      "daylight-line": {
+        "role": "neutral",
+        "displayName": "白昼线",
+        "canonical": "hsl(240 6% 90%)",
+        "tonalRamp": [
+          "#FFFFFF",
+          "#F4F4F5",
+          "#E4E4E7",
+          "#D4D4D8",
+          "#A1A1AA",
+          "#71717A",
+          "#4E4E56",
+          "#18181B"
+        ]
+      },
+      "daylight-ok": {
+        "role": "primary",
+        "displayName": "白昼就绪绿",
+        "canonical": "hsl(142 71% 29%)",
+        "tonalRamp": [
+          "#F0FDF4",
+          "#BBF7D0",
+          "#4ADE80",
+          "#22C55E",
+          "#157E3C",
+          "#0E5C2B",
+          "#0A4420",
+          "#062F16"
+        ]
+      },
+      "daylight-watch": {
+        "role": "secondary",
+        "displayName": "白昼警示琥珀",
+        "canonical": "hsl(38 92% 31%)",
+        "tonalRamp": [
+          "#FFFBEB",
+          "#FED7AA",
+          "#F5B13D",
+          "#D99413",
+          "#986206",
+          "#714A05",
+          "#4A3203",
+          "#251B02"
+        ]
+      },
+      "daylight-fault": {
+        "role": "secondary",
+        "displayName": "白昼故障红",
+        "canonical": "hsl(0 72% 48%)",
+        "tonalRamp": [
+          "#FEF2F2",
+          "#FECACA",
+          "#F87171",
+          "#EF4444",
+          "#D32222",
+          "#9C1A1A",
+          "#6B1212",
+          "#3D0A0A"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "主数字",
+        "purpose": "总览页那个「最该管的一件事」。一屏只有一个。"
+      },
+      "headline": {
+        "displayName": "页面标题",
+        "purpose": "每个视图的 h1 与卡片主标题。"
+      },
+      "title": {
+        "displayName": "小节标题",
+        "purpose": "仪表盘分区、表格列组标题。"
+      },
+      "body": {
+        "displayName": "正文",
+        "purpose": "表格内容、事件消息、说明文字。"
+      },
+      "label": {
+        "displayName": "字面量标识",
+        "purpose": "Pod 名、节点名、IP、时间戳。等宽，tabular-nums。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "xs",
+        "value": "0 1px 2px 0 rgba(0, 0, 0, 0.04)",
+        "purpose": "几乎不可见。表头、输入框。"
+      },
+      {
+        "name": "sm",
+        "value": "0 2px 6px -1px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04)",
+        "purpose": "常规浮层：Popover、Dropdown、Select。"
+      },
+      {
+        "name": "md",
+        "value": "0 6px 16px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -2px rgba(0, 0, 0, 0.04)",
+        "purpose": "对话框、AI 侧滑面板、移动抽屉。"
+      },
+      {
+        "name": "lg",
+        "value": "0 12px 24px -4px rgba(0, 0, 0, 0.08)",
+        "purpose": "Toast 通知。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "全站唯一的曲线。进场用 expo-out。"
+      },
+      {
+        "name": "ease-exit",
+        "value": "cubic-bezier(0.4, 0, 1, 1)",
+        "purpose": "退场：比进场更快，收尾更硬。"
+      },
+      {
+        "name": "dur-fast",
+        "value": "120ms",
+        "purpose": "悬停、焦点、按下反馈。"
+      },
+      {
+        "name": "dur-base",
+        "value": "200ms",
+        "purpose": "浮层进出、值变化动画。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      },
+      {
+        "name": "2xl",
+        "value": "1400px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "每屏至多一个。反色填充，暗色下是浅底深字。",
+      "html": "<button class=\"ds-btn-primary\">刷新</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; background: #F5F5F5; color: #131316; font: 500 13px/1.5 Inter, -apple-system, \"PingFang SC\", sans-serif; transition: color 120ms cubic-bezier(0.16,1,0.3,1), background-color 120ms cubic-bezier(0.16,1,0.3,1), border-color 120ms cubic-bezier(0.16,1,0.3,1), transform 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-primary:hover { background: #E9E9EC; } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid #F5F5F5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "工具栏和卡片里的次要操作。描边按钮。",
+      "html": "<button class=\"ds-btn-outline\">展开</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px solid #313135; border-radius: 8px; background: #131316; color: #F5F5F5; font: 500 13px/1.5 Inter, -apple-system, \"PingFang SC\", sans-serif; transition: color 120ms cubic-bezier(0.16,1,0.3,1), background-color 120ms cubic-bezier(0.16,1,0.3,1), border-color 120ms cubic-bezier(0.16,1,0.3,1), transform 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-outline:hover { background: #27272A; color: #F5F5F5; } .ds-btn-outline:active { transform: scale(0.98); } .ds-btn-outline:focus-visible { outline: 2px solid #F5F5F5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Chip — Fault",
+      "kind": "chip",
+      "refersTo": "chip-fault",
+      "description": "失败态。红色只在这里出现。永不折行。",
+      "html": "<span class=\"ds-chip-fault\">CrashLoopBackOff</span>",
+      "css": ".ds-chip-fault { display: inline-flex; align-items: center; border: 1px solid #EF6161; border-radius: 8px; background: #2A1414; padding: 2px 8px; color: #EF6161; font: 500 12px/16px Inter, -apple-system, \"PingFang SC\", sans-serif; white-space: nowrap; }"
+    },
+    {
+      "name": "Status Chip — Watch",
+      "kind": "chip",
+      "refersTo": "chip-watch",
+      "description": "需要人看一眼，但没坏。琥珀与红的色相刻意拉开。",
+      "html": "<span class=\"ds-chip-watch\">告警 Warning</span>",
+      "css": ".ds-chip-watch { display: inline-flex; align-items: center; border: 1px solid #F5B13D; border-radius: 8px; background: #2A2010; padding: 2px 8px; color: #F5B13D; font: 500 12px/16px Inter, -apple-system, \"PingFang SC\", sans-serif; white-space: nowrap; }"
+    },
+    {
+      "name": "Status Dot",
+      "kind": "custom",
+      "refersTo": "button-outline",
+      "description": "容器状态的 6px 圆点。必须配一个能说清状态的名字——纯靠颜色对读屏用户等于没有。",
+      "html": "<span class=\"ds-dots\" role=\"img\" aria-label=\"redis: waiting (ImagePullBackOff)\"><span class=\"ds-dot ds-dot-fault\"></span><span class=\"ds-dot ds-dot-ok\"></span></span>",
+      "css": ".ds-dots { display: inline-flex; align-items: center; gap: 4px; } .ds-dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; } .ds-dot-ok { background: #4ACF7B; } .ds-dot-fault { background: #EF6161; } .ds-dot-neutral { background: #6B6B70; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "12px 圆角，1px 描边，静止时无阴影——深度来自与页面底的色差。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">最该管的一件事</div><div class=\"ds-card-body\">3 个失败 Pod</div></div>",
+      "css": ".ds-card { background: #1B1B1D; border: 1px solid #313135; border-radius: 12px; padding: 20px; color: #F5F5F5; font: 400 13px/1.5 Inter, -apple-system, \"PingFang SC\", sans-serif; } .ds-card-title { font-weight: 600; font-size: 13px; margin-bottom: 8px; } .ds-card-body { color: #9F9FA8; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "1px 描边，40px 高，8px 圆角。焦点是 2px 环 + 2px 偏移。",
+      "html": "<input class=\"ds-input\" placeholder=\"搜索集群…\" />",
+      "css": ".ds-input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid #313135; border-radius: 8px; background: #131316; color: #F5F5F5; font: 400 14px/1.5 Inter, -apple-system, \"PingFang SC\", sans-serif; transition: border-color 120ms cubic-bezier(0.16,1,0.3,1), box-shadow 120ms cubic-bezier(0.16,1,0.3,1); } .ds-input::placeholder { color: #6B6B70; } .ds-input:focus-visible { outline: 2px solid #F5F5F5; outline-offset: 2px; border-color: #6B6B70; }"
+    },
+    {
+      "name": "Sidebar Navigation Item",
+      "kind": "nav",
+      "refersTo": "button-outline",
+      "description": "激活项不反色，而是更深的字 + 2px 竖线。夜里 3 点，一块纯黑药丸比一段文字重得多。",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item\" href=\"#\">总览</a><a class=\"ds-nav-item ds-nav-active\" href=\"#\">节点<span class=\"ds-nav-rail\"></span></a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 2px; } .ds-nav-item { position: relative; display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; border-radius: 6px; color: #9F9FA8; font: 500 14px/1.5 Inter, -apple-system, \"PingFang SC\", sans-serif; text-decoration: none; transition: color 120ms cubic-bezier(0.16,1,0.3,1), background-color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-nav-item:hover { background: #27272A; } .ds-nav-active { color: #F5F5F5; font-weight: 600; } .ds-nav-rail { position: absolute; left: -2px; top: 50%; width: 2px; height: 16px; transform: translateY(-50%); border-radius: 9999px; background: #F5F5F5; }"
+    },
+    {
+      "name": "Term Explanation Chip",
+      "kind": "chip",
+      "refersTo": "chip-term",
+      "description": "K8s 术语芯片。芯片本身**就是**那个按钮（直接用 chipClasses 渲染，不套一层 StatusChip）。收录了的词点开是「是什么 + 怎么办」两句话；收录之外的词照常显示，不假装解释得了。不另加 ⓘ 图标——Pod 详情页的标题区只剩 111px 宽。",
+      "html": "<button class=\"ds-chip-term\" type=\"button\" aria-label=\"redis：CrashLoopBackOff：点击看这个术语的含义\">CrashLoopBackOff</button>",
+      "css": ".ds-chip-term { display: inline-flex; align-items: center; border: 1px solid #3A3A3E; border-radius: 8px; background: #232326; padding: 2px 8px; color: #A1A1AA; font: 500 12px/16px Inter, -apple-system, \"PingFang SC\", sans-serif; white-space: nowrap; cursor: pointer; transition: border-color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-chip-term:hover { border-color: #52525B; } .ds-chip-term:focus-visible { outline: 2px solid #7A7AFF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Data Flow Disclosure",
+      "kind": "disclosure",
+      "refersTo": "ai-data-flow",
+      "description": "AI 面板里的数据流向告知。放在标题正下方、输入框之上——读者点「提问」之前就该看到内容要去哪。按当前配置分三种说话：内网 / 外部地址（带地址本身）/ LiteLLM 默认路由。",
+      "html": "<p class=\"ds-data-flow\">这会把 Pod 的日志片段发给<span class=\"ds-data-flow-target\">我的内网模型</span> qwen2.5-72b。它在你的网络里运行，内容不会离开集群。</p>",
+      "css": ".ds-data-flow { color: #A1A1AA; font: 400 12px/16px Inter, -apple-system, \"PingFang SC\", sans-serif; } .ds-data-flow-target { color: #EDEDEF; font-weight: 500; }"
+    },
+    {
+      "name": "Permission Denied",
+      "kind": "state",
+      "refersTo": "state-permission-denied",
+      "description": "「没权限读」是它自己的一种状态，不是「加载失败」，也不是「这里是空的」。没有重试按钮——重试不会授予权限。五个界面共用：Pod 列表 / 事件页 / 节点页 / 日志面板 / AI 面板。",
+      "html": "<div class=\"ds-permission\"><div class=\"ds-permission-icon\"></div><h2>没有权限查看Pod 列表</h2><p>当前身份无权读取这份数据 —— 它不是空的，是访问控制把它裁掉了。</p><p>请让管理员给你的角色加上 pods.read 权限。重试不会授予权限。</p></div>",
+      "css": ".ds-permission { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 16px; text-align: center; } .ds-permission-icon { width: 56px; height: 56px; border-radius: 999px; background: #2A2417; margin-bottom: 16px; } .ds-permission h2 { font: 600 16px/24px Inter, -apple-system, \"PingFang SC\", sans-serif; color: #EDEDEF; margin-bottom: 4px; } .ds-permission p { font: 400 14px/20px Inter, -apple-system, \"PingFang SC\", sans-serif; color: #A1A1AA; max-width: 448px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "机舱夜航",
+    "overview": "这个产品的主要场景是凌晨三点：一个人，一块屏，一堆正在出问题的 Pod。所以视觉系统是按「驾驶舱」而不是「控制台」建的——仪表盘不发亮，但该亮的就亮；信息密度高，但每一处密度都换来了一个可扫读的判断。\n\n机舱隐喻决定了三件事。其一，底色是石墨而非纯黑：纯黑在 OLED 上边缘发硬，240 色相的深灰给了眼睛一个可以停下来的面。其二，前景不是纯白：纯白在暗底上会发光，#F5F5F5 是灯照在仪表上的亮度，不是探照灯。其三，颜色是信号，不是装饰——石墨层完全不携带色相，只有当某个东西需要被看见时，它才从石墨里亮起来。\n\n整个系统因此只有一种响亮的声音，而且它被留给了一件事：屏幕上最该被看见的那一个数字。",
+    "keyCharacteristics": [
+      "石墨底 + 极少量信号色：99% 的像素不带色相，状态色只在表达状态时出现",
+      "密度优先：表格、标签页、工具栏都按每天用八小时的疲劳度调校",
+      "双语术语：K8s 专有名词保留原文，因为那是读者要拿去敲 kubectl 的词汇",
+      "克制的动效：动效只在状态变化时发生，不做入场编排",
+      "明暗双主题是等价的：暗色不是降级模式，on-call 才是首要场景"
+    ],
+    "rules": [
+      {
+        "name": "The Signal Rule",
+        "section": "colors",
+        "body": "状态色只用于表达状态。一个装饰性的琥珀色边框、一块为了「有点颜色」而刷上去的底色，都会稀释信号的稀缺性——当琥珀色出现在不该出现的地方，真正的告警就不再刺眼。"
+      },
+      {
+        "name": "The One Bright Thing Rule",
+        "section": "colors",
+        "body": "一屏里只有一个元素可以是最亮的：总览页那个 48px 的数字。其余全部让位。机舱里仪表和标签的亮度比是固定的。"
+      },
+      {
+        "name": "The Phase Is Not The Verdict Rule",
+        "section": "colors",
+        "body": "颜色跟着「这个对象现在怎么样」走，不跟着 Kubernetes 的字段值走。一个 phase 是 Running 但容器在 CrashLoopBackOff 的 Pod，必须显示成红色——phase 会撒谎，判定不会。"
+      },
+      {
+        "name": "The Tabular Rule",
+        "section": "typography",
+        "body": "所有会变的数字（重启次数、Pod 数、耗时）用 tabular-nums。等宽数字让「21,320 → 3,200」的变化不引起整行的重排。"
+      },
+      {
+        "name": "The Raw Term Rule",
+        "section": "typography",
+        "body": "K8s 专有名词按 kubectl 的拼写原样显示：CrashLoopBackOff、ImagePullBackOff、OOMKilled、Running / Pending / Failed。读者要能复制这些串去搜、去敲 kubectl，翻译会毁掉这个用途。但描述性文字（失败、就绪、需要人看一眼）用中文。"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "section": "elevation",
+        "body": "表面在静止时是平的。阴影是状态，不是装饰——它回答「这个东西离开了页面平面吗」。"
+      }
+    ],
+    "dos": [
+      "Do 用语义 token（--error、--warning、--muted-foreground），不要写死颜色值。",
+      "Do 让状态色出现在「这个对象怎么样」的场合，且只出现在那里。",
+      "Do 用 tabular-nums 渲染会变的数字。",
+      "Do 用 lib/chip.ts 的芯片，不要手写状态徽章。",
+      "Do 用 lib/container.ts 判定容器状态，不要在组件里另写一套 reason 判断。",
+      "Do 让每个交互元素都有 hover / focus-visible / active / disabled 四态，键盘焦点必须可见。",
+      "Do 在中文界面里把 K8s 字段值按原文显示，把自己的判断用中文。",
+      "Do 让可访问性状态和视觉状态一致：颜色变了，读屏读到的事实也得变。",
+      "Do 用 text-wrap: balance 处理标题，用 tabular-nums 处理数字。",
+      "Do 让 K8s 术语在出现的地方可点开看解释（ReasonChip），解释给两句话：是什么、怎么办。",
+      "Do 在把内容发给模型之前说清发去了哪里，并按当前配置动态说（modelEndpoint）。",
+      "Do 让显示 phase 的地方，色调跟着判定走。phase 只当标签。"
+    ],
+    "donts": [
+      "Don't 在卡片、列表项上用 >1px 的彩色左边框（border-l-[3px]）。它撞圆角、读成胶条，并且稀释真正的告警信号。（日志行的 severity 轨是另一回事：它编码的是每一行的严重度。）",
+      "Don't 用 opacity 做文字层级。透明度会把对比度一起拉下去。（整块容器刷新时降透明度是另一回事：那是「这份数据是旧的」的提示。）",
+      "Don't 用状态色做装饰。",
+      "Don't 把「读不到」渲染成「没有」。节点列表被访问控制裁掉时，界面必须说「没有权限」。",
+      "Don't 给权限类错误配「重试」按钮。重试不会授予权限。",
+      "Don't 让同一块面板同时说两种状态。日志流断了时底部不能还写着「实时」，也不能写「已暂停」——暂停是读者自己按的。",
+      "Don't 让标题层级跳级（h1 直接到 h3）。",
+      "Don't 用纯黑（#000）或纯白（#fff）做表面与前景。",
+      "Don't 做入场编排动画。",
+      "Don't 把一个 reason 塞进灰色正文里。故障原因要成为一枚芯片。",
+      "Don't 用 role=\"tab\" 描述一个不是标签页的控件。过滤按钮用 aria-pressed。",
+      "Don't 让一排链接念起来一模一样。每个链接要带上目标的名字。",
+      "Don't 让帮助面板教不存在的操作。只在日志面板内生效的键要分组标注。",
+      "Don't 界面上只留一个英文术语串就完事。只读账号会分发给不熟 K8s 的同事。",
+      "Don't 把数据流向写死成「第三方」或「都在内网」。",
+      "Don't 把一个可点的芯片变成死路。芯片从「跳转到那里」变成「解释这个」之后，原来那条路要留在弹层里。",
+      "Don't 把「没权限读」渲染成「这里是空的」或「加载失败」，也不给它配「重试」按钮。重试不会授予权限。"
+    ]
+  }
+}

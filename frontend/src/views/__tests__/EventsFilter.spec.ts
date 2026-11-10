@@ -53,8 +53,11 @@ function mountEvents() {
   })
 }
 
+// 这些是过滤按钮，不是标签页：它们用 aria-pressed 表示选中状态。
+// 之前它们挂着 role="tab" / aria-selected，但页面里没有 tabpanel ——
+// 读屏因此承诺了不存在的方向键导航。
 function selectedTab(wrapper: ReturnType<typeof mountEvents>): string {
-  const btn = wrapper.findAll('[role="tab"]').find((b) => b.attributes('aria-selected') === 'true')
+  const btn = wrapper.findAll('button[aria-pressed]').find((b) => b.attributes('aria-pressed') === 'true')
   return btn?.text() ?? ''
 }
 
@@ -100,7 +103,7 @@ describe('EventsView default filter', () => {
   it('writes the choice into the URL, so "all" is not stolen back', async () => {
     const wrapper = mountEvents()
     await flushPromises()
-    const allTab = wrapper.findAll('[role="tab"]').find((b) => b.text().includes('全部'))
+    const allTab = wrapper.findAll('button[aria-pressed]').find((b) => b.text().includes('全部'))
     expect(allTab).toBeTruthy()
     await allTab!.trigger('click')
     await flushPromises()

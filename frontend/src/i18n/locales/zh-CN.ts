@@ -109,6 +109,9 @@ export default {
     Normal: '正常 Normal',
   },
   pods: {
+    // 没权限读的时候，副标题不能说「0 个」——那是关于集群的假事实。
+    subtitleDenied: 'Pod 列表不可读',
+    subject: 'Pod 列表',
     subtitle: '{count} 个 · {namespace}',
     filterAll: '全部',
     filtersLabel: 'Pod 列表筛选',
@@ -140,6 +143,7 @@ export default {
     largeListHint: '本次拉取了 {count} 个 Pod（当前是前端全量加载，排序和筛选都在本地完成）',
     viewDetail: '查看 {name} 详情',
     containersReady: '{total} 个容器中 {ready} 个就绪',
+    containerNotReady: '在跑，但没就绪',
     containerReady: 'ready',
     restartsCount: '{count} 次重启',
     loading: '加载 Pod 列表…',
@@ -153,6 +157,7 @@ export default {
   nodes: {
     subtitle: '{total} 个节点 · {ready} Ready · {pct}% 在线',
     subtitleEmpty: '尚无节点',
+    subtitleDenied: '节点列表不可读',
     refresh: '刷新',
     issueNotReady: 'NotReady · 节点离线',
     issueCpuHeadroom: 'CPU 预留过高 · 可分配仅 {pct}%',
@@ -171,8 +176,16 @@ export default {
     loading: '加载节点…',
     emptyTitle: '没有节点',
     emptyDescription: '当前集群尚未注册任何 Node',
+    // 节点列表被裁剪 ≠ 集群没有节点。前者要有专门的文案和出口，
+    // 否则读者会把权限问题当成事实。
+    permissionTitle: '没有权限查看节点',
+    permissionDescription:
+      '当前身份无权读取节点列表。这不是「集群没有节点」—— 集群里的 Pod 正在某些节点上运行，但节点资源被访问控制裁掉了。请让管理员给你的角色加上 nodes 的读权限。',
+    permissionHint: '节点信息仍可从 Pod 详情页查看',
   },
   events: {
+    subtitleDenied: '事件列表不可读',
+    permissionTitle: '没有权限查看事件列表',
     subtitle: '{namespace} · {filtered} / {total} 个事件',
     refresh: '刷新',
     filterByType: '按类型过滤',
@@ -189,6 +202,8 @@ export default {
     collapse: '收起',
     expand: '展开',
     viewDetail: '查看详情',
+    // 列表里一排链接都念「查看详情」，读屏用户不知道各自指向谁。
+    viewDetailOf: '查看 {name} 详情',
   },
   favorites: {
     subtitle: '{count} 个收藏',
@@ -197,8 +212,185 @@ export default {
     open: '打开 {name}',
     delete: '删除',
   },
-  pod: {
-    backToPods: '返回 Pod 列表',
+  // 「没权限读」是它自己的一种状态，不是「加载失败」，也不是「这里是空的」。
+  // 三个界面共用这一套说法（Pod 列表 / 事件 / 节点）。
+  permission: {
+    title: '没有权限查看这份数据',
+    titleWith: '没有权限查看 {subject}',
+    description: '当前身份无权读取这份数据 —— 它不是空的，是访问控制把它裁掉了。',
+    hint: '请让管理员给你的角色加上 {permission} 权限。重试不会授予权限。',
+    hintGeneric: '请让管理员给你的角色补上对应的权限。重试不会授予权限。',
+  },
+  term: {
+    // 术语解释的入口在「那个词的芯片」上，而不是另加一个图标：
+    // Pod 详情页的标题区只剩 111px 宽，加图标就没地方放标题了。
+    clickToExplain: '点击看这个术语的含义',
+    // 每个词的解释：是什么 + 怎么办。只解释「是什么」不够——
+    // 读者知道了还是不知道该看哪儿。
+    explain: {
+      CrashLoopBackOff: {
+        what: "容器反复启动失败，kubelet 每次重试之间把间隔拉长，所以叫「退避」。",
+        next: "看容器日志最后几行：通常是启动命令写错、配置缺失，或依赖的服务还没就绪。",
+      },
+      ImagePullBackOff: {
+        what: "拉不到容器镜像，kubelet 在退避后重试。",
+        next: "检查镜像名和标签、私有仓库的拉取凭据，以及节点到仓库的网络。",
+      },
+      ErrImagePull: {
+        what: "拉镜像时直接报错，还没进入退避重试——所以它比 ImagePullBackOff 更具体。",
+        next: "凭据、镜像名或仓库地址有问题。kubelet 随后会退避重试，所以紧接着你会看到 ImagePullBackOff。",
+      },
+      CreateContainerConfigError: {
+        what: "容器起不来，因为它的配置不对（引用的 ConfigMap / Secret 找不到，或环境变量缺失）。",
+        next: "检查这个 Pod 引用的 ConfigMap 和 Secret 是否存在、名字是否对得上。",
+      },
+      CreateContainerError: {
+        what: "容器进程创建失败，通常是启动命令不存在。",
+        next: "检查容器的 command / args，以及镜像里那个路径真的存在吗。",
+      },
+      OOMKilled: {
+        what: "容器超出了内存限制，被内核杀掉。",
+        next: "先看它是不是在泄漏；确认不是之后再调高 limit。",
+      },
+      Error: {
+        what: "容器以非零退出码结束了。",
+        next: "日志里找退出前的最后几行，通常有具体原因。",
+      },
+      Completed: {
+        what: "容器正常跑完并退出了。",
+        next: "这一般不是故障——初始化容器和一次性任务就是这样。",
+      },
+      RunContainerError: {
+        what: "容器运行时（不是应用自己）报错。",
+        next: "看事件里的具体消息，多半是挂载或运行时插件的问题。",
+      },
+      BackOff: {
+        what: "事件层的说法：容器在反复重启，退避间隔在拉长。",
+        next: "和 CrashLoopBackOff 是同一件事的两种视角——去看容器的日志。",
+      },
+      Failed: {
+        what: "某个动作失败了。具体是什么，看这条事件的消息。",
+        next: "消息里写着细节（Failed to pull image / Failed to create pod sandbox…），按那行字查。",
+      },
+      FailedScheduling: {
+        what: "调度器放不下这个 Pod：资源不够、亲和性不匹配、节点有污点，或者卷还没准备好。",
+        next: "事件消息里会写缺什么，按它说的找。",
+      },
+      FailedMount: {
+        what: "卷挂载失败。",
+        next: "看 PVC 是不是还 Pending，以及节点上有没有挂载失败的残留。",
+      },
+      FailedAttachVolume: {
+        what: "卷没能挂到节点上（和 FailedMount 不同：这一步是节点侧的挂载动作）。",
+        next: "看节点的磁盘和挂载点状态，以及那条卷在节点上的残留。",
+      },
+      FailedToRetrieveImagePullSecret: {
+        what: "取不到拉镜像要用的那个 Secret。",
+        next: "检查 ServiceAccount 引着的 imagePullSecrets 是否存在。",
+      },
+      FailedCreatePodSandBox: {
+        what: "给 Pod 准备运行环境（网络命名空间、挂载）失败了。",
+        next: "常见于 CNI 插件或磁盘压力；先看节点状态。",
+      },
+      InvalidImageName: {
+        what: "镜像名非法——写法不对，kubelet 连试都不用试。",
+        next: "检查镜像名的格式（仓库地址 / 标签 / 大小写）。",
+      },
+      InspectFailed: {
+        what: "kubelet 去读容器状态时失败了。",
+        next: "多半是容器运行时的问题：看节点状态和该节点的 kubelet 日志。",
+      },
+      NetworkNotReady: {
+        what: "Pod 的网络还没准备好（CNI 插件还没把它接进网络）。",
+        next: "看节点的网络插件状态；节点正常的话，过一会儿它自己会好。",
+      },
+      Unhealthy: {
+        what: "存活或就绪探针失败了。探针每失败一次，kubelet 就发一条这样的事件。",
+        next: "liveness 探针失败会重启容器，readiness 失败会把 Pod 标成未就绪。先确认探针配置对不对（路径、端口），再看应用是不是真的卡住了。",
+      },
+      Evicted: {
+        what: "Pod 被节点驱逐了，通常是节点内存压力。",
+        next: "看节点上的事件；需要的话调高 Pod 的内存 request 或加 QoS 保障。",
+      },
+      NodeNotReady: {
+        what: "节点自己没准备好——kubelet 或网络有问题。",
+        next: "这不是 Pod 的问题，先修节点。",
+      },
+      KubeletNotReady: {
+        what: "节点的 kubelet 没能及时汇报状态。",
+        next: "先修节点：kubelet 停了、证书过期、或者节点网络断了。",
+      },
+      NodeHasDiskPressure: {
+        what: "节点磁盘满了，kubelet 开始驱逐 Pod。",
+        next: "清磁盘（镜像、日志、临时文件）；需要的话给节点加容量。",
+      },
+      NodeHasMemoryPressure: {
+        what: "节点内存吃紧，kubelet 开始驱逐 Pod。",
+        next: "看节点上谁占着内存；调度时把 request 调准，别让 Pod 挤在一起。",
+      },
+      Preempted: {
+        what: "Pod 被更高优先级的 Pod 抢走了位置。",
+        next: "调整优先级或资源 request，让它别被抢。",
+      },
+      Terminating: {
+        what: "Pod 正在被删除。",
+        next: "如果卡住不动，看节点上有没有残留的挂载。",
+      },
+      Killing: {
+        what: "容器正在被终止——多半是 Pod 要更新或删除，也可能是 liveness 探针失败后要重启它。",
+        next: "看这条事件前后的消息：更新/delete 会先发 Killing，探针重启也会。",
+      },
+      ContainersNotReady: {
+        what: "Pod 已经创建，但它的容器还没就绪——kubelet 把它们拉起来了，容器却还没通过就绪探针。",
+        next: "去「详情」页看是哪个容器没就绪，以及它卡在哪一步。",
+      },
+      PodCompleted: {
+        what: "这个 Pod 的所有容器都正常跑完并退出了。",
+        next: "这一般不是故障——Job 和一次性任务就是这样。要看输出看日志。",
+      },
+      Scheduled: {
+        what: "调度器把 Pod 排到了某个节点上。",
+        next: "这只是开始。容器起来之前还可能卡在拉镜像、准备卷或者启动本身。",
+      },
+      SuccessfulCreate: {
+        what: "Pod 的沙箱（网络、挂载用的运行环境）创建成功了。",
+        next: "这说明节点接受了它；接着看 Started 有没有来。",
+      },
+      Pulling: {
+        what: "正在拉容器镜像。",
+        next: "这一步慢或者失败都很常见。ImagePullBackOff 就是它没拉下来。",
+      },
+      Pulled: {
+        what: "容器镜像拉好了。",
+        next: "下一步是创建和启动容器。",
+      },
+      Created: {
+        what: "容器创建成功了（还没启动）。",
+        next: "看 Started 有没有跟着来。",
+      },
+      Started: {
+        what: "容器已经启动。",
+        next: "启动了不等于健康——去看就绪状态和日志。",
+      },
+      SuccessfulUpdate: {
+        what: "一次更新成功了——通常指 Deployment 滚动更新时新副本起来了。",
+        next: "想知道更新了什么，去看这个对象最近的变更。",
+      },
+      SuccessfulDelete: {
+        what: "一次删除成功了。",
+        next: "如果不是你删的，去看这个对象的审计记录。",
+      },
+      SawCompletedJob: {
+        what: "控制器看到了一个已经完成的 Job（通常是这个 Pod 的父 Job）。",
+        next: "这一般不是故障——是控制器在做收尾。",
+      },
+      ScalingReplicaSet: {
+        what: "副本集被扩/缩容了，通常是 HPA 按指标触发的。",
+        next: "想知道为什么缩容，去看 HPA 的指标和事件。",
+      },
+    },
+  },
+  pod: {    backToPods: '返回 Pod 列表',
     refresh: '刷新',
     favorite: '收藏',
     unfavorite: '取消收藏',
@@ -252,6 +444,19 @@ export default {
     fieldBaseUrl: 'Base URL（可选）',
     formSetDefault: '设为默认 provider',
     askTitle: '问 Spotlight',
+    // 数据流向告知。模型部署位置没有硬约束（内网自托管或外部 SaaS 都可能），
+    // 所以这三句必须按当前配置选，不能写死。
+    subject: 'AI 模型配置',
+    askAdmin: '请让管理员给你的角色加上 {permission} 权限。',
+    sendsLogsTo: '这会把 Pod 的日志片段发给',
+    sendsContextTo: '这会把你输入的问题和当前集群的概况发给',
+    // 判定的是地址的形状，不是事实：split-horizon DNS、跨网段的私网 IP
+    // 都是反例。所以措辞是「看起来」，不是断言。
+    endpointLocal: '。{host} 看起来是你自己网络里的地址，内容不会发到你的网络之外。',
+    // 没有 api_base 时（Ollama 这类本地 provider 的默认端点）没有地址可印。
+    endpointLocalNoAddress: '。它走本机默认端点，内容不会发到你的网络之外。',
+    endpointDefaultRoute: '。它走 LiteLLM 的默认路由（按 provider 名选厂商端点，通常是外部的公开 API）。',
+    endpointExternal: '。{host} 看起来在你的网络之外，内容会发到它上面。',
     askDescription: '带上当前集群的上下文提问',
     askContextLabel: '上下文',
     askContextLoading: '正在收集集群状态…',
@@ -278,7 +483,7 @@ export default {
     askNoActiveCluster: '还没有选中的集群',
     logAnalysisTitle: 'AI 日志分析',
     logAnalysisDescription: '把日志片段发给 AI 模型分析根因',
-    logExcerpt: '日志片段（{count} 字符）',
+    logExcerpt: '日志片段（最近 {lines} 行 / {count} 字符）',
     aiAnalyze: 'AI 分析',
     analyzing: 'AI 正在分析…',
     analyze: '分析',
@@ -326,6 +531,11 @@ export default {
     openMenu: '打开菜单',
     home: 'Spotlight 首页',
     drawerTitle: '导航菜单',
+    // 徽标数的是最近 5 分钟的告警，不说窗口的话，「2」读起来像总数。
+    warningBadgeHint: '最近 5 分钟的告警（{count} 条）',
+    // 按钮用动作名，面板标题用产品名 —— 同名的话读屏用户会听到两个
+    // 「问 Spotlight」，分不清是按钮还是刚打开的面板。
+    askAi: '问 AI',
   },
   route: {
     login: '登录',
@@ -460,6 +670,7 @@ export default {
     localTimeHint: '时间列显示的是本机时区的时间',
     live: '实时',
     paused: '已暂停',
+    disconnected: '连接已断开',
     scrollHint: '滚动到底部查看最新',
     autoFollow: '自动跟随',
     help: {
@@ -467,7 +678,7 @@ export default {
       errorsOnly: '仅显示 error（再按取消）',
       pause: '暂停 / 继续',
       clear: '清空日志',
-      jumpError: '下一条 / 上一条 error·warn',
+      jumpError: '下一条 / 上一条 error',
       scroll: '向下 / 向上滚动 5 行',
       toggle: '显示 / 隐藏快捷键说明',
     },
@@ -493,6 +704,7 @@ export default {
       showPanel: '显示快捷键面板',
       openAi: '打开 AI 助手',
       searchNative: 'LogViewer 搜索（保留原生行为）',
+      logPanelScope: '仅在日志面板内生效',
     },
     actions: {
       refresh: '刷新当前页面',

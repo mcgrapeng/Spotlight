@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { Bot, Send, AlertTriangle, ChevronDown, ChevronRight, Copy, Check } from '@lucide/vue'
+import { Bot, Send, AlertTriangle, ChevronDown, ChevronRight, Copy, Check, ArrowRightLeft } from '@lucide/vue'
 import {
   Sheet,
   SheetContent,
@@ -18,6 +18,8 @@ import MarkdownAnswer from './MarkdownAnswer.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { aiApi, podsApi } from '@/api/endpoints'
 import { formatNumber } from '@/lib/utils'
+import { modelEndpoint } from '@/lib/modelEndpoint'
+import { readApiError } from '@/lib/apiError'
 
 /**
  * The AI panel.
@@ -50,8 +52,30 @@ const showRawContext = ref(false)
 const copied = ref(false)
 const elapsedMs = ref<number | null>(null)
 const answerModel = ref('')
+/** 403 时缺哪个权限——后端说的是对象，直接塞进界面会渲染成 JSON。 */
+const errorPermission = ref<string | null>(null)
+/** 读不到 provider 时缺哪个权限——与「还没配模型」分开。 */
+const providerPermission = ref<string | null>(null)
 
-const provider = ref<{ id: number; name: string; model: string } | null>(null)
+const provider = ref<{ id: number; name: string; provider: string; model: string; api_base?: string | null } | null>(null)
+
+/**
+ * 内容发去了哪里。
+ *
+ * Spotlight 把日志片段（analyze）或集群快照（ask）发给使用者自己配置的
+ * 模型。模型可能跑在集群内（Ollama / vLLM），也可能是外部 SaaS。
+ * 产品不对部署位置设硬约束，所以这句话必须**按当前配置**说 —— 写死
+ * 「第三方」在自托管场景下是假的，写死「都在内网」在 SaaS 场景下危险。
+ */
+/**
+ * 判定依据是 provider 的**类型**（"ollama" / "openai"…），不是使用者
+ * 给它起的名字。名字是随便写的——一个叫「本地模型」的 openai provider
+ * 照样连的是厂商 API。传名字会让这句话反过来：叫「本地模型」的 ollama
+ * 会被判成「走厂商公开 API」。
+ */
+const endpoint = computed(() => modelEndpoint(provider.value?.api_base, provider.value?.provider))
+/** analyze 模式发的是日志原文；ask 模式发的是集群快照。两者敏感度不同。 */
+const sendsRawContent = computed(() => ai.mode === 'analyze')
 
 const canSubmit = computed(() => {
   if (loading.value || !provider.value) return false
@@ -163,6 +187,29 @@ let answerSeq = 0
 let answerAbort: AbortController | null = null
 const ASK_TIMEOUT_MS = 90_000
 
+/**
+ * 发出去的日志片段：最后 200 行。
+ *
+ * 预览和实发必须是同一份。之前的声明写的是整段日志的字符数（215984），
+ * 而实际只发最后 200 行（85863）——这个面板的主打承诺是「内容发到哪里」，
+ * 读者对「我的日志发出去多少」的判断一旦失真，整句话就不可信了。
+ */
+const LOG_EXCERPT_LINES = 200
+
+const logExcerpt = computed(() => {
+  const content = ai.pod?.logContent ?? ''
+  const lines = content.split('\n')
+  const excerpt = lines.slice(-LOG_EXCERPT_LINES)
+  return { text: excerpt.join('\n'), lines: excerpt.length, chars: excerpt.join('\n').length }
+})
+
+/**
+ * 读不到 provider 有两种成因：「还没配」和「没权限读」。
+ *
+ * 之前一律当成「没配」——于是没有 ai.use 的用户每次打开面板都被告知
+ * 「请先配置模型」，并被指向一个他自己同样进不去的设置页。真相是权限，
+ * 而界面把他引向了错误的动作。
+ */
 async function loadProvider(): Promise<void> {
   const mine = ++providerSeq
   try {
@@ -170,10 +217,13 @@ async function loadProvider(): Promise<void> {
     if (mine !== providerSeq) return
     provider.value = providers.find((p) => p.enabled) ?? null
     noProvider.value = !provider.value
-  } catch {
+    providerPermission.value = null
+  } catch (e) {
     if (mine !== providerSeq) return
     provider.value = null
-    noProvider.value = true
+    const { status, permission } = readApiError(e)
+    providerPermission.value = status === 403 ? permission : null
+    noProvider.value = providerPermission.value === null
   }
 }
 
@@ -212,11 +262,13 @@ watch(
     answerAbort = null
     result.value = ''
     error.value = ''
+    errorPermission.value = null
     question.value = ''
     context.value = ''
     snapshot.value = null
     provider.value = null
     noProvider.value = false
+    providerPermission.value = null
     showRawContext.value = false
     copied.value = false
     elapsedMs.value = null
@@ -238,6 +290,7 @@ async function submit(): Promise<void> {
   const timer = setTimeout(() => controller.abort(), ASK_TIMEOUT_MS)
   loading.value = true
   error.value = ''
+  errorPermission.value = null
   result.value = ''
   elapsedMs.value = null
   const started = Date.now()
@@ -248,7 +301,7 @@ async function submit(): Promise<void> {
         ai.pod.namespace,
         ai.pod.name,
         provider.value.id,
-        ai.pod.logContent.split('\n').slice(-200),
+        logExcerpt.value.text.split('\n'),
         t('ai.analyzePrompt'),
       )
       if (mine !== answerSeq) return
@@ -278,9 +331,13 @@ async function submit(): Promise<void> {
     if (e?.name === 'AbortError') {
       error.value = t('ai.askTimeout')
     } else {
+      // 后端的 detail 在权限拒绝时是一个对象
+      // （{code, permission, message}）——直接塞进界面会渲染出原始 JSON。
+      const { status, message, permission } = readApiError(e)
+      errorPermission.value = permission
       error.value = e?.code === 'ECONNABORTED'
         ? t('ai.askTimeout')
-        : e?.response?.data?.detail ?? e?.message ?? t('ai.analyzeFailed')
+        : message ?? e?.message ?? (status ? `HTTP ${status}` : t('ai.analyzeFailed'))
     }
   } finally {
     clearTimeout(timer)
@@ -341,6 +398,44 @@ const answerMeta = computed(() => {
         </SheetDescription>
       </SheetHeader>
 
+      <!--
+        数据流向告知。放在标题正下方、输入框之上 —— 读者点「提问」之前
+        就该看到内容要去哪，而不是答完才知道。
+
+        三种情况分开说，因为它们的严重程度不同：
+          本机 / 内网   —— 不会离开你的网络
+          外部地址      —— 会离开集群
+          默认路由      —— 走 LiteLLM 的默认端点，通常是厂商的公开 API
+      -->
+      <div
+        v-if="provider"
+        class="flex items-start gap-2 border-b border-border bg-muted/40 px-4 py-2 text-xs"
+      >
+        <ArrowRightLeft :size="13" :stroke-width="1.75" class="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <p class="text-muted-foreground">
+          <template v-if="sendsRawContent">{{ t('ai.sendsLogsTo') }}</template>
+          <template v-else>{{ t('ai.sendsContextTo') }}</template>
+          <!-- &nbsp;：Vue 会把模板里换行之间的纯空白节点删掉，
+               名字和模型名会粘成一坨「我的内网模型qwen2.5-72b」。 -->
+          <span class="font-medium text-foreground">{{ provider.name }}&nbsp;</span>
+          <span class="font-mono">{{ provider.model }}</span>
+          <template v-if="endpoint.local">
+            <template v-if="endpoint.host">
+              {{ t('ai.endpointLocal', { host: endpoint.host }) }}
+            </template>
+            <template v-else>
+              {{ t('ai.endpointLocalNoAddress') }}
+            </template>
+          </template>
+          <template v-else-if="endpoint.defaultRoute">
+            {{ t('ai.endpointDefaultRoute') }}
+          </template>
+          <template v-else>
+            {{ t('ai.endpointExternal', { host: endpoint.host }) }}
+          </template>
+        </p>
+      </div>
+
       <div class="flex-1 overflow-auto p-4 space-y-4">
         <!-- No model configured: the panel cannot do anything without one. -->
         <div
@@ -355,12 +450,30 @@ const answerMeta = computed(() => {
           </span>
         </div>
 
+        <!--
+          没权限读 provider：不是「还没配模型」，也不该把读者指向一个
+          他同样进不去的设置页。
+        -->
+        <div
+          v-else-if="providerPermission"
+          class="flex items-start gap-2 rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning"
+          role="alert"
+        >
+          <AlertTriangle :size="14" :stroke-width="1.75" class="mt-px shrink-0" />
+          <span>{{ t('ai.askAdmin', { permission: providerPermission }) }}</span>
+        </div>
+
         <template v-if="ai.mode === 'analyze' && ai.pod">
           <div>
+            <!--
+              声明实发的量。这个面板的主打承诺是「内容发到哪里」，
+              读者对「我的日志发出去多少」的判断必须和实际一致——
+              而实际只发最后 200 行。
+            -->
             <h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-              {{ t('ai.logExcerpt', { count: ai.pod.logContent.length }) }}
+              {{ t('ai.logExcerpt', { count: logExcerpt.chars, lines: logExcerpt.lines }) }}
             </h4>
-            <pre class="text-xs font-mono bg-muted p-3 rounded-md overflow-auto max-h-[240px] whitespace-pre-wrap">{{ ai.pod.logContent }}</pre>
+            <pre class="text-xs font-mono bg-muted p-3 rounded-md overflow-auto max-h-[240px] whitespace-pre-wrap">{{ logExcerpt.text }}</pre>
           </div>
         </template>
 
@@ -446,7 +559,12 @@ const answerMeta = computed(() => {
           </div>
         </div>
 
-        <div v-if="error" class="text-sm text-error" role="alert">{{ error }}</div>
+        <div v-if="error" class="text-sm text-error" role="alert">
+          {{ error }}
+          <span v-if="errorPermission" class="block mt-1 text-xs text-muted-foreground">
+            {{ t('ai.askAdmin', { permission: errorPermission }) }}
+          </span>
+        </div>
 
         <div v-if="loading && !result" class="flex items-center justify-center py-8 text-muted-foreground">
           <Bot :size="16" :stroke-width="1.75" class="mr-2 animate-pulse" />

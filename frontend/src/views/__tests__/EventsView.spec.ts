@@ -94,3 +94,54 @@ describe('EventsView message truncation', () => {
     expect(expandButton(wrapper)).toBeTruthy()
   })
 })
+
+describe('EventsView event cards', () => {
+  it('makes the whole card a click target for pod events', async () => {
+    // 这条路是事件页的主路径：读到一条告警 → 点进去看那个 Pod。
+    // 之前它只有右下角一个 12px 的「查看详情 ›」，约 60×16px。
+    const wrapper = mountEvents()
+    await flushPromises()
+
+    const link = wrapper.findAllComponents(RouterLinkStub).find((l) => {
+      const to = l.props('to') as { name?: string } | undefined
+      return to?.name === 'pod-detail'
+    })
+    expect(link).toBeTruthy()
+    // 链接用 ::after 铺满整张卡，所以它必须不是 relative
+    // ——否则覆盖层会以链接为定位祖先，铺不开。
+    expect(link!.classes().join(' ')).toContain('after:inset-0')
+    expect(link!.classes().join(' ')).not.toContain('relative')
+  })
+
+  it('keeps the event message selectable above the card overlay', async () => {
+    // 正文是读者真正要读、要复制的东西（上游原文）。它必须抬在整卡
+    // 覆盖层之上，否则鼠标按下去是跳转而不是选字。
+    const wrapper = mountEvents()
+    await flushPromises()
+    const msg = wrapper.findAll('p').find((p) => p.text().includes('Back-off restarting'))
+    expect(msg).toBeTruthy()
+    expect(msg!.classes().join(' ')).toContain('z-10')
+  })
+
+  it('does not dim the repeat count below the contrast floor', async () => {
+    // opacity-60 的次要文字在暗色下是 3.2:1，低于 AA 的 4.5:1。
+    // 层级改由颜色承担：数字用 foreground，单位用 muted-foreground。
+    const wrapper = mountEvents()
+    await flushPromises()
+    const times = wrapper.findAll('span').find((s) => s.text() === '次')
+    expect(times).toBeTruthy()
+    expect(times!.classes().join(' ')).not.toContain('opacity-60')
+    const count = wrapper.findAll('span').find((s) => s.text() === '4')
+    expect(count).toBeTruthy()
+    expect(count!.classes().join(' ')).toContain('text-foreground')
+  })
+
+  it('drops the 3px accent border from event cards', async () => {
+    // 3px 彩色左边框撞上 12px 圆角，检测器判它 side-tab。
+    const wrapper = mountEvents()
+    await flushPromises()
+    const card = wrapper.findAll('div').find((d) => d.classes().includes('rounded-card'))
+    expect(card).toBeTruthy()
+    expect(card!.classes().join(' ')).not.toContain('border-l-[3px]')
+  })
+})

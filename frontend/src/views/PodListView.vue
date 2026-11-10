@@ -7,13 +7,16 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import PermissionDenied from '@/components/common/PermissionDenied.vue'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
+import ReasonChip from '@/components/common/ReasonChip.vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
-import { containerDotClass } from '@/lib/container'
+import { containerDotClass, containerStateText, containerTone, podTone } from '@/lib/container'
+import type { ChipTone } from '@/lib/chip'
 import { restartTone } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
 import { useClusterStore } from '@/stores/cluster'
@@ -52,12 +55,20 @@ const statusFilter = computed<string>({
   },
 })
 
-const { data, loading, error, reload } = usePodList({
+const { data, loading, error, errorStatus, errorPermission, reload } = usePodList({
   cluster: computed(() => cluster.activeCluster),
   namespace: computed(() => cluster.activeNamespace),
   status: statusFilter,
   search,
 })
+
+/**
+ * 没权限读 Pod 列表，是一种状态，不是「这里是空的」。
+ *
+ * 「0 个 Pod」是关于集群的**假事实**——它会让值班的人以为集群是空的，
+ * 转头去做别的检查。所以副标题也不能写「0 个」。
+ */
+const permissionDenied = computed(() => errorStatus.value === 403)
 
 const LARGE_LIST_THRESHOLD = 500
 
@@ -75,6 +86,7 @@ const statusOptions = computed(() => [
 ])
 
 const subtitle = computed(() => {
+  if (permissionDenied.value) return t('pods.subtitleDenied')
   const ns = cluster.activeNamespace === '_all'
     ? t('namespace.all')
     : cluster.activeNamespace
@@ -85,7 +97,30 @@ const subtitle = computed(() => {
 // "namespace/name". Previous version called restartSeverity(row) up to 4
 // times per row inside the template — for 100 rows × 4 = 400 calls/render.
 // Now: 2 calls per row in computed, 0 in template.
-function readyOf(p: PodOut) { return p.containers.filter(c => c.ready).length }
+/**
+ * 状态列的色调：容器的判定优先于 phase。
+ *
+ * phase=Running 的 Pod 可能一塌糊涂——就绪探针挂了 62 天，它照样是
+ * Running（K8s 的 phase 只说「至少一个容器在跑」）。凌晨三点扫这一列
+ * 是最高频的动作，它必须承载判定，而不是字段。
+ *
+ * 最坏优先：任何容器坏了就是红的；只是没就绪是琥珀；全好才用 phase
+ * 自己的颜色。
+ */
+function statusTone(p: PodOut): ChipTone | undefined {
+  return podTone(p.containers ?? [])
+}
+
+// ponytail: 「几个容器是好的」和「这个容器坏了」必须用同一套判定。
+//
+// 之前这里数的是 `c.ready`，而状态点用的是 containerTone。于是一个
+// ready 还没翻转但 reason 已经是 CrashLoopBackOff 的容器，会得到
+// 「1/1 就绪」加一个红点 —— 同一行里两个答案。
+//
+// 现在两个都走 containerTone：状态点说坏，它就真的是坏的。
+function readyOf(p: PodOut) {
+  return p.containers.filter(c => containerTone(c) === 'success').length
+}
 // ponytail: the ladder lives in @/lib/restart so the table and the
 // dashboard's restart bars agree. They used different thresholds (5/100
 // versus 10/100/1000), so the same pod read as amber in one place and grey
@@ -295,7 +330,16 @@ const emptyDescription = computed(() => {
       {{ t('pods.largeListHint', { count: data.items.length.toLocaleString() }) }}
     </p>
 
-    <ErrorState v-if="error" :message="error" @retry="reload" />
+    <!--
+      权限不足是它自己的一种状态：没有重试按钮（重试不会授予权限），
+      也不说「这里是空的」。
+    -->
+    <PermissionDenied
+      v-if="permissionDenied"
+      :permission="errorPermission"
+      :subject="t('pods.subject')"
+    />
+    <ErrorState v-else-if="error" :message="error" @retry="reload" />
 
     <Card v-else class="p-0 overflow-hidden flex flex-col flex-1 min-h-0">
       <div
@@ -383,20 +427,33 @@ const emptyDescription = computed(() => {
               </td>
               <td :class="densityClass.cell">
                 <div class="flex items-center gap-2">
-                  <PodStatusPill :phase="row.phase" />
-                  <span
+                  <PodStatusPill :phase="row.phase" :tone-override="statusTone(row)" />
+                  <!--
+                    Pod 级 reason（ContainersNotReady 等）。原来是一枚手写
+                    芯片：rounded-sm / px-1.5 / font-semibold，和它旁边的
+                    PodStatusPill（rounded-md / px-2 / font-medium）尺寸都对不上。
+                    归到芯片系统，顺带拿到术语解释。
+                  -->
+                  <ReasonChip
                     v-if="row.reason"
-                    class="rounded-sm px-1.5 py-0.5 text-xs font-semibold bg-error-bg text-error border border-error-border"
-                  >{{ row.reason }}</span>
+                    :term="row.reason"
+                    :context="row.name"
+                    tone="error"
+                    size="sm"
+                  />
                 </div>
               </td>
               <td :class="densityClass.cell">
                 <div class="flex items-center gap-2">
-                  <div class="flex items-center gap-1" :aria-label="t('pods.containersReady', { ready: readyOf(row), total: row.containers.length })">
+                  <div
+                    role="img"
+                    class="flex items-center gap-1"
+                    :aria-label="t('pods.containersReady', { ready: readyOf(row), total: row.containers.length })"
+                  >
                     <span
                       v-for="(c, i) in row.containers"
                       :key="i"
-                      :title="`${c.name}: ${c.ready ? t('pods.containerReady') : c.state}${c.reason ? ' (' + c.reason + ')' : ''}`"
+                      :title="containerStateText(c, t('pods.containerReady'), t('pods.containerNotReady'))"
                       :class="cn(
                         'inline-block w-2 h-2 rounded-full',
                         containerDotClass(c),
@@ -470,7 +527,7 @@ const emptyDescription = computed(() => {
                 {{ row.owner_kind }}/{{ row.owner_name }}
               </div>
             </div>
-            <PodStatusPill :phase="row.phase" />
+            <PodStatusPill :phase="row.phase" :tone-override="statusTone(row)" />
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span class="font-mono">{{ row.namespace }}</span>
@@ -483,6 +540,33 @@ const emptyDescription = computed(() => {
                 'tabular-nums',
                 sevOf(row) === 'attention' && 'text-warning font-semibold',
               )">×{{ row.restart_count }}</span>
+            <!--
+              容器状态点：桌面表格有，手机卡片原来没有。
+              于是 390px 上一个 CrashLoopBackOff 的 Pod 只显示绿色的
+              「运行中 Running」和重启次数 —— 唯一的故障信号在手机上
+              消失了。手机上恰恰是最需要它的地方（不在工位前）。
+              名字和桌面那列一致，所以两处说的是同一件事。
+            -->
+            <!--
+              role="img" 不是装饰：没有 role 的元素上写 aria-label 会被
+              读屏丢掉（generic 不允许命名）。而这一组点恰恰是手机上唯一
+              的故障信号 —— 卡片外层是 <button aria-label="查看 X 详情">，
+              按钮名覆盖了内容名，容器信息只以 generic 的身份残留。
+              给它 role="img"，它就成为一块有名有姓的图形。
+            -->
+            <span
+              role="img"
+              class="flex items-center gap-1"
+              :aria-label="t('pods.containersReady', { ready: readyOf(row), total: row.containers.length })"
+            >
+              <span
+                v-for="(c, i) in row.containers"
+                :key="i"
+                class="inline-block w-1.5 h-1.5 rounded-full"
+                :class="containerDotClass(c)"
+                :title="containerStateText(c, t('pods.containerReady'), t('pods.containerNotReady'))"
+              />
+            </span>
           </div>
         </button>
       </div>

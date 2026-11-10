@@ -13,7 +13,9 @@ import { Button } from '@/components/ui/button'
 import LoadingState from '@/components/common/LoadingState.vue'
 import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import PermissionDenied from '@/components/common/PermissionDenied.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
+import ReasonChip from '@/components/common/ReasonChip.vue'
 import { cn } from '@/lib/utils'
 import { isAllNamespaces } from '@/utils/namespace'
 import dayjs from '@/utils/dayjs'
@@ -34,9 +36,25 @@ function toggleExpand(name: string) {
   expanded.value = next
 }
 
+/**
+ * 事件能跳到哪里去。
+ *
+ * Pod 事件跳 Pod 详情页；Node 事件跳节点页（节点页没有单节点详情，
+ * 但那是唯一能查到那个节点的地方）。其它种类（Job、Deployment…）
+ * 在这个产品里没有对应页面 —— 那就不给它们一个假链接，让读者点进
+ * 一个查不到东西的地方。
+ */
+function eventTarget(ev: EventOut): { name: string; params?: Record<string, string> } | null {
+  if (ev.involved_kind === 'Pod') {
+    return { name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } }
+  }
+  if (ev.involved_kind === 'Node') return { name: 'nodes' }
+  return null
+}
+
 // Ponytail: 用 useResource 取代手写 onMounted+watch+loading+error 三件套。
 // 这是 senior-engineer audit 里 #1 的样板重构。
-const { data: events, loading, error, reload: load } = useResource<EventOut[]>(
+const { data: events, loading, error, errorStatus, errorPermission, reload: load } = useResource<EventOut[]>(
   () => eventsApi.list({
     cluster: cluster.activeCluster,
     namespace: cluster.activeNamespace,
@@ -49,9 +67,27 @@ const { data: events, loading, error, reload: load } = useResource<EventOut[]>(
   },
 )
 
+/**
+ * 没权限读事件列表，是一种状态，不是「这里是空的」。
+ *
+ * 「0 / 0 个事件」是关于集群的**假事实**——它会让值班的人以为这个集群
+ * 真的没有事件，转头去做别的检查。所以副标题也不能那么写。
+ */
+const permissionDenied = computed(() => errorStatus.value === 403)
+
 const filtered = computed(() => {
   if (typeFilter.value === 'all') return events.value ?? []
   return (events.value ?? []).filter(e => e.type === typeFilter.value)
+})
+
+/** 每条事件的目标，预先算好 —— 模板里不要重复调用。 */
+const eventTargets = computed(() => {
+  const map = new Map<string, { name: string; params?: Record<string, string> }>()
+  for (const e of filtered.value) {
+    const t = eventTarget(e)
+    if (t) map.set(e.name, t)
+  }
+  return map
 })
 
 const countByType = computed<Record<string, number>>(() => {
@@ -158,13 +194,15 @@ useEventListener(window, 'resize', () => {
   -->
   <PageHeader
     :title="t('route.events')"
-    :subtitle="t('events.subtitle', {
-      namespace: isAllNamespaces(cluster.activeNamespace)
-        ? t('namespace.all')
-        : cluster.activeNamespace,
-      filtered: filtered.length,
-      total: totalEvents,
-    })"
+    :subtitle="permissionDenied
+      ? t('events.subtitleDenied')
+      : t('events.subtitle', {
+          namespace: isAllNamespaces(cluster.activeNamespace)
+            ? t('namespace.all')
+            : cluster.activeNamespace,
+          filtered: filtered.length,
+          total: totalEvents,
+        })"
   >
     <template #actions>
       <Button variant="outline" size="sm" @click="load" :loading="loading" :aria-label="t('events.refresh')">
@@ -174,13 +212,29 @@ useEventListener(window, 'resize', () => {
       </Button>
     </template>
     <template #extra>
-      <div class="flex flex-wrap items-center gap-1.5 mt-3" role="tablist" :aria-label="t('events.filterByType')">
+      <!--
+        这是三个过滤按钮，不是标签页。
+
+        之前它们挂着 role="tablist" / role="tab" / aria-selected，可是
+        下面没有 role="tabpanel"，也没有 aria-controls —— 读屏因此
+        承诺了方向键导航和面板关联，而实际一个都没有。过滤按钮正确的
+        角色是 aria-pressed 的切换按钮（日志面板的 severity 芯片一直
+        这么写）。说谎的语义比没有语义更糟：读屏用户会以为能用方向键
+        在三个过滤器之间跳。
+      -->
+      <!-- 没权限读的时候不显示这排筛选：每个数字都从一份没读到的数据
+           算出来，「告警 Warning 0」读起来就是「没有告警」——那是假的。 -->
+      <div
+        v-if="!permissionDenied"
+        class="flex flex-wrap items-center gap-1.5 mt-3"
+        role="group"
+        :aria-label="t('events.filterByType')"
+      >
         <button
           v-for="tab in ['all', 'Warning', 'Normal'] as const"
           :key="tab"
           type="button"
-          role="tab"
-          :aria-selected="typeFilter === tab"
+          :aria-pressed="typeFilter === tab"
           @click="typeFilter = tab"
           :class="cn(
             'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
@@ -244,6 +298,15 @@ useEventListener(window, 'resize', () => {
   </div>
 
   <LoadingState v-if="loading && totalEvents === 0" />
+  <!--
+    权限不足是它自己的一种状态：没有重试按钮（重试不会授予权限），
+    也不说「0 个事件」——那是关于集群的假事实。
+  -->
+  <PermissionDenied
+    v-else-if="permissionDenied"
+    :permission="errorPermission"
+    :title="t('events.permissionTitle')"
+  />
   <ErrorState v-else-if="error" :message="error" @retry="load" />
   <EmptyState
     v-else-if="filtered.length === 0"
@@ -260,19 +323,32 @@ useEventListener(window, 'resize', () => {
   </EmptyState>
 
   <div v-else class="space-y-2">
-    <!-- 卡片统一为 div：把"展开"按钮塞进 router-link 是非法嵌套交互，
-         详情跳转改由 footer 的独立链接承载（Audit §8.3）。 -->
+    <!--
+      卡片统一为 div：把"展开"按钮塞进 router-link 是非法嵌套交互，
+      详情跳转改由 footer 的独立链接承载（Audit §8.3）。
+
+      现在整张卡可点了，做法是「拉长链接」：footer 那个 router-link
+      用 ::after 铺满整张卡（它的定位祖先是这张 relative 的卡），
+      展开按钮 z-10 浮在上面。于是「点卡片任意处 = 跳到那个 Pod」，
+      而 DOM 里仍然只有一个链接、一个按钮 —— 嵌套交互的合法性不受影响。
+      之前这条主路径只有右下角一个 12px 的"查看详情 ›"，约 60×16px。
+    -->
     <div
       v-for="ev in filtered"
       :key="ev.name"
       :class="cn(
-        'group block rounded-card border transition-colors ease-app dur-fast overflow-hidden',
+        'group relative block rounded-card border transition-colors ease-app dur-fast overflow-hidden',
         // ponytail: 卡片边框回到中性。之前是 border-warning/40，整张卡在
-        // 暗色下变成一块棕褐色，信号被稀释了。告警的身份由左竖条 + 图标 +
-        // 芯片承担，边框不需要再染一次色。
+        // 暗色下变成一块棕褐色，信号被稀释了。告警的身份由图标 + 芯片承担，
+        // 边框不需要再染一次色。
+        //
+        // 左边那条竖线从 3px 降到 1px：3px 撞上圆角就是「卡片上贴了根
+        // 胶条」，而且 12px 的圆角和 3px 的彩色边在几何上也打架
+        // （impeccable 的 craft-floor 明令禁止卡片上 >1px 的彩色边框）。
+        // 1px 足够在扫视时标出「这条是告警」，剩下的由图标和芯片说话。
         ev.type === 'Warning'
-          ? 'border-border bg-warning/5 hover:bg-warning/10 border-l-[3px] border-l-warning'
-          : 'border-border bg-card opacity-90 hover:opacity-100 border-l-[3px] border-l-transparent',
+          ? 'border-border bg-warning/5 hover:bg-warning/10 border-l-warning'
+          : 'border-border bg-card opacity-90 hover:opacity-100',
       )"
     >
       <div class="flex items-start gap-3 p-3">
@@ -292,15 +368,43 @@ useEventListener(window, 'resize', () => {
               :tone="ev.type === 'Warning' ? 'warning' : 'neutral'"
               :label="t(`eventType.${ev.type}`, ev.type)"
             />
-            <span class="inline-flex items-center rounded-sm px-2 py-0.5 bg-muted text-foreground font-mono text-xs border border-border">{{ ev.reason }}</span>
+            <!--
+              reason 芯片现在自己做一件事：点开术语解释。
+
+              它原来还兼着一个身份：「这张卡可点」的暗示——悬停时边框亮成
+              告警色。现在它自己就是一个可点的东西了，再让它暗示整卡可点，
+              读者点下去发现是弹层而不是跳转，就是个假承诺。整卡可点的
+              暗示交给卡片自己的悬停底色，和 footer 里那个「查看详情 ›」。
+
+              text-foreground：reason 是这张卡上最关键的诊断信息，不能和
+              旁边的 namespace 一样暗（芯片系统默认的 neutral 是
+              muted-foreground）。字色靠 class 提亮，底色和描边仍走系统。
+
+              context 写进无障碍名称：列表里几十张卡都可能是同一个
+              reason，按钮名全一样的话读屏用户没法分辨是哪一条。
+            -->
+            <ReasonChip
+              :term="ev.reason"
+              :context="`${ev.involved_kind}/${ev.involved_name}`"
+              size="xs"
+              tone="neutral"
+              class="font-mono text-foreground"
+            />
             <span class="text-xs text-muted-foreground">{{ ev.namespace }}</span>
             <span class="text-xs text-muted-foreground font-mono">{{ ev.involved_kind }}/{{ ev.involved_name }}</span>
           </div>
-          <!-- ponytail: message 是用户来 events 页面真正要读的内容，必须是视觉主角 -->
+          <!--
+            message 是用户来 events 页真正要读的内容，必须是视觉主角，
+            而且要能选中复制 —— 凌晨排查时经常要把上游原文整段粘走。
+
+            所以它抬在整卡覆盖层之上（z-10）：正文上的鼠标按下是选字，
+            不是跳转。点击别处（图标 / 芯片 / reason / 空白）才是跳转。
+            这是网页本来的规矩：链接负责跳转，文字负责选中。
+          -->
           <p
             :ref="setMsgEl(ev.name)"
             :class="cn(
-              'mt-2 text-base leading-snug',
+              'relative z-10 mt-2 text-base leading-snug',
               expanded.has(ev.name) ? '' : 'line-clamp-3',
               ev.type === 'Warning' ? 'text-foreground font-medium' : 'text-foreground/80',
             )"
@@ -310,15 +414,22 @@ useEventListener(window, 'resize', () => {
           <div class="text-xs text-muted-foreground mt-2 flex items-center gap-3">
             <span :title="ev.last_seen ?? undefined">{{ formatRel(ev.last_seen ?? null) }}</span>
             <span v-if="ev.count > 1" class="inline-flex items-center gap-1">
-              <span class="opacity-60">×</span>
-              <span class="tabular-nums font-medium">{{ ev.count }}</span>
-              <span class="opacity-60">{{ t('events.times') }}</span>
+              <!--
+                次数这里原来是 opacity-60 的次要文字：暗色下 3.2:1，
+                低于 AA 的 4.5:1。现在层级靠颜色承担（数字用 foreground，
+                单位和乘号用 muted-foreground），不用透明度 —— 透明度
+                会把对比度一起拉下去，而「重复了多少次」恰恰是需要
+                被读到的那个数。
+              -->
+              <span aria-hidden="true">×</span>
+              <span class="tabular-nums font-medium text-foreground">{{ ev.count }}</span>
+              <span>{{ t('events.times') }}</span>
             </span>
             <div class="ml-auto flex items-center gap-3">
               <button
                 v-if="overflows.has(ev.name) || expanded.has(ev.name)"
                 type="button"
-                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+                class="relative z-10 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
                 @click.stop="toggleExpand(ev.name)"
               >
                 <component
@@ -327,10 +438,19 @@ useEventListener(window, 'resize', () => {
                 />
                 {{ expanded.has(ev.name) ? t('events.collapse') : t('events.expand') }}
               </button>
+              <!--
+                这个链接用 ::after 铺满整张卡（定位祖先是 relative 的卡片），
+                所以整张卡都是点击区 —— 这条路是事件页的主路径，之前只有
+                右下角一个约 60×16px 的 12px 链接。
+
+                链接本身不做 relative：那样 ::after 会以链接为定位祖先，
+                铺不开。展开按钮 z-10 浮在 ::after 之上，两者互不抢点击。
+              -->
               <router-link
-                v-if="ev.involved_kind === 'Pod'"
-                :to="{ name: 'pod-detail', params: { namespace: ev.namespace, name: ev.involved_name } }"
-                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+                v-if="eventTargets.get(ev.name)"
+                :to="eventTargets.get(ev.name)!"
+                :aria-label="t('events.viewDetailOf', { name: `${ev.involved_kind}/${ev.involved_name}` })"
+                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm after:absolute after:inset-0 after:content-['']"
               >
                 {{ t('events.viewDetail') }}
                 <ChevronRight :size="12" :stroke-width="2" aria-hidden="true" />

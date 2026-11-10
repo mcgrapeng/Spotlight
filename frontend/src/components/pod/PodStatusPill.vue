@@ -33,6 +33,13 @@ const PHASE_CONFIG: Record<string, { tone: ChipTone; variant: 'soft' | 'bare'; d
 
 const props = defineProps<{
   phase: string
+  /**
+   * 覆盖色调。phase 是字段，判定才是结论——「运行中」不一定是好事：
+   * 容器起来了但没就绪，它需要人看一眼。
+   *
+   * 不传就按 phase 自己的颜色（kubectl 的对应色）。
+   */
+  toneOverride?: ChipTone
   class?: string
 }>()
 
@@ -52,7 +59,7 @@ const phaseConfig = computed(() => {
 
 <template>
   <StatusChip
-    :tone="phaseConfig.tone"
+    :tone="props.toneOverride ?? phaseConfig.tone"
     :variant="phaseConfig.variant"
     :dot="phaseConfig.dot"
     :label="t(`phase.${phaseConfig.key}`)"

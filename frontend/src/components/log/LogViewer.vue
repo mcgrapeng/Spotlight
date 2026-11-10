@@ -29,6 +29,8 @@ const props = withDefaults(defineProps<{
   podName?: string
   namespace?: string
   error?: string | null
+  /** 403 时缺哪个权限——有它就没有「重试」按钮：重试不会授予权限。 */
+  errorPermission?: string | null
   downloadScope?: 'all' | 'visible'
   /** Shared with usePodLogs: true = new lines are prepended immediately
    *  (auto-follow the tail); false = buffered as deferred backlog. The
@@ -38,6 +40,7 @@ const props = withDefaults(defineProps<{
   podName: '',
   namespace: '',
   error: null,
+  errorPermission: null,
   downloadScope: 'visible',
   autoFollow: true,
 })
@@ -2019,7 +2022,9 @@ const helpRows = computed(() => [
     >
       <AlertCircle :size="14" :stroke-width="2" />
       <span class="flex-1 text-xs font-medium">{{ error }}</span>
+      <!-- 权限类错误没有「重试」：重试不会授予权限。 -->
       <Button
+        v-if="!errorPermission"
         variant="outline"
         size="xs"
         class="text-xs border-error-border text-error hover:bg-error-bg"
@@ -2083,7 +2088,10 @@ const helpRows = computed(() => [
           <p class="text-sm font-medium text-foreground mb-1">
             {{ error }}
           </p>
-          <Button variant="outline" size="xs" @click="emit('retry')">
+          <p v-if="errorPermission" class="text-xs text-muted-foreground mb-2">
+            {{ t('permission.hint', { permission: errorPermission }) }}
+          </p>
+          <Button v-if="!errorPermission" variant="outline" size="xs" @click="emit('retry')">
             {{ t('state.retry') }}
           </Button>
         </template>
@@ -2400,7 +2408,16 @@ const helpRows = computed(() => [
         </span>
       </div>
       <div class="flex items-center gap-3">
-        <span v-if="streaming" class="flex items-center gap-1 text-success">
+        <!--
+          三种状态，不是两种。连接断了的时候写「已暂停」是在撒谎 ——
+          「暂停」是读者自己按的，而这里是他没按但流断了。事故时读者
+          正是靠这行字判断「是我暂停的」还是「工具断了」，两者要分清。
+        -->
+        <span v-if="error" class="flex items-center gap-1 text-error">
+          <span class="h-1.5 w-1.5 rounded-full bg-error" />
+          {{ t('log.disconnected') }}
+        </span>
+        <span v-else-if="streaming" class="flex items-center gap-1 text-success">
           <span class="h-1.5 w-1.5 rounded-full bg-success" :class="livePulse ? 'animate-pulse' : ''" />
           {{ t('log.live') }}
         </span>

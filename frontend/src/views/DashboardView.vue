@@ -6,6 +6,7 @@ import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
 import { useRelativeTime } from '@/composables/useRelativeTime'
 import PageHeader from '@/components/common/PageHeader.vue'
+import ReasonChip from '@/components/common/ReasonChip.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, formatNumber } from '@/lib/utils'
@@ -515,10 +516,10 @@ const recentActivity = computed(() => {
     <Card v-if="restItems.length > 0" class="p-0 mb-4">
       <CardContent class="p-4">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-semibold flex items-center gap-2">
+          <h2 class="text-sm font-semibold flex items-center gap-2">
             <AlertCircle :size="16" class="text-warning" :stroke-width="2" />
             {{ t('dashboard.actionRequired', { count: restItems.length }) }}
-          </h3>
+          </h2>
           <span class="text-xs text-muted-foreground">{{ t('dashboard.actionHint') }}</span>
         </div>
         <div class="space-y-2">
@@ -571,11 +572,11 @@ const recentActivity = computed(() => {
       <!-- Recent activity -->
       <Card class="p-0">
         <CardContent class="p-4">
-          <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+          <h2 class="text-sm font-semibold mb-3 flex items-center gap-2">
             <Activity :size="16" :stroke-width="1.75" />
             {{ t('dashboard.recentActivity') }}
             <span class="text-xs text-muted-foreground ml-auto">{{ t('dashboard.recentActivityWindow') }}</span>
-          </h3>
+          </h2>
           <!-- ponytail: 空态收成一行。共享的 EmptyState 是 40px 图标 + py-16 的
                居中大块，在「没有事件」时占了整个下半屏的四成面积，说的却只是
                没有事件。真正的信号（重启次数）在右边的条形图里。 -->
@@ -602,9 +603,18 @@ const recentActivity = computed(() => {
                 />
               </span>
               <span class="shrink-0 text-xs text-muted-foreground w-16 tabular-nums">{{ item.time }}</span>
-              <span class="shrink-0 px-1.5 py-0 rounded-sm text-xs font-medium bg-muted text-foreground border border-border">
-                {{ item.label }}
-              </span>
+              <!--
+                这是事件的 reason，和事件页那枚是同一个词。事件页那枚可以
+                点开看解释，这枚不能——同样的外观、不同的行为，读者只能
+                靠试才知道哪个能点。统一走 ReasonChip。
+              -->
+              <ReasonChip
+                :term="item.label"
+                :context="item.pod"
+                size="xs"
+                tone="neutral"
+                class="shrink-0 font-mono text-foreground"
+              />
               <span class="flex-1 min-w-0 truncate font-mono text-xs">{{ item.pod }}</span>
             </li>
           </ol>
@@ -614,10 +624,10 @@ const recentActivity = computed(() => {
       <!-- Top noisy (1/3 width on lg) -->
       <Card class="p-0">
         <CardContent class="p-4">
-          <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+          <h2 class="text-sm font-semibold mb-3 flex items-center gap-2">
             <AlertTriangle :size="16" :stroke-width="1.75" />
             {{ t('dashboard.frequentRestarts') }}
-          </h3>
+          </h2>
           <EmptyState
             v-if="noisyRestarts.length === 0"
             :title="t('dashboard.frequentRestartsEmpty')"

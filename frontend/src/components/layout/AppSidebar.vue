@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   LayoutDashboard, Box, Server, Activity, Star, Settings,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, Bot,
 } from '@lucide/vue'
 import { cn } from '@/lib/utils'
 import { eventsApi } from '@/api/endpoints'
@@ -12,6 +12,7 @@ import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import LocaleSwitcher from '@/i18n/LocaleSwitcher.vue'
 import { useClusterStore } from '@/stores/cluster'
 import { useCachedFetch } from '@/composables/useCachedFetch'
+import { useAiStore } from '@/stores/ai'
 import { STORAGE_KEYS } from '@/storage-keys'
 import dayjs from '@/utils/dayjs'
 
@@ -19,7 +20,7 @@ const props = withDefaults(defineProps<{
   collapsed?: boolean
 }>(), { collapsed: false })
 
-defineEmits<{
+const emit = defineEmits<{
   navigate: []
   'toggle-sidebar': []
 }>()
@@ -27,8 +28,25 @@ defineEmits<{
 const { t } = useI18n()
 const route = useRoute()
 const cluster = useClusterStore()
+const ai = useAiStore()
 const eventBadge = ref<number>(0)
 let badgeTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * 问 Spotlight —— 一个动作，不是一个页面。
+ *
+ * 之前这个面板只有两个入口：⌘J 和 ⌘K 面板里的一行。两个都是键盘和弦：
+ * 新用户看不到，手机上没有和弦键，于是这个产品最能吹的那件事在手机上
+ * 结构性不可达。现在它在侧栏里有一个带文字的按钮，桌面侧栏和手机抽屉
+ * 里都在（两处渲染的是同一个组件）。
+ *
+ * 注意它不在导航项里 —— 导航项是「去哪里」，这个是「做什么」。所以它
+ * 单独一行，样式也跟导航项区分开。
+ */
+function openAsk() {
+  emit('navigate')   // 手机上先收起抽屉，别让两个 sheet 叠在一起
+  void nextTick(() => ai.openAsk())
+}
 
 // ponytail: badge namespace 跟随顶部 combobox，与 Events 页面对齐。
 // 否则用户在 default namespace 看到 badge 24 但页面 0 条，怀疑事件丢了。
@@ -127,6 +145,32 @@ const isActive = (path: string) =>
 <template>
   <nav class="flex flex-col h-full py-3" :aria-label="t('nav.main')">
     <div class="flex-1 px-2 flex flex-col gap-0.5">
+      <!--
+        问 Spotlight：单独一行，放在导航项之前。
+
+        它不是导航目的地（点了不会换路由，是打开一个覆盖面板），所以
+        样式刻意和导航项区分开：带边框、底色更实。混在导航项里会被
+        读成「另一个页面」，而它是「问一句话」。
+
+        放在最上面是因为它是这个产品最该被看见的能力，而总览页恰恰
+        是「还不知道该问哪个 Pod」的时候 —— 那正是该问的时刻。
+      -->
+      <button
+        type="button"
+        :class="cn(
+          'mb-1 flex items-center gap-3 rounded-md text-sm font-medium transition-colors ease-app dur-fast',
+          'border border-sidebar-border bg-sidebar-accent/50 hover:bg-sidebar-accent',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          props.collapsed ? 'justify-center h-10 w-10 mx-auto' : 'px-3 h-9',
+        )"
+        :aria-label="t('nav.askAi')"
+        :title="t('nav.askAi')"
+        @click="openAsk"
+      >
+        <Bot :size="20" :stroke-width="1.75" class="shrink-0" aria-hidden="true" />
+        <span v-if="!props.collapsed" class="truncate">{{ t('nav.askAi') }}</span>
+      </button>
+
       <router-link
         v-for="item in navItems"
         :key="item.path"
@@ -169,6 +213,8 @@ const isActive = (path: string) =>
         <span
           v-if="!props.collapsed && item.badge"
           class="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-warning text-warning-foreground text-xs font-semibold"
+          :title="t('nav.warningBadgeHint')"
+          :aria-label="t('nav.warningBadgeHint', { count: item.badge })"
         >
           {{ item.badge }}
         </span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
 import { Menu } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/utils'
@@ -11,10 +12,44 @@ const { t } = useI18n()
 defineEmits<{
   'open-mobile-menu': []
 }>()
+
+const headerEl = ref<HTMLElement | null>(null)
+let observer: ResizeObserver | null = null
+
+/**
+ * 把顶栏的真实高度写进 --app-header-h。
+ *
+ * Pod 详情页用它算自己该有多高（100dvh 减去外壳），好让日志区拿到
+ * 剩余的全部空间。之前这里写死 2.75rem —— 那是单行顶栏的高度。移动端
+ * 顶栏是两行 grid（菜单/logo 一行，集群+命名空间一行），实测约 110px，
+ * 于是页面比视口高出 67px，日志面板自己那行状态条（实时 / 自动跟随 /
+ * 本地时间）被推出屏幕外，而整页还多出一段滚动。
+ *
+ * 写死一个更大的数也能糊过去，但那是把一个已知错误换成另一个。顶栏
+ * 高度取决于内容（两个 combobox 会不会换行、语言切换器的宽度），实测
+ * 才是真的。ResizeObserver 在高度变化时重新写一次。
+ */
+onMounted(() => {
+  const el = headerEl.value
+  if (!el) return
+  const write = () => {
+    const h = el.offsetHeight
+    if (h > 0) document.documentElement.style.setProperty('--app-header-h', `${h}px`)
+  }
+  write()
+  observer = new ResizeObserver(write)
+  observer.observe(el)
+})
+
+onUnmounted(() => {
+  observer?.disconnect()
+  observer = null
+})
 </script>
 
 <template>
   <div
+    ref="headerEl"
     class="sticky top-0 z-40 border-b bg-background"
   >
     <!--

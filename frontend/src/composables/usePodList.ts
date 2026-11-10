@@ -1,6 +1,7 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { getI18n } from '@/i18n'
 import { podsApi } from '@/api/endpoints'
+import { readApiError } from '@/lib/apiError'
 import type { PodListOut } from '@/api/types'
 
 /**
@@ -32,6 +33,16 @@ export function usePodList(opts: {
   const data = shallowRef<PodListOut>({ total: 0, items: [] })
   const loading = ref(false)
   const error = ref<string | null>(null)
+  /**
+   * HTTP 状态码，和缺哪个权限。
+   *
+   * 「没权限读」和「这里是空的」必须分开：后者是关于集群的事实，前者
+   * 是关于这次读取的事实。把权限边界说成「0 个 Pod」，值班的人会以为
+   * 集群是健康的，转头去做别的检查。403 那一档还要**不给重试按钮**
+   * ——重试不会授予权限。
+   */
+  const errorStatus = ref<number | null>(null)
+  const errorPermission = ref<string | null>(null)
   // The global composer, not useI18n(): this composable is called from
   // outside a component setup too (its own unit test does exactly that),
   // and useI18n() throws there.
@@ -70,6 +81,8 @@ export function usePodList(opts: {
       if (mySeq === seq) {
         loading.value = false
         error.value = null
+        errorStatus.value = null
+        errorPermission.value = null
       }
       return
     }
@@ -79,6 +92,8 @@ export function usePodList(opts: {
 
     loading.value = true
     error.value = null
+    errorStatus.value = null
+    errorPermission.value = null
 
     try {
       const result = await podsApi.list({
@@ -97,7 +112,13 @@ export function usePodList(opts: {
       // ponytail: 不用 axios 的原始英文（"Network Error" / "Request failed
       // with status code 500"）。后端给了 detail 就用 detail，没给就只说
       // 「加载失败」—— 中文界面上混一句英文是噪声。
-      error.value = e?.response?.data?.detail ?? t('state.error')
+      //
+      // detail 有三种形状：一句话、权限拒绝的对象、FastAPI 的校验错误数组。
+      // 直接把对象塞进 error ref，界面上会渲染出原始 JSON。
+      const { status, message, permission } = readApiError(e)
+      errorStatus.value = status
+      errorPermission.value = permission
+      error.value = message ?? (status ? `HTTP ${status}` : t('state.error'))
     } finally {
       if (mySeq === seq) loading.value = false
     }
@@ -150,5 +171,5 @@ export function usePodList(opts: {
     abortInFlight()
   })
 
-  return { data, loading, error, reload }
+  return { data, loading, error, errorStatus, errorPermission, reload }
 }
