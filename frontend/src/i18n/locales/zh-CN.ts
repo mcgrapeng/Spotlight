@@ -120,7 +120,7 @@ export default {
     filterWatch: '需要人看一眼',
     filterOk: '正常',
     attentionOnly: '只看待处理',
-    attentionOnlyCount: '只看 {count} 个需要人看一眼的 Pod',
+    attentionOnlyCount: '只看待处理：{count} 个需要人看一眼的 Pod',
     filtersLabel: 'Pod 列表筛选',
     filterByStatus: '按状态筛选',
     searchPlaceholder: '搜索 pod / container / node',

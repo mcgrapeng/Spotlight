@@ -296,4 +296,12 @@ describe('PodListView — 行底色跟判定走', () => {
     expect(toggle!.text()).toContain('2')
     expect(toggle!.attributes('aria-label')).toContain('2 个需要人看一眼')
   })
+
+  it('开关的无障碍名包含可见文字（WCAG 2.5.3）', async () => {
+    // 语音控制的用户会说「只看待处理」—— 无障碍名必须包含这句话，
+    // 否则说出来点不中这个按钮。
+    const w = await mountWithRows(ROWS)
+    const toggle = w.findAll('button').find((b) => b.text().includes('只看待处理'))
+    expect(toggle!.attributes('aria-label')).toContain('只看待处理')
+  })
 })

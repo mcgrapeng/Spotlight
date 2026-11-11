@@ -102,7 +102,7 @@ export default {
     filterWatch: 'Needs a look',
     filterOk: 'Healthy',
     attentionOnly: 'needs attention',
-    attentionOnlyCount: 'Show the {count} pods that need a look',
+    attentionOnlyCount: 'needs attention: {count} pods need a look',
     filtersLabel: 'Pod list filters',
     filterByStatus: 'Filter by status',
     searchPlaceholder: 'Search pod / container / node',
