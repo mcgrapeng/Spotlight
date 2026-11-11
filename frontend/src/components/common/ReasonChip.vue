@@ -21,10 +21,17 @@ import Popover from '@/components/ui/popover/Popover.vue'
 import PopoverTrigger from '@/components/ui/popover/PopoverTrigger.vue'
 import PopoverContent from '@/components/ui/popover/PopoverContent.vue'
 import { hasExplanation } from '@/lib/k8sTerms'
+import { eventExplanationKey } from '@/lib/eventExplain'
 
 const props = withDefaults(defineProps<{
   /** K8s 的 reason 原样拼写 */
   term: string
+  /**
+   * 事件正文原文。句式词典（lib/eventExplain.ts）命中时，弹层里连这句
+   * 话一起解释 —— 词典解释的是 reason 名词，只读账号分发给应用开发后
+   * 真正要读的恰恰是正文那句话。
+   */
+  message?: string
   /**
    * 这个词属于谁。写进无障碍名称里，让同页同词的多个芯片可以被区分：
    * 列表里有 20 行都是 `OOMKilled`，按钮名全一样的话读屏用户没法分辨。
@@ -46,15 +53,36 @@ const { t } = useI18n()
  * 之前文案硬编码在 lib 里，英文界面下弹出来的解释还是中文——对一个
  * 英文界面用户，那是完全无效的帮助。
  */
-const explanation = computed(() => {
+const termExplanation = computed(() => {
   if (!hasExplanation(props.term)) return null
   return {
     what: t(`term.explain.${props.term}.what`),
     next: t(`term.explain.${props.term}.next`),
   }
 })
+
+const messageExplanation = computed(() => {
+  const key = eventExplanationKey(props.message)
+  if (!key) return null
+  return {
+    what: t(`eventExplain.${key}.what`),
+    next: t(`eventExplain.${key}.next`),
+  }
+})
+
+/** 有一段能说清的就开弹层；一段都没有就退回纯文本芯片。 */
+const explanation = computed(() =>
+  termExplanation.value || messageExplanation.value
+    ? { term: termExplanation.value, message: messageExplanation.value }
+    : null,
+)
+
+/** 只有正文解释时，入口短语要说「这句话」——名实要对得上。 */
+const explainLabel = computed(() =>
+  termExplanation.value ? t('term.clickToExplain') : t('eventExplain.clickToExplain'),
+)
 const ariaLabel = computed(() =>
-  [props.context, props.term, t('term.clickToExplain')].filter(Boolean).join('：'),
+  [props.context, props.term, explainLabel.value].filter(Boolean).join('：'),
 )
 /**
  * 这枚芯片的 class。按钮**就是**芯片本身——不套一层 StatusChip。
@@ -93,16 +121,31 @@ const chipClass = computed(() =>
     <PopoverTrigger
       class="group relative z-10 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       :class="chipClass"
-      :title="`${term} — ${t('term.clickToExplain')}`"
+      :title="`${term} — ${explainLabel}`"
       :aria-label="ariaLabel"
       @click.stop
     >
       {{ term }}
     </PopoverTrigger>
     <PopoverContent class="w-80">
-      <p class="font-mono text-xs text-foreground">{{ term }}</p>
-      <p class="mt-2 text-sm text-foreground">{{ explanation.what }}</p>
-      <p class="mt-2 text-sm text-muted-foreground">{{ explanation.next }}</p>
+      <template v-if="explanation.term">
+        <p class="font-mono text-xs text-foreground">{{ term }}</p>
+        <p class="mt-2 text-sm text-foreground">{{ explanation.term.what }}</p>
+        <p class="mt-2 text-sm text-muted-foreground">{{ explanation.term.next }}</p>
+      </template>
+      <!--
+        正文那句话的解释。正文本身在事件行里保持可选中复制（鼠标按下是
+        选字不是跳转），所以解释入口统一在芯片上 —— 弹层里带出原句，这里
+        是唯一解释它的地方。
+      -->
+      <template v-if="explanation.message">
+        <p
+          class="font-mono text-xs text-muted-foreground line-clamp-2"
+          :class="explanation.term ? 'mt-3 pt-3 border-t border-border' : ''"
+        >{{ message }}</p>
+        <p class="mt-2 text-sm text-foreground">{{ explanation.message.what }}</p>
+        <p class="mt-2 text-sm text-muted-foreground">{{ explanation.message.next }}</p>
+      </template>
     </PopoverContent>
   </Popover>
   <span v-else :class="cn(chipClasses({ tone, size }), props.class)">{{ term }}</span>

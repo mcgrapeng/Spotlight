@@ -385,6 +385,7 @@ useEventListener(window, 'resize', () => {
             -->
             <ReasonChip
               :term="ev.reason"
+              :message="ev.message"
               :context="`${ev.involved_kind}/${ev.involved_name}`"
               size="xs"
               tone="neutral"

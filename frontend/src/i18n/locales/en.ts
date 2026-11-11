@@ -170,6 +170,52 @@ export default {
       'Your current identity cannot read the node list. This does not mean the cluster has no nodes — pods are running on nodes that the access control has filtered out. Ask an admin to add read access to nodes for your role.',
     permissionHint: 'Node details are still available from the pod detail page',
   },
+  // Message-sentence explanations for events. lib/eventExplain.ts lists which
+  // patterns are covered; the copy lives here — the UI follows the browser
+  // language, so an English UI must pop English explanations.
+  eventExplain: {
+    readinessProbeFailed: {
+      what: 'The readiness probe failed: the container is up but its health check does not pass, so it is not serving traffic yet.',
+      next: 'Check that the probed address and port work inside the container; an unready dependency also fails probes.',
+    },
+    livenessProbeFailed: {
+      what: 'The liveness probe failed: kubelet considers the container unhealthy and will restart it.',
+      next: 'Look for a hung or deadlocked app; a probe timeout that is too short also kills slow-starting services.',
+    },
+    imagePullSecret: {
+      what: 'An image pull secret could not be retrieved, so pulling the image will likely fail next.',
+      next: 'Check the secret name and namespace, and that it exists with registry credentials in it.',
+    },
+    backoffRestart: {
+      what: 'The container keeps crashing; kubelet is restarting it on a back-off interval.',
+      next: 'Read the last lines of the container log: wrong command, missing config, or an unready dependency is the usual cause.',
+    },
+    oomKilled: {
+      what: 'The container exceeded its memory limit and the kernel killed it.',
+      next: 'Raise resources.limits.memory, or look for memory leaks and oversized caches in the app.',
+    },
+    imagePullFailed: {
+      what: 'Pulling the image failed: the image name, tag, or registry address is wrong.',
+      next: 'Verify the image reference; for private registries also check pull credentials and network reachability.',
+    },
+    volumeMountFailed: {
+      what: 'A volume mount failed, so the container cannot start.',
+      next: 'Check that the PVC is bound, the StorageClass exists, and read the storage plugin (CSI) errors.',
+    },
+    schedulingFailed: {
+      what: 'No node can fit this pod: the scheduler found no node with enough resources.',
+      next: 'Read what the parentheses say is missing (cpu, memory, ports, or taints), then add nodes or lower the requests.',
+    },
+    evicted: {
+      what: 'The node was under resource pressure and kubelet evicted this pod.',
+      next: 'Its controller will recreate it; to prevent it, fix the node pressure (memory or disk) or the pod resource limits.',
+    },
+    createContainerFailed: {
+      what: 'The container was never created: kubelet failed while setting it up.',
+      next: 'Usually a wrong command, environment variable, or mount in the container spec — compare against the Deployment.',
+    },
+    clickToExplain: 'Click for what this message means',
+  },
   events: {
     subtitleDenied: 'Event list not readable',
     permissionTitle: 'Not allowed to view the event list',

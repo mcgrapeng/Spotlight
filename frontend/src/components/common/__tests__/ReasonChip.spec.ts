@@ -40,6 +40,30 @@ describe('ReasonChip', () => {
     expect(wrapper.text()).toContain('SomeBrandNewReason')
   })
 
+  it('explains the message sentence when the term itself is not in the dictionary', () => {
+    // 词典解释的是 reason 名词，不解释事件正文那句话 —— 只读账号分发给
+    // 应用开发后，要读的恰恰是「Readiness probe failed: ...」这句话。
+    // 句式词典命中时，同一个芯片入口也要能把这句话说清楚。
+    const wrapper = mount(ReasonChip, {
+      props: {
+        term: 'SomeBrandNewReason',
+        message: 'Readiness probe failed: HTTP probe failed with statuscode: 503',
+      },
+      global: { plugins: [i18n] },
+      attachTo: document.body,
+    })
+    expect(wrapper.find('button').exists()).toBe(true)
+  })
+
+  it('stays a plain chip when neither the term nor the message can be explained', () => {
+    const wrapper = mount(ReasonChip, {
+      props: { term: 'SomeBrandNewReason', message: 'Started container web' },
+      global: { plugins: [i18n] },
+    })
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.text()).toContain('SomeBrandNewReason')
+  })
+
   it('leaves the phase chip alone — phases are already bilingual', () => {
     const wrapper = mount(ReasonChip, {
       props: { term: 'Running' },

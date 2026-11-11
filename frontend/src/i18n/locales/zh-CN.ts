@@ -187,6 +187,51 @@ export default {
       '当前身份无权读取节点列表。这不是「集群没有节点」—— 集群里的 Pod 正在某些节点上运行，但节点资源被访问控制裁掉了。请让管理员给你的角色加上 nodes 的读权限。',
     permissionHint: '节点信息仍可从 Pod 详情页查看',
   },
+  // 事件正文的句式解释。lib/eventExplain.ts 只列收录了哪些句式，文案在
+  // 这里 —— 界面语言跟着浏览器走，英文界面弹出来的解释也必须是英文。
+  eventExplain: {
+    readinessProbeFailed: {
+      what: '就绪探针没过：容器起来了，但健康检查不通过，还不接流量。',
+      next: '看探针检查的地址和端口在容器里通不通；它依赖的服务没就绪也会让探针失败。',
+    },
+    livenessProbeFailed: {
+      what: '存活探针没过：kubelet 认为容器已经不健康，会把它重启。',
+      next: '看应用是不是卡死或假死；探针超时设得太短也会误杀慢启动的服务。',
+    },
+    imagePullSecret: {
+      what: '镜像拉取凭据（imagePullSecret）读不到，接下来拉镜像很可能失败。',
+      next: '检查 secret 的名字和命名空间，确认它存在且装着仓库凭据。',
+    },
+    backoffRestart: {
+      what: '容器反复崩溃，kubelet 正按退避间隔一轮轮重启它。',
+      next: '看容器日志最后几行找崩溃原因：启动命令写错、配置缺失、依赖没就绪最常见。',
+    },
+    oomKilled: {
+      what: '容器内存超过上限，被内核杀掉了。',
+      next: '调高 resources.limits.memory，或者查应用的内存泄漏和缓存配置。',
+    },
+    imagePullFailed: {
+      what: '拉镜像失败：镜像名、标签或仓库地址有问题。',
+      next: '核对镜像引用；私有仓库还要检查拉取凭据和网络连通。',
+    },
+    volumeMountFailed: {
+      what: '存储卷挂载失败，容器起不来。',
+      next: '检查 PVC 是否已绑定、StorageClass 是否存在，以及存储插件（CSI）的报错。',
+    },
+    schedulingFailed: {
+      what: '没有节点放得下这个 Pod：调度器把资源数了一圈都不够。',
+      next: '看括号里缺的是哪种资源（CPU、内存、端口还是污点），再决定加节点还是调低 requests。',
+    },
+    evicted: {
+      what: '节点资源紧张，kubelet 驱逐了这个 Pod。',
+      next: '驱逐后控制器会重建它；根治要看节点压力来源（内存/磁盘）和 Pod 的资源上限。',
+    },
+    createContainerFailed: {
+      what: '容器没建起来：配置有问题，kubelet 创建容器时就失败了。',
+      next: '常见原因是启动命令、环境变量或挂载配置写错，对照 Deployment 的容器配置查一遍。',
+    },
+    clickToExplain: '点击看这句话的解释',
+  },
   events: {
     subtitleDenied: '事件列表不可读',
     permissionTitle: '没有权限查看事件列表',
