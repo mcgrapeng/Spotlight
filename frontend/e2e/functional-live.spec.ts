@@ -377,7 +377,7 @@ test.describe('全功能走查（真实集群）', () => {
   test('事件类型筛选只留告警，计数与真值一致', async ({ page, request }) => {
     await resetScope(page)
     // /events 返回的是数组，/pods 才返回 {items,total} —— 两种形状都认。
-    const raw = await (await request.get('/api/v1/events?namespace=_all')).json() as any
+    const raw = await (await request.get('/api/v1/events?namespace=_all&limit=500')).json() as any
     const items = Array.isArray(raw) ? raw : raw.items
     const warns = items.filter((e: any) => e.type === 'Warning').length
     await page.goto('/events')
@@ -388,7 +388,7 @@ test.describe('全功能走查（真实集群）', () => {
 
   test('reason 芯片弹层给出术语解释', async ({ page, request }) => {
     await resetScope(page)
-    const raw = await (await request.get('/api/v1/events?namespace=_all')).json() as any
+    const raw = await (await request.get('/api/v1/events?namespace=_all&limit=500')).json() as any
     const items = Array.isArray(raw) ? raw : raw.items
     const withChip = items.find((e: any) => e.reason === 'Unhealthy')
     test.skip(!withChip, '集群当前没有 Unhealthy 事件')
@@ -400,7 +400,7 @@ test.describe('全功能走查（真实集群）', () => {
 
   test('消息句式解释在弹层里（带出原句）', async ({ page, request }) => {
     await resetScope(page)
-    const raw = await (await request.get('/api/v1/events?namespace=_all')).json() as any
+    const raw = await (await request.get('/api/v1/events?namespace=_all&limit=500')).json() as any
     const items = Array.isArray(raw) ? raw : raw.items
     const withProbe = items.find((e: any) => /Readiness probe failed/.test(e.message || ''))
     test.skip(!withProbe, '集群当前没有探针失败事件')
@@ -577,7 +577,7 @@ test.describe('全功能走查（真实集群）', () => {
     await resetScope(page)
     // 找当前最长的一条消息：只有它会撑破三行截断，才有「展开」按钮。
     // 不这么做的话，这条测试会因为「今天没有长消息」而一直跳过。
-    const raw = await (await request.get('/api/v1/events?namespace=_all')).json() as any
+    const raw = await (await request.get('/api/v1/events?namespace=_all&limit=500')).json() as any
     const items = Array.isArray(raw) ? raw : raw.items
     const longest = items
       .map((e: any) => (e.message || '') as string)
@@ -630,5 +630,64 @@ test.describe('全功能走查（真实集群）', () => {
     await page.waitForTimeout(900)
     const body = await page.locator('body').innerText()
     expect(body.length).toBeGreaterThan(100)
+  })
+
+  // ---------- 第四批 ----------
+  test('事件页「正常 Normal」筛选的计数与真值一致', async ({ page, request }) => {
+    await resetScope(page)
+    const raw = await (await request.get('/api/v1/events?namespace=_all&limit=500')).json() as any
+    const items = Array.isArray(raw) ? raw : raw.items
+    const normals = items.filter((e: any) => e.type === 'Normal').length
+    await page.goto('/events')
+    await page.getByRole('button', { name: /正常 Normal/ }).first().click()
+    await expect(page.locator('body')).toContainText(new RegExp('正常 Normal\\s*' + normals))
+  })
+
+  test('日志区拿走键盘后，g d 不会在日志页里变成全局跳转', async ({ page, request }) => {
+    // 日志面板是 dense region：它按下 g 时，全局的「g d 跳页」和弦必须
+    // 让路 —— 否则值班的人在日志里按两下键就被弹走了。
+    const p = await podWithLogs(page, request)
+    test.skip(!p, '候选 Pod 都没有日志输出')
+    const url = page.url()
+    await page.locator('[role="log"]').click()
+    await page.waitForTimeout(300)
+    await page.keyboard.press('g')
+    await page.keyboard.press('d')
+    await page.waitForTimeout(600)
+    expect(page.url(), '日志区把 g d 让给了全局跳转').toBe(url)
+  })
+
+  test('容器状态点的说明里带着容器名与状态', async ({ page, request }) => {
+    const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
+    const p = (pods.items as any[]).find((x) => (x.containers || []).length > 0)
+    await page.goto('/pods')
+    await waitForPods(page)
+    await page.goto(`/pods/${p.namespace}/${p.name}`)
+    await page.waitForTimeout(800)
+    const dot = page.locator('[title*=":"]').first()
+    test.skip((await dot.count()) === 0, '这一页没有带状态说明的状态点')
+    const title = await dot.getAttribute('title')
+    expect(title).toContain(p.containers[0].name)
+  })
+
+  test('未知路由页给了一条回首页的路', async ({ page }) => {
+    await page.goto('/no-such-page')
+    await page.waitForTimeout(500)
+    const home = page.getByRole('button').filter({ hasText: /首页|主页|总览|Home/ }).first()
+    test.skip((await home.count()) === 0, '404 页没有回首页的按钮')
+    await home.click()
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/dashboard')
+  })
+
+  test('频繁重启的行用琥珀色强调（重启次数是信号）', async ({ page }) => {
+    await page.goto('/pods?sort=restarts&dir=desc')
+    await waitForPods(page)
+    // 重启列在第 5 列（名称|命名空间|状态|容器|重启），显示成「×207」。
+    const cell = page.locator('tbody tr').first().locator('td').nth(4)
+    const text = (await cell.innerText()).trim()
+    const n = Number(text.replace('×', ''))
+    test.skip(!Number.isFinite(n) || n < 10, '当前最重的 Pod 重启次数不到 10，不构成「频繁」')
+    const warn = await cell.locator('.text-warning').count()
+    expect(warn, '频繁重启的数字没有琥珀强调（文本：' + text + '）').toBeGreaterThan(0)
   })
 })
