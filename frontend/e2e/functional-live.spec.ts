@@ -38,7 +38,24 @@ function podTone(p: { containers?: any[] }): string {
 test.describe('全功能走查（真实集群）', () => {
   // 界面语言跟随浏览器（PRODUCT.md）：测试上下文默认 en-US，界面就变英文，
   // 中文标签一个都找不到。锁成 zh-CN，下面的断言才对得上界面。
-  test.use({ baseURL: BASE, locale: 'zh-CN' })
+  // 剪贴板权限：复制功能要真读得到内容才算验证过。
+  test.use({
+    baseURL: BASE,
+    locale: 'zh-CN',
+    permissions: ['clipboard-read', 'clipboard-write'],
+  })
+
+  /** 找一个真在写日志的 Pod —— 有的容器一声不吭，芯片行根本不渲染。 */
+  async function podWithLogs(page: import('@playwright/test').Page, request: any) {
+    const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
+    const candidates = (pods.items as any[]).filter((x) => (x.containers || []).length > 0).slice(0, 6)
+    for (const p of candidates) {
+      await page.goto(`/pods/${p.namespace}/${p.name}`)
+      await page.waitForTimeout(3000)
+      if (await page.locator('[role="log"] [class*="border-b"]').count() > 0) return p
+    }
+    return null
+  }
 
   /**
    * 命名空间与集群是全局 store（落在 localStorage），换页不会重置。
@@ -52,17 +69,27 @@ test.describe('全功能走查（真实集群）', () => {
   }
 
   /**
+   * 等 Pod 列表真的出数据。
+   *
+   * 加载骨架也是一行 `tbody tr`（没有 class），量它/读它都会得到假结论
+   * （「密度没生效」「行没染色」）。凡是依赖 Pod 数据的断言前面都要过这一关。
+   */
+  async function waitForPods(page: import('@playwright/test').Page) {
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('tbody tr a[href*="/pods/"]')
+      const loading = document.body.innerText.includes('加载 Pod 列表')
+      return rows.length > 0 || !loading
+    }, null, { timeout: 20000 }).catch(() => {})
+  }
+
+  /**
    * 数表格里的数据行。
    *
    * 不能只等 `tbody tr`：加载骨架也是一行 tr（占位行有 200 多 px 高），
    * 量它会得出「密度没生效」这种假结论。等真数据行出现，或页面离开加载态。
    */
   async function podRows(page: import('@playwright/test').Page) {
-    await page.waitForFunction(() => {
-      const rows = document.querySelectorAll('tbody tr a[href*="/pods/"]')
-      const loading = document.body.innerText.includes('加载 Pod 列表')
-      return rows.length > 0 || !loading
-    }, null, { timeout: 15000 }).catch(() => {})
+    await waitForPods(page)
     await page.waitForTimeout(300)
     return page.locator('tbody tr').count()
   }
@@ -172,7 +199,7 @@ test.describe('全功能走查（真实集群）', () => {
 
   test('按重启次数排序是降序', async ({ page }) => {
     await page.goto('/pods?sort=restarts&dir=desc')
-    await page.locator('tbody tr').first().waitFor()
+    await waitForPods(page)
     const texts = await page.locator('tbody tr').allInnerTexts()
     const nums = texts
       .map((t) => t.match(/\t(\d+)\t/))
@@ -193,6 +220,8 @@ test.describe('全功能走查（真实集群）', () => {
     const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
     const truth = (pods.items as any[]).filter((p) => ['error', 'warning'].includes(podTone(p))).length
     await page.goto('/pods')
+    // 数量在数据到齐之后才有（attentionCount 是算出来的）
+    await waitForPods(page)
     const toggle = page.locator('button').filter({ hasText: '只看待处理' }).first()
     const aria = await toggle.getAttribute('aria-label')
     // WCAG 2.5.3：可见文字必须出现在无障碍名里
@@ -204,6 +233,7 @@ test.describe('全功能走查（真实集群）', () => {
 
   test('异常行按判定染色，健康行是平的', async ({ page }) => {
     await page.goto('/pods')
+    await waitForPods(page)
     const healthy = await page.locator('tbody tr').first().getAttribute('class')
     expect(healthy).not.toContain('bg-success')   // 绿色不拿去当悬停装饰
     expect(healthy).not.toContain('bg-error')
@@ -212,6 +242,7 @@ test.describe('全功能走查（真实集群）', () => {
 
   test('点行进详情', async ({ page }) => {
     await page.goto('/pods')
+    await waitForPods(page)
     const link = page.locator('tbody tr a').first()
     const name = await link.innerText()
     await link.click()
@@ -223,7 +254,7 @@ test.describe('全功能走查（真实集群）', () => {
     const buttons = page.locator('[role="group"][aria-label="行密度"] button')
     await expect(buttons).toHaveCount(3)
     // 等真数据行：加载骨架也是一行 tr（200 多 px 的占位行）
-    await page.waitForFunction(() => document.querySelectorAll('tbody tr a[href*="/pods/"]').length > 0, null, { timeout: 15000 })
+    await waitForPods(page)
     const height = async () => (await page.locator('tbody tr').first().boundingBox())!.height
     // 等 aria-pressed 变了再量：密度切换是 Vue 的响应式更新，点完立刻量
     // 可能量到上一档的行高。
@@ -429,5 +460,64 @@ test.describe('全功能走查（真实集群）', () => {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(0)
     await expect(page.locator('table').first()).toBeHidden()
+  })
+
+  // ---------- 第二轮补上的功能点 ----------
+  test('集群下拉列出 API 给的每一个集群', async ({ page, request }) => {
+    const clusters = await (await request.get('/api/v1/clusters')).json() as any[]
+    await page.goto('/pods')
+    const body = await page.locator('body').innerText()
+    for (const c of clusters) {
+      expect(body, '集群 ' + (c.name || c.cluster) + ' 没出现在界面上').toContain(c.name || c.cluster)
+    }
+  })
+
+  test('日志的 ANSI 颜色渲染成彩色，不是裸转义串', async ({ page, request }) => {
+    const p = await podWithLogs(page, request)
+    test.skip(!p, '候选 Pod 都没有日志输出')
+    const body = await page.locator('body').innerText()
+    expect(body, '日志里出现了裸 ANSI 转义序列').not.toContain('\u001b[')
+    const colored = await page.evaluate(() => {
+      const base = getComputedStyle(document.body).color
+      return Array.from(document.querySelectorAll('span')).filter(
+        (s) => s.textContent && s.textContent.trim() && getComputedStyle(s).color !== base,
+      ).length
+    })
+    expect(colored, '日志里没有任何着色元素').toBeGreaterThan(0)
+  })
+
+  test('日志不会把同一行连着显示两遍', async ({ page, request }) => {
+    const p = await podWithLogs(page, request)
+    test.skip(!p, '候选 Pod 都没有日志输出')
+    const rows = await page.locator('[role="log"] [class*="border-b"]').allInnerTexts()
+    let adjacentDupes = 0
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].trim() && rows[i].trim() === rows[i - 1].trim()) adjacentDupes++
+    }
+    expect(adjacentDupes, '相邻两行内容相同（重复行）').toBe(0)
+  })
+
+  test('复制真的把日志写进剪贴板', async ({ page, request }) => {
+    const p = await podWithLogs(page, request)
+    test.skip(!p, '候选 Pod 都没有日志输出')
+    const copy = page.locator('button[title*="复制"], button[aria-label*="复制"]').first()
+    await expect(copy).toBeVisible()
+    await copy.click()
+    await page.waitForTimeout(800)
+    const text = await page.evaluate(() => navigator.clipboard.readText().catch((e) => 'ERR:' + e.message))
+    expect(String(text).startsWith('ERR:'), '剪贴板读不到内容').toBe(false)
+    expect(String(text).length, '剪贴板内容太短').toBeGreaterThan(50)
+  })
+
+  test('主要页面没有 JS 错误', async ({ page }) => {
+    const errs: string[] = []
+    page.on('pageerror', (e) => errs.push(String(e.message)))
+    page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()) })
+    for (const r of ['/dashboard', '/pods', '/nodes', '/events', '/favorites', '/ai', '/settings']) {
+      await page.goto(r)
+      await page.waitForTimeout(600)
+    }
+    const real = errs.filter((e) => !/favicon|404 \(Not Found\)/i.test(e))
+    expect(real, '控制台错误：' + real.slice(0, 3).join(' | ')).toEqual([])
   })
 })
