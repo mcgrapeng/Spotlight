@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containerDotClass, containerTone, podMatchesFilter } from '../container'
+import { containerDotClass, containerTone, podMatchesFilter, podNeedsStatusChip } from '../container'
 
 describe('container tone', () => {
   it('marks a ready container green', () => {
@@ -112,5 +112,28 @@ describe('podMatchesFilter', () => {
     }
     expect(podMatchesFilter(failed, 'Failed')).toBe(true)
     expect(podMatchesFilter(broken, 'Failed')).toBe(false)
+  })
+})
+
+describe('podNeedsStatusChip', () => {
+  // 290 行里 273 个是 Running，每行一枚描边绿胶囊 —— 绿墙把真正要看的
+  // 那几个埋了。状态胶囊只在「有话可说」时出现。
+  it('健康运行中的 Pod 不显示状态胶囊', () => {
+    expect(podNeedsStatusChip({ phase: 'Running', containers: [{ ready: true, state: 'running' }] })).toBe(false)
+  })
+
+  it('判定偏离健康的要显示', () => {
+    expect(podNeedsStatusChip({ phase: 'Running', containers: [{ ready: false, state: 'running' }] })).toBe(true)
+    expect(podNeedsStatusChip({ phase: 'Running', containers: [{ ready: false, state: 'waiting', reason: 'CrashLoopBackOff' }] })).toBe(true)
+  })
+
+  it('phase 不是 Running 的要显示 —— 等待中、已成功也是事实', () => {
+    expect(podNeedsStatusChip({ phase: 'Pending', containers: [{ ready: false, state: 'waiting', reason: 'ContainerCreating' }] })).toBe(true)
+    expect(podNeedsStatusChip({ phase: 'Succeeded', containers: [{ ready: false, state: 'terminated', reason: 'Completed' }] })).toBe(true)
+  })
+
+  it('读不到容器状态时不装懂 —— 显示胶囊', () => {
+    expect(podNeedsStatusChip({ phase: 'Running', containers: [] })).toBe(true)
+    expect(podNeedsStatusChip({ phase: 'Running' })).toBe(true)
   })
 })

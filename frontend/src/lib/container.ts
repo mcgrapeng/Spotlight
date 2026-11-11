@@ -109,6 +109,27 @@ export function podMatchesFilter(
   return p.phase === filter
 }
 
+/**
+ * 这个 Pod 要不要显示状态胶囊。
+ *
+ * 290 行里 273 个是 Running，每行一枚描边绿胶囊 —— 那是一面绿墙，把真正
+ * 坏掉的那几个埋在几页之外。凌晨三点扫这一列，异常该自己跳出来。
+ *
+ * 所以「健康且在跑」的 Pod 不出声：胶囊只在有话可说时出现 —— 判定偏离
+ * 健康（坏了/要人看一眼），或者 phase 不是 Running（等待中、已成功，
+ * 这些同样是读者要读的事实）。判定从不下场：读不到容器状态时显示胶囊，
+ * 不装作一切正常。
+ */
+export function podNeedsStatusChip(p: {
+  phase?: string
+  containers?: ContainerFacts[]
+}): boolean {
+  const containers = p.containers ?? []
+  if (!containers.length) return true
+  if (p.phase !== 'Running') return true
+  return containers.some((c) => containerTone(c) !== 'success')
+}
+
 export function containerDotClass(c: ContainerFacts): string {
   return TONE_CLASS[containerTone(c)]
 }

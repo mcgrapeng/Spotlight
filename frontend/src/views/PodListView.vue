@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
-import { containerDotClass, containerStateText, containerTone, podMatchesFilter, podTone } from '@/lib/container'
+import { containerDotClass, containerStateText, containerTone, podMatchesFilter, podNeedsStatusChip, podTone } from '@/lib/container'
 import type { ChipTone } from '@/lib/chip'
 import { restartTone } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
@@ -490,7 +490,17 @@ const emptyDescription = computed(() => {
               </td>
               <td :class="densityClass.cell">
                 <div class="flex items-center gap-2">
-                  <PodStatusPill :phase="row.phase" :tone-override="statusTone(row)" />
+                  <!--
+                    健康且在跑的 Pod 不出声：290 行里 273 行都是它，每行
+                    一枚描边绿胶囊就是一面绿墙，把真正要看的几个埋了。
+                    有话可说时（判定偏离健康，或 phase 不是 Running）才
+                    显示。判定见 lib/container.ts 的 podNeedsStatusChip。
+                  -->
+                  <PodStatusPill
+                    v-if="podNeedsStatusChip(row)"
+                    :phase="row.phase"
+                    :tone-override="statusTone(row)"
+                  />
                   <!--
                     Pod 级 reason（ContainersNotReady 等）。原来是一枚手写
                     芯片：rounded-sm / px-1.5 / font-semibold，和它旁边的
@@ -590,7 +600,11 @@ const emptyDescription = computed(() => {
                 {{ row.owner_kind }}/{{ row.owner_name }}
               </div>
             </div>
-            <PodStatusPill :phase="row.phase" :tone-override="statusTone(row)" />
+            <PodStatusPill
+              v-if="podNeedsStatusChip(row)"
+              :phase="row.phase"
+              :tone-override="statusTone(row)"
+            />
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span class="font-mono">{{ row.namespace }}</span>

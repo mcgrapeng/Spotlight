@@ -212,3 +212,37 @@ describe('PodListView — 状态筛选按判定', () => {
     expect(w.text()).not.toContain('第 1–')
   })
 })
+
+describe('PodListView — 状态胶囊只说有话可说的', () => {
+  // 290 行里 273 个是 Running，每行一枚描边绿胶囊。绿墙把真正坏掉的
+  // 那几个埋了：凌晨三点扫这一列，异常该自己跳出来。
+  const ROWS = [
+    { name: 'healthy', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.1', phase: 'Running', reason: null, message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: true, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'not-ready', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.2', phase: 'Running', reason: 'ContainersNotReady', message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'pending', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.3', phase: 'Pending', reason: null, message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'waiting', reason: 'ContainerCreating', restart_count: 0 }] },
+  ]
+
+  async function mountWithRows(rows: any[]) {
+    const { podsApi } = await import('@/api/endpoints')
+    ;(podsApi.list as any).mockResolvedValue({ total: rows.length, items: rows })
+    const w = mount(PodListView, { global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] } })
+    await flushPromises()
+    return w
+  }
+
+  it('健康的那行没有状态胶囊', async () => {
+    const w = await mountWithRows(ROWS)
+    const row = w.findAll('tbody tr').find((r) => r.text().includes('healthy'))
+    expect(row, '找不到 healthy 行').toBeTruthy()
+    expect(row!.text()).not.toContain('运行中 Running')
+  })
+
+  it('没就绪和等待中的行有胶囊 —— 有话可说才出声', async () => {
+    const w = await mountWithRows(ROWS)
+    const rows = w.findAll('tbody tr')
+    const notReady = rows.find((r) => r.text().includes('not-ready'))
+    const pending = rows.find((r) => r.text().includes('pending'))
+    expect(notReady!.text()).toContain('运行中 Running')
+    expect(pending!.text()).toContain('等待中 Pending')
+  })
+})
