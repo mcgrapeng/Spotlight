@@ -131,15 +131,24 @@ function nodeIssue(d: typeof nodeDisplays.value[number]): Issue {
   return null
 }
 
-const MAX_PODS_PER_NODE = 110
+// 节点上限是集群事实（kubelet --max-pods，取自 allocatable.pods），不是
+// 常量。拿不到就没有上限 —— 不编一个 110 再当成事实断言（各集群 30/110/
+// 250 不等，「超出上限，调度器会拒绝」在错的数字上就是假事实）。
 function podPct(n: NodeOut): number {
-  if (n.pod_count <= MAX_PODS_PER_NODE) return Math.round((n.pod_count / MAX_PODS_PER_NODE) * 100)
+  const max = n.allocatable_pods
+  if (!max || max <= 0) return 0
+  if (n.pod_count <= max) return Math.round((n.pod_count / max) * 100)
   return 100  // 超载 bar 顶到 100%，靠颜色提示
 }
 function podOverloaded(n: NodeOut): boolean {
-  return n.pod_count > MAX_PODS_PER_NODE
+  const max = n.allocatable_pods
+  return !!max && max > 0 && n.pod_count > max
 }
-// ponytail: 仅 Pod 利用率有真实数据（pod_count / MAX），保留 bar；
+/** 只在 podOverloaded() 为真时进模板 —— 那时上限一定已知。 */
+function podOverCount(n: NodeOut): number {
+  return n.pod_count - (n.allocatable_pods ?? 0)
+}
+// ponytail: 仅 Pod 利用率有真实数据（pod_count / allocatable_pods），保留 bar；
 // CPU/内存没有 metrics-server，画 bar 反而误导用户以为在展示使用率。
 </script>
 
@@ -262,14 +271,15 @@ function podOverloaded(n: NodeOut): boolean {
                 {{ d.node.pod_count }}
               </span>
               <span
+                v-if="d.node.allocatable_pods"
                 class="text-sm text-muted-foreground tabular-nums"
-                :title="t('nodes.podCapTitle', { max: MAX_PODS_PER_NODE })"
-              >/ {{ MAX_PODS_PER_NODE }} {{ t('nodes.podCap') }}</span>
+                :title="t('nodes.podCapTitle', { max: d.node.allocatable_pods })"
+              >/ {{ d.node.allocatable_pods }} {{ t('nodes.podCap') }}</span>
             </div>
             <div v-if="podOverloaded(d.node)" class="mt-1 text-xs text-warning">
-              {{ t('nodes.podOverCap', { count: d.node.pod_count - MAX_PODS_PER_NODE }) }}
+              {{ t('nodes.podOverCap', { count: podOverCount(d.node) }) }}
             </div>
-            <div class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
+            <div v-if="d.node.allocatable_pods" class="mt-2 h-1 bg-muted rounded-full overflow-hidden">
               <div
                 :class="cn(
                   // ponytail: 正常容量走中性灰，超限走琥珀。

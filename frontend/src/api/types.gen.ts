@@ -912,6 +912,8 @@ export interface components {
              * @default 0
              */
             pod_count: number;
+            /** Allocatable Pods */
+            allocatable_pods?: number | null;
             /** Age */
             age?: string | null;
         };

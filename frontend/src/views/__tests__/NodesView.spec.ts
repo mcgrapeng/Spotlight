@@ -81,6 +81,38 @@ describe('NodesView', () => {
   })
 })
 
+describe('NodesView 节点上限', () => {
+  const node = (over: Record<string, unknown> = {}) => ({
+    name: 'n1', status: 'Ready', roles: [], kubelet_version: 'v1.30', os_image: 'Ubuntu', age: '1d',
+    pod_count: 2, cpu_allocatable: '1', cpu_capacity: '2',
+    memory_allocatable: '1Gi', memory_capacity: '2Gi',
+    allocatable_pods: null,
+    ...over,
+  })
+
+  async function mountWith(nodes: any[]) {
+    const { nodesApi } = await import('@/api/endpoints')
+    ;(nodesApi.list as any).mockResolvedValue(nodes)
+    const w = mount(NodesView, { global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] } })
+    await flushPromises()
+    return w
+  }
+
+  it('拿不到 allocatable.pods 就不显示上限，也不断言调度器会拒绝', async () => {
+    // kubelet --max-pods 各集群不同（30/110/250）。把 110 当集群事实写出来
+    // 是假事实；pod_count 111 也不能触发「超出上限」—— 没有上限就无从超出。
+    const w = await mountWith([node({ pod_count: 111 })])
+    expect(w.text()).not.toContain('上限')
+    expect(w.text()).not.toContain('调度器会拒')
+  })
+
+  it('上限用集群自己的 allocatable.pods', async () => {
+    const w = await mountWith([node({ allocatable_pods: 30, pod_count: 31 })])
+    expect(w.text()).toContain('/ 30 上限')
+    expect(w.text()).toContain('超出节点上限 1 个')
+  })
+})
+
 describe('NodesView permission denial', () => {
   /**
    * 节点列表被裁掉 ≠ 集群没有节点。

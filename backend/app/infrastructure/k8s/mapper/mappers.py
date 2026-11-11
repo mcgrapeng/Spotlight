@@ -128,6 +128,9 @@ def map_node(node_obj, *, pod_count: int = 0, cluster: str = "", now: datetime |
     # nodeInfo can be absent (seen live: a minimal apiserver response) — a
     # missing field on one node must not crash the whole node list.
     info = node_obj.status.node_info
+    # allocatable.pods 是 kubelet --max-pods 的真值（各集群 30/110/250 不等）。
+    # 拿不到就留 None，别在任何地方编一个默认上限。
+    pod_cap = alloc.get("pods")
     return Node(
         name=node_obj.metadata.name,
         status=status,
@@ -139,6 +142,7 @@ def map_node(node_obj, *, pod_count: int = 0, cluster: str = "", now: datetime |
         cpu_allocatable=alloc.get("cpu", ""),
         memory_allocatable=alloc.get("memory", ""),
         pod_count=pod_count,
+        allocatable_pods=int(pod_cap) if pod_cap is not None and str(pod_cap).isdigit() else None,
         age_seconds=_age_seconds(node_obj.metadata.creation_timestamp, now or datetime.now(timezone.utc)),
         cluster=cluster,
     )

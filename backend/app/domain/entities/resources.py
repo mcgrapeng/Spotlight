@@ -73,6 +73,8 @@ class Node:
     memory_allocatable: str
     pod_count: int
     age_seconds: int | None
+    # kubelet --max-pods（allocatable.pods）；拿不到就留 None，判定见 mapper。
+    allocatable_pods: int | None = None
     cluster: str = ""
 
     @property

@@ -13,6 +13,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
+from app.application.dto import NodeOut
 from app.infrastructure.k8s.mapper.mappers import (
     _age_seconds,
     _container_state,
@@ -218,6 +219,22 @@ def test_map_node_marks_a_not_ready_node_and_defaults_to_the_worker_role():
     node.status.conditions = [NS(type="Ready", status="False")]
     assert map_node(node, now=_NOW).status == "NotReady"
     assert map_node(node, now=_NOW).roles == ("worker",)
+
+
+def test_map_node_reads_the_real_pod_cap_from_allocatable():
+    # kubelet --max-pods 各集群不同（30/110/250）—— 上限是集群事实，从
+    # allocatable.pods 读，不能在前端编一个常量当事实。
+    node = _node()
+    node.status.allocatable = {"cpu": "7", "memory": "30Gi", "pods": "110"}
+    mapped = map_node(node, pod_count=3, cluster="prod", now=_NOW)
+    assert mapped.allocatable_pods == 110
+    assert NodeOut.model_validate(mapped).allocatable_pods == 110
+
+
+def test_map_node_without_allocatable_pods_reports_no_cap():
+    # 拿不到上限就不编一个 —— 界面不显示上限，而不是显示别的集群的数字。
+    mapped = map_node(_node(), pod_count=3, cluster="prod", now=_NOW)
+    assert mapped.allocatable_pods is None
 
 
 def test_map_node_without_conditions_is_unknown():

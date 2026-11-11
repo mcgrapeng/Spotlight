@@ -39,6 +39,8 @@ class NodeOut(BaseModel):
     cpu_allocatable: str
     memory_allocatable: str
     pod_count: int = 0
+    # kubelet --max-pods（allocatable.pods）；拿不到就留 None，判定见 mapper。
+    allocatable_pods: Optional[int] = None
     age: Optional[str] = None
 
 
