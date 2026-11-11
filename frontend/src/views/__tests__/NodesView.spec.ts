@@ -111,6 +111,14 @@ describe('NodesView 节点上限', () => {
     expect(w.text()).toContain('/ 30 上限')
     expect(w.text()).toContain('超出节点上限 1 个')
   })
+
+  it('规格行不摆「可分配/总」比例 —— X/Y 会被读成使用率', async () => {
+    // 内存 60.3Gi / 60.4Gi 一眼读成「用满 99.8%」，实际是容量比（可分配
+    // ÷ 总量），零诊断价值。规格行只留一个数字，误读没有发生的形状。
+    const w = await mountWith([node({ cpu_allocatable: '1', cpu_capacity: '2', memory_allocatable: '1Gi', memory_capacity: '2Gi' })])
+    expect(w.text()).not.toContain('可分配')
+    expect(w.text()).toContain('2Gi')
+  })
 })
 
 describe('NodesView permission denial', () => {

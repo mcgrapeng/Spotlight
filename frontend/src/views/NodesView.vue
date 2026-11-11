@@ -300,50 +300,22 @@ function podOverCount(n: NodeOut): number {
           <!-- 规格表：纯文字展示，没有 bar 也不会有歧义 -->
           <div class="pt-3 border-t border-border space-y-2">
             <!--
-              ponytail: 那个百分比删掉了。
+              ponytail: 规格行只留一个数字，不摆「可分配 / 总」。
 
-              原来这一行右边挂着一个「100%」，它是「可分配 / 总量」
-              （allocatable ÷ capacity）—— 一个预留比例，不是使用率。
-              真实集群上三个节点全是 100%：CPU 32 / 32，内存
-              60.36Gi / 60.36Gi。健康节点写着 100%，读起来像一块烧到底
-              的仪表；更糟的是内存那个 63364680Ki / 63262280Ki 四舍五入
-              之后也是 100%，而两个数其实不相等 —— 百分比在骗人。
-
-              左边那行「32 可分配 / 32 总」已经把同样的比例说清楚了，
-              而且说对：它写的是「可分配」和「总」，不是「已用」。
-              一个数字只出现一次，而这一次是真的。
+              X/Y 会被读成使用率：内存 60.3Gi / 60.4Gi 一眼就是「用满
+              99.8%」，而它是容量比（可分配 ÷ 总量），零诊断价值 —— 一个
+              会被读错的数字比没有数字更糟。可分配余量不足是真信号，它由
+              nodeIssue 的芯片说；规格行只回答「这个节点多大」。
             -->
             <div class="flex items-center gap-2 text-xs">
               <Cpu :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="text-muted-foreground w-14 shrink-0">CPU</span>
-              <!--
-                数字和单位之间要有空格。原来的写法是
-                `<span> {{ t('nodes.allocatable') }}</span>` —— 那个前导
-                空格是 span 的第一个子节点，Vue 编译时把「只有空白、且是
-                首个子节点」的文本节点删掉了，于是屏幕上贴着「32可分配」。
-                中文和数字之间挤在一起，密度就不对了。改成 flex + gap，
-                间距由布局决定，不依赖文本节点里那个看不见的空格。
-              -->
-              <span class="inline-flex items-baseline gap-1 font-mono tabular-nums">
-                <span :class="d.cpu.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
-                  {{ d.cpu.alloc }}
-                </span>
-                <span class="text-muted-foreground">{{ t('nodes.allocatable') }}</span>
-                <span class="text-muted-foreground">/</span>
-                <span class="text-muted-foreground">{{ d.cpu.cap }} {{ t('nodes.total') }}</span>
-              </span>
+              <span class="font-mono tabular-nums">{{ d.cpu.cap }}</span>
             </div>
             <div class="flex items-center gap-2 text-xs">
               <MemoryStick :size="12" :stroke-width="1.75" class="text-muted-foreground shrink-0" />
               <span class="text-muted-foreground w-14 shrink-0">{{ t('nodes.memory') }}</span>
-              <span class="inline-flex items-baseline gap-1 font-mono tabular-nums">
-                <span :class="d.mem.allocRatio < 20 ? 'text-warning font-medium' : 'text-foreground'">
-                  {{ d.mem.alloc }}
-                </span>
-                <span class="text-muted-foreground">{{ t('nodes.allocatable') }}</span>
-                <span class="text-muted-foreground">/</span>
-                <span class="text-muted-foreground">{{ d.mem.cap }} {{ t('nodes.total') }}</span>
-              </span>
+              <span class="font-mono tabular-nums">{{ d.mem.cap }}</span>
             </div>
           </div>
         </CardContent>

@@ -520,7 +520,7 @@ const recentActivity = computed(() => {
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-sm font-semibold flex items-center gap-2">
             <AlertCircle :size="16" class="text-warning" :stroke-width="2" />
-            {{ t('dashboard.actionRequired', { count: restItems.length }) }}
+            {{ t('dashboard.actionRequired') }}
           </h2>
           <span class="text-xs text-muted-foreground">{{ t('dashboard.actionHint') }}</span>
         </div>

@@ -92,6 +92,17 @@ describe('DashboardView hero', () => {
     expect(wrapper.text()).not.toContain('287')
   })
 
+  it('待处理区标题不摆数字 —— 它和卡片里的计数打架', async () => {
+    // 「还有 1 项需要处理」紧挨着「25 个告警事件」：两个数字贴着出现，读
+    // 起来像自相矛盾（到底是 1 还是 25？）。列表就在标题下面，数得出来。
+    const statsMock = (await import('@/api/endpoints')).podsApi.stats as unknown as ReturnType<typeof vi.fn>
+    statsMock.mockResolvedValue(structuredClone(stats))
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.text()).not.toMatch(/还有 \d+ 项需要处理/)
+    expect(wrapper.text()).toContain('其他待处理')
+  })
+
   it('hides the action card when the hero covers everything', async () => {
     const statsMock = (await import('@/api/endpoints')).podsApi.stats as unknown as ReturnType<typeof vi.fn>
     statsMock.mockResolvedValue({ ...stats, restart_top: [], warning_events: 0 })
