@@ -23,6 +23,13 @@
  */
 export type ContainerTone = 'success' | 'warning' | 'error' | 'neutral'
 
+/** 判定函数读的容器字段 —— 各处 API 容器形状的公共子集。 */
+export type ContainerFacts = {
+  ready?: boolean
+  state?: string
+  reason?: string | null
+}
+
 const TONE_CLASS: Record<ContainerTone, string> = {
   success: 'bg-success',
   warning: 'bg-warning',
@@ -30,11 +37,7 @@ const TONE_CLASS: Record<ContainerTone, string> = {
   neutral: 'bg-muted-foreground/50',
 }
 
-export function containerTone(c: {
-  ready?: boolean
-  state?: string
-  reason?: string | null
-}): ContainerTone {
+export function containerTone(c: ContainerFacts): ContainerTone {
   // 故障原因先看，ready 后看。
   //
   // 之前 `if (c.ready) return 'success'` 排在最前面，于是 ready 一旦
@@ -72,7 +75,7 @@ export function containerTone(c: {
  * 三点的人从列表点进详情，第一眼看到的是绿色「运行中」。
  */
 export function podTone(
-  containers: { ready?: boolean; state?: string; reason?: string | null }[],
+  containers: ContainerFacts[],
 ): ContainerTone | undefined {
   if (!containers.length) return undefined
   let worst: ContainerTone | undefined
@@ -84,11 +87,29 @@ export function podTone(
   return worst
 }
 
-export function containerDotClass(c: {
-  ready?: boolean
-  state?: string
-  reason?: string | null
-}): string {
+/**
+ * 状态筛选：判定桶（error 坏了 / warning 需要人看一眼 / ok 正常）。
+ *
+ * 筛选必须走判定 —— phase 会撒谎：289 个 Pod 里 273 个是 Running，按 phase
+ * 筛「失败」得 0 条，而唯一真正坏掉的那个就在 Running 里。判定只在前端
+ * （podTone），所以筛选也在前端做：同一个筛选控件一半语义在服务端、一半
+ * 在客户端，迟早对不上。
+ *
+ * phase 值（?status=Failed）是 Dashboard「去看看」的深链兼容路径，按字段
+ * 匹配 —— 那张卡数的就是 phase=Failed，它的链接不能断。
+ */
+export function podMatchesFilter(
+  p: { phase?: string; containers?: ContainerFacts[] },
+  filter: string,
+): boolean {
+  if (filter === 'all') return true
+  const tone = podTone(p.containers ?? [])
+  if (filter === 'error' || filter === 'warning') return tone === filter
+  if (filter === 'ok') return tone !== 'error' && tone !== 'warning'
+  return p.phase === filter
+}
+
+export function containerDotClass(c: ContainerFacts): string {
   return TONE_CLASS[containerTone(c)]
 }
 

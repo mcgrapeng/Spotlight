@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { cn } from '@/lib/utils'
-import { containerDotClass, containerStateText, containerTone, podTone } from '@/lib/container'
+import { containerDotClass, containerStateText, containerTone, podMatchesFilter, podTone } from '@/lib/container'
 import type { ChipTone } from '@/lib/chip'
 import { restartTone } from '@/lib/restart'
 import { usePodList } from '@/composables/usePodList'
@@ -38,11 +38,15 @@ const search = ref<string>((route.query.search as string) || '')
 // ponytail: 用 computed + setter 双向同步 ?status= ... (Dashboard action items 跳转场景)。
 // 避免双向 watch 写法：Vue Router 4 把 query 中 undefined 当字符串 'undefined' 保留，
 // 必须显式 delete 才会真正清除。
-const VALID_STATUSES = new Set(['Running', 'Pending', 'Failed', 'Succeeded'])
+//
+// 筛选值是判定桶（error/warning/ok），phase 值留给 Dashboard「去看看」的
+// 旧深链（?status=Failed）—— 那张卡数的就是 phase=Failed，链接不能断。
+const VALID_FILTERS = new Set(['error', 'warning', 'ok'])
+const VALID_PHASE_FILTERS = new Set(['Running', 'Pending', 'Failed', 'Succeeded'])
 const statusFilter = computed<string>({
   get() {
     const v = route.query.status as string | undefined
-    if (v && VALID_STATUSES.has(v)) return v
+    if (v && (VALID_FILTERS.has(v) || VALID_PHASE_FILTERS.has(v))) return v
     return 'all'
   },
   set(v) {
@@ -59,7 +63,6 @@ const statusFilter = computed<string>({
 const { data, loading, error, errorStatus, errorPermission, reload } = usePodList({
   cluster: computed(() => cluster.activeCluster),
   namespace: computed(() => cluster.activeNamespace),
-  status: statusFilter,
   search,
 })
 
@@ -75,16 +78,28 @@ const LARGE_LIST_THRESHOLD = 500
 
 const pageSizeOptions = [10, 20, 50, 100].map((n) => ({ value: n, label: String(n) }))
 
-// ponytail: phase 名并列一次中文和英文。phase 是 K8s API 的字段值，kubectl
-// 打印的就是 Running / Pending / Failed / Succeeded，值班的人同时盯着两个
-// 面板，术语对不上是真实的认知成本；但全中文又让他在 kubectl 里找不到词。
-const statusOptions = computed(() => [
-  { value: 'all', label: t('pods.filterAll') },
-  { value: 'Running',   label: t('phase.Running') },
-  { value: 'Pending',   label: t('phase.Pending') },
-  { value: 'Failed',    label: t('phase.Failed') },
-  { value: 'Succeeded', label: t('phase.Succeeded') },
-])
+// ponytail: 状态下拉是判定桶，不是 phase —— 值班的人要按「坏了」找那个
+// 该看的 Pod，phase 找不到它（真正坏掉的那个 phase 还是 Running）。
+// 判定文案就是 DESIGN.md 的三档信号：坏了 / 需要人看一眼 / 正常。
+const statusOptions = computed(() => {
+  const opts = [
+    { value: 'all', label: t('pods.filterAll') },
+    { value: 'error', label: t('pods.filterBroken') },
+    { value: 'warning', label: t('pods.filterWatch') },
+    { value: 'ok', label: t('pods.filterOk') },
+  ]
+  // 旧深链（?status=Failed）筛的是 phase，菜单里没有它 —— 但下拉必须
+  // 说出现在筛的是什么，不然读者看见几行以为是「全部」。phase 名并列
+  // 中英文（phase 是 kubectl 打印的字段值，见 i18n 的 phase.*）。
+  if (VALID_PHASE_FILTERS.has(statusFilter.value)) {
+    opts.push({ value: statusFilter.value, label: t(`phase.${statusFilter.value}`) })
+  }
+  return opts
+})
+
+const statusFilterLabel = computed(
+  () => statusOptions.value.find((o) => o.value === statusFilter.value)?.label ?? statusFilter.value,
+)
 
 const subtitle = computed(() => {
   if (permissionDenied.value) return t('pods.subtitleDenied')
@@ -173,9 +188,9 @@ const pageSize = ref(20)
 /**
  * 只看待处理：坏了的 + 要人看一眼的。
  *
- * 状态筛选（phase）是服务端的，这个是客户端的 —— 判定（podTone）只在
- * 前端有。289 个 Pod 里 273 个是 Running，筛「失败」得 0 条，而真正
- * 该看的那个就在 Running 里：值班的人要按判定筛，不是按字段筛。
+ * 判定（podTone）只在前端有，所以判定筛选是客户端的 —— 289 个 Pod 里
+ * 273 个是 Running，筛「失败」得 0 条，而真正该看的那个就在 Running 里：
+ * 值班的人要按判定筛，不是按字段筛。
  */
 const attentionOnly = ref(false)
 
@@ -184,12 +199,6 @@ function needsAttention(p: PodOut): boolean {
   const tone = podTone(p.containers ?? [])
   return tone === 'error' || tone === 'warning'
 }
-
-const { page, totalPages } = usePagination({
-  totalItems: computed(() => data.value.items.length),
-  pageSize,
-  resetKey: computed(() => data.value.items),
-})
 
 // ponytail: 排序 + 密度。
 // 排序：这张表之前一个能排序的列都没有，而 on-call 的第一个动作就是
@@ -250,17 +259,38 @@ const densityLabels = computed(() => ({
   loose: t('pods.densityLoose'),
 }))
 
-const pagedPods = computed(() => {
-  const start = (page.value - 1) * pageSize.value
-  const source = attentionOnly.value ? sorted.value.filter(needsAttention) : sorted.value
-  return source.slice(start, start + pageSize.value)
+// 筛选链：判定筛选 → 只看待处理 → 分页。全在客户端 —— 判定（podTone）
+// 只在前端有；把判定桶发给服务端按 phase 过滤，一个控件就两种语义。
+const visiblePods = computed(() => {
+  let list = sorted.value
+  if (statusFilter.value !== 'all') {
+    list = list.filter((p) => podMatchesFilter(p, statusFilter.value))
+  }
+  if (attentionOnly.value) list = list.filter(needsAttention)
+  return list
 })
 
-const filtered = computed(() => search.value !== '' || statusFilter.value !== 'all')
+// usePagination 挂载时就读 totalItems，所以它必须排在 visiblePods 后面、
+// 数的是筛选后的条数 —— 之前它数 data.items，「只看待处理」开着时翻页器
+// 显示 15 页而表里只有 3 行。
+const { page, totalPages } = usePagination({
+  totalItems: computed(() => visiblePods.value.length),
+  pageSize,
+  resetKey: computed(() => data.value.items),
+})
+
+const pagedPods = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return visiblePods.value.slice(start, start + pageSize.value)
+})
+
+const filtered = computed(
+  () => search.value !== '' || statusFilter.value !== 'all' || attentionOnly.value,
+)
 
 const emptyTitle = computed(() => {
   if (search.value) return t('pods.emptySearch', { query: search.value })
-  if (statusFilter.value !== 'all') return t('pods.emptyStatus', { status: statusFilter.value })
+  if (statusFilter.value !== 'all') return t('pods.emptyStatus', { status: statusFilterLabel.value })
   return t('pods.empty')
 })
 
@@ -269,8 +299,9 @@ const emptyDescription = computed(() => {
   const parts: string[] = []
   if (search.value) parts.push(t('pods.filterSearch', { query: search.value }))
   if (statusFilter.value !== 'all') {
-    parts.push(t('pods.filterStatus', { status: statusFilter.value }))
+    parts.push(t('pods.filterStatus', { status: statusFilterLabel.value }))
   }
+  if (attentionOnly.value) parts.push(t('pods.attentionOnly'))
   return t('pods.emptyActiveFilters', { filters: parts.join(' + ') })
 })
 </script>
@@ -344,7 +375,7 @@ const emptyDescription = computed(() => {
         <span>"{{ search }}"</span>
         <X :size="12" :stroke-width="2.5" />
       </button>
-      <span class="text-xs text-muted-foreground">{{ t('pods.resultCount', { count: data.items.length }) }}</span>
+      <span class="text-xs text-muted-foreground">{{ t('pods.resultCount', { count: visiblePods.length }) }}</span>
     </div>
 
     <!--
@@ -375,7 +406,7 @@ const emptyDescription = computed(() => {
 
     <Card v-else class="p-0 overflow-hidden flex flex-col flex-1 min-h-0">
       <div
-        v-if="!loading && data.items.length === 0"
+        v-if="!loading && visiblePods.length === 0"
         class="flex-1 flex items-center justify-center"
       >
       <EmptyState
@@ -383,7 +414,7 @@ const emptyDescription = computed(() => {
         :description="emptyDescription"
       >
         <template v-if="filtered" #action>
-          <Button variant="outline" size="sm" @click="search = ''; statusFilter = 'all'">
+          <Button variant="outline" size="sm" @click="search = ''; statusFilter = 'all'; attentionOnly = false">
             {{ t('pods.clearFilters') }}
           </Button>
         </template>
@@ -611,8 +642,8 @@ const emptyDescription = computed(() => {
         <div class="tabular-nums">
           {{ t('pods.pageRange', {
             from: (page - 1) * pageSize + 1,
-            to: Math.min(page * pageSize, (attentionOnly ? data.items.filter(needsAttention) : data.items).length),
-            total: data.items.length.toLocaleString(),
+            to: Math.min(page * pageSize, visiblePods.length),
+            total: visiblePods.length.toLocaleString(),
           }) }}
         </div>
         <div class="flex items-center gap-2">

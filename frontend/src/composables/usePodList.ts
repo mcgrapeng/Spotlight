@@ -24,7 +24,6 @@ import type { PodListOut } from '@/api/types'
 export function usePodList(opts: {
   cluster: Ref<string | null>
   namespace: Ref<string | null>
-  status: Ref<string>
   search: Ref<string>
   debounceMs?: number
 }) {
@@ -99,7 +98,6 @@ export function usePodList(opts: {
       const result = await podsApi.list({
         cluster: opts.cluster.value,
         namespace: opts.namespace.value,
-        status: opts.status.value,
         search: opts.search.value || undefined,
         signal: controller.signal,
       })
@@ -134,12 +132,12 @@ export function usePodList(opts: {
   }
 
   watch(
-    () => [opts.cluster.value, opts.namespace.value, opts.status.value],
+    () => [opts.cluster.value, opts.namespace.value],
     () => {
       if (!alive) return
       // Do NOT empty `data` here. The table's own guard is
       // `loading && data.items.length === 0`, so emptying the data made every
-      // cluster / namespace / status change collapse the grid to a spinner
+      // cluster / namespace change collapse the grid to a spinner
       // and pop it back — the same flash as the pod log panel. The previous
       // rows stay put until the replacement arrives; `abortInFlight` and the
       // seq guard already stop a slow response from clobbering a newer one.

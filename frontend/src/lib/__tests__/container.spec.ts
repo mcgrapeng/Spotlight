@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containerDotClass, containerTone } from '../container'
+import { containerDotClass, containerTone, podMatchesFilter } from '../container'
 
 describe('container tone', () => {
   it('marks a ready container green', () => {
@@ -57,5 +57,60 @@ describe('container tone', () => {
   it('still calls a healthy container healthy', () => {
     expect(containerTone({ ready: true, state: 'running', reason: null })).toBe('success')
     expect(containerTone({ ready: false, state: 'terminated', reason: 'Completed' })).toBe('neutral')
+  })
+})
+
+describe('podMatchesFilter', () => {
+  // P1 修复守卫：真正坏掉的那个 Pod phase 往往还是 Running（289 个里 273 个
+  // 是 Running）—— 按 phase 筛「失败」永远得 0 条。筛选必须走判定。
+  const broken = {
+    phase: 'Running',
+    containers: [{ ready: false, state: 'waiting', reason: 'CrashLoopBackOff' }],
+  }
+  const watching = {
+    phase: 'Running',
+    containers: [{ ready: false, state: 'running', reason: null }],
+  }
+  const healthy = {
+    phase: 'Running',
+    containers: [{ ready: true, state: 'running', reason: null }],
+  }
+  const scheduling = {
+    phase: 'Pending',
+    containers: [{ ready: false, state: 'waiting', reason: 'ContainerCreating' }],
+  }
+
+  it('「坏了」命中判定为 error 的 Pod，不管 phase 说什么', () => {
+    expect(podMatchesFilter(broken, 'error')).toBe(true)
+    expect(podMatchesFilter(watching, 'error')).toBe(false)
+    expect(podMatchesFilter(healthy, 'error')).toBe(false)
+    expect(podMatchesFilter(scheduling, 'error')).toBe(false)
+  })
+
+  it('「需要人看一眼」命中在跑但没就绪的 Pod', () => {
+    expect(podMatchesFilter(watching, 'warning')).toBe(true)
+    expect(podMatchesFilter(broken, 'warning')).toBe(false)
+  })
+
+  it('「正常」命中健康的和还在调度的', () => {
+    expect(podMatchesFilter(healthy, 'ok')).toBe(true)
+    expect(podMatchesFilter(scheduling, 'ok')).toBe(true)
+    expect(podMatchesFilter(broken, 'ok')).toBe(false)
+    expect(podMatchesFilter(watching, 'ok')).toBe(false)
+  })
+
+  it('「全部」什么都命中', () => {
+    for (const p of [broken, watching, healthy, scheduling]) {
+      expect(podMatchesFilter(p, 'all')).toBe(true)
+    }
+  })
+
+  it('phase 值按字段匹配 —— Dashboard 深链 ?status=Failed 的兼容路径', () => {
+    const failed = {
+      phase: 'Failed',
+      containers: [{ ready: false, state: 'terminated', reason: 'Error' }],
+    }
+    expect(podMatchesFilter(failed, 'Failed')).toBe(true)
+    expect(podMatchesFilter(broken, 'Failed')).toBe(false)
   })
 })

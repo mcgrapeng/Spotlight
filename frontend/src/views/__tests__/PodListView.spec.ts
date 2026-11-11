@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub, flushPromises } from '@vue/test-utils'
 
+// 深链（?status=）驱动的测试要能换 query —— 用一个共享的路由状态。
+const routeState = vi.hoisted(() => ({ query: {} as Record<string, string>, path: '/pods' }))
+
 vi.mock('vue-router', async (orig) => {
   const actual = await orig<typeof import('vue-router')>()
   return {
     ...actual,
-    useRoute: () => ({ query: {}, path: '/pods' }),
+    useRoute: () => routeState,
     useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   }
 })
@@ -22,6 +25,7 @@ vi.mock('@/api/endpoints', () => ({
 }))
 
 import PodListView from '../PodListView.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { getI18n } from '@/i18n'
 
 const i18n = getI18n()
@@ -30,6 +34,7 @@ beforeEach(() => {
   i18n.global.locale.value = 'zh-CN'
   vi.clearAllMocks()
   localStorage.clear()
+  routeState.query = {}
 })
 
 /**
@@ -125,6 +130,73 @@ describe('PodListView — 只看待处理', () => {
     await toggle!.trigger('click')
     expect(w.text()).not.toContain('healthy')
     expect(w.text()).toContain('not-ready')
+    expect(w.text()).toContain('broken')
+  })
+})
+
+describe('PodListView — 状态筛选按判定', () => {
+  // P1：289 个 Pod 里 273 个是 Running，唯一坏掉的那个也在 Running 里。
+  // 按 phase 筛「失败」得 0 条 —— 筛选必须走判定（podTone），phase 只是标签。
+  const PODS = [
+    { name: 'healthy', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.1', phase: 'Running', reason: null, message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: true, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'not-ready', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.2', phase: 'Running', reason: 'ContainersNotReady', message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'broken', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.3', phase: 'Running', reason: null, message: null, restart_count: 5, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'waiting', reason: 'CrashLoopBackOff', restart_count: 5 }] },
+    { name: 'failed-one', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.4', phase: 'Failed', reason: null, message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'terminated', reason: 'Error', restart_count: 0 }] },
+  ]
+
+  async function mountWithQuery(query: Record<string, string>) {
+    routeState.query = query
+    const { podsApi } = await import('@/api/endpoints')
+    ;(podsApi.list as any).mockResolvedValue({ total: PODS.length, items: PODS })
+    const w = mount(PodListView, { global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] } })
+    await flushPromises()
+    return w
+  }
+
+  it('下拉给的是判定桶，不是 phase', async () => {
+    const w = await mountWithQuery({})
+    const options = w.findComponent(AppSelect).props('options') as Array<{ value: string; label: string }>
+    expect(options.map((o) => o.value)).toEqual(['all', 'error', 'warning', 'ok'])
+    expect(options.map((o) => o.label)).toEqual(['全部', '坏了', '需要人看一眼', '正常'])
+  })
+
+  it('「坏了」能筛到 phase 还是 Running 的坏 Pod', async () => {
+    const w = await mountWithQuery({ status: 'error' })
+    // broken 的 phase 是 Running —— 按 phase 筛永远筛不到它。failed-one
+    // 判定也是 error（terminated: Error），两个都该在。
+    expect(w.text()).toContain('broken')
+    expect(w.text()).toContain('failed-one')
+    expect(w.text()).not.toContain('healthy')
+    expect(w.text()).not.toContain('not-ready')
+  })
+
+  it('「需要人看一眼」只留没就绪的', async () => {
+    const w = await mountWithQuery({ status: 'warning' })
+    expect(w.text()).toContain('not-ready')
+    expect(w.text()).not.toContain('broken')
+    expect(w.text()).not.toContain('healthy')
+  })
+
+  it('「正常」留健康的', async () => {
+    const w = await mountWithQuery({ status: 'ok' })
+    expect(w.text()).toContain('healthy')
+    expect(w.text()).not.toContain('broken')
+    expect(w.text()).not.toContain('not-ready')
+    expect(w.text()).not.toContain('failed-one')
+  })
+
+  it('Dashboard 深链 ?status=Failed 仍按 phase 生效，下拉显示它筛的是什么', async () => {
+    const w = await mountWithQuery({ status: 'Failed' })
+    expect(w.text()).toContain('failed-one')
+    expect(w.text()).not.toContain('broken')
+    const options = w.findComponent(AppSelect).props('options') as Array<{ value: string; label: string }>
+    expect(options.map((o) => o.value)).toContain('Failed')
+    expect(options.find((o) => o.value === 'Failed')!.label).toContain('Failed')
+  })
+
+  it('不认识的 ?status= 不筛出一个空列表', async () => {
+    const w = await mountWithQuery({ status: 'Garbage' })
+    expect(w.text()).toContain('healthy')
     expect(w.text()).toContain('broken')
   })
 })

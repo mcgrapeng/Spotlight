@@ -18,9 +18,8 @@ describe('usePodList', () => {
     vi.mocked(podsApi.list).mockResolvedValue({ total: 0, items: [] })
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    const { data, loading } = usePodList({ cluster, namespace, status, search })
+    const { data, loading } = usePodList({ cluster, namespace, search })
     // immediate load
     await vi.waitFor(() => expect(loading.value).toBe(false))
     expect(podsApi.list).toHaveBeenCalledTimes(1)
@@ -30,9 +29,8 @@ describe('usePodList', () => {
   it('skips load when cluster is null', async () => {
     const cluster = ref<string | null>(null)
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    usePodList({ cluster, namespace, status, search })
+    usePodList({ cluster, namespace, search })
     await nextTick()
     expect(podsApi.list).not.toHaveBeenCalled()
   })
@@ -42,14 +40,13 @@ describe('usePodList', () => {
     // every load. PodListView's only guard is
     // `loading && data.items.length === 0`, so emptying the data guaranteed
     // the condition — the grid collapsed to a spinner and popped back on
-    // every cluster / namespace / status change.
+    // every cluster / namespace change.
     const rows = [{ name: 'p1', namespace: 'ns', status: 'Running' }] as any
     vi.mocked(podsApi.list).mockResolvedValue({ total: 1, items: rows })
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    const { data, loading } = usePodList({ cluster, namespace, status, search })
+    const { data, loading } = usePodList({ cluster, namespace, search })
     await vi.waitFor(() => expect(data.value.items).toHaveLength(1))
 
     let release!: (v: any) => void
@@ -77,9 +74,8 @@ describe('usePodList', () => {
     vi.mocked(podsApi.list).mockResolvedValue({ total: 0, items: [] })
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    const { loading } = usePodList({ cluster, namespace, status, search })
+    const { loading } = usePodList({ cluster, namespace, search })
     await vi.waitFor(() => expect(loading.value).toBe(false))
 
     cluster.value = null
@@ -93,9 +89,8 @@ describe('usePodList', () => {
     vi.mocked(podsApi.list).mockResolvedValue({ total: 0, items: [] })
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    usePodList({ cluster, namespace, status, search, debounceMs: 100 })
+    usePodList({ cluster, namespace, search, debounceMs: 100 })
 
     // initial load fires immediately (no debounce on watcher with immediate: true)
     await vi.runAllTimersAsync()
@@ -116,21 +111,20 @@ describe('usePodList', () => {
   it('shows the backend\'s reason when it gave one, and a localized line when it did not', async () => {
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
 
     // The server explained the failure → its words are shown.
     vi.mocked(podsApi.list).mockRejectedValueOnce({
       response: { data: { detail: 'Pod 或容器不存在（可能已经被删除）' } },
     })
-    const first = usePodList({ cluster, namespace, status, search })
+    const first = usePodList({ cluster, namespace, search })
     await vi.waitFor(() => expect(first.loading.value).toBe(false))
     expect(first.error.value).toBe('Pod 或容器不存在（可能已经被删除）')
 
     // It did not → the reader gets the localized line, not axios's English
     // ("Network Error" / "Request failed with status code 500").
     vi.mocked(podsApi.list).mockRejectedValueOnce(new Error('boom'))
-    const second = usePodList({ cluster, namespace, status, search })
+    const second = usePodList({ cluster, namespace, search })
     await vi.waitFor(() => expect(second.loading.value).toBe(false))
     expect(second.error.value).toBe(getI18n().global.t('state.error'))
   })
@@ -139,9 +133,8 @@ describe('usePodList', () => {
     vi.mocked(podsApi.list).mockResolvedValue({ total: 1, items: [{ name: 'p1', namespace: 'ns', node: 'n', pod_ip: '', phase: 'Running', reason: null, message: null, restart_count: 1, age: '1d', created_at: null, labels: {}, containers: [], owner_kind: null, owner_name: null }] as any })
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    const { data, reload } = usePodList({ cluster, namespace, status, search })
+    const { data, reload } = usePodList({ cluster, namespace, search })
     await vi.waitFor(() => expect(data.value.total).toBeGreaterThanOrEqual(0))
     const before = vi.mocked(podsApi.list).mock.calls.length
     await reload()
@@ -157,9 +150,8 @@ describe('usePodList', () => {
     vi.mocked(podsApi.list).mockResolvedValue({ total: 0, items: [] })
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    const { reload } = usePodList({ cluster, namespace, status, search, debounceMs: 150 })
+    const { reload } = usePodList({ cluster, namespace, search, debounceMs: 150 })
     // the immediate load has to have landed before we can count calls
     await vi.waitFor(() => expect(vi.mocked(podsApi.list)).toHaveBeenCalledTimes(1))
     const before = vi.mocked(podsApi.list).mock.calls.length
@@ -178,9 +170,8 @@ describe('usePodList', () => {
       .mockResolvedValueOnce({ total: 2, items: [{ name: 'fresh' }] } as any)
     const cluster = ref<string | null>('c1')
     const namespace = ref<string | null>('ns')
-    const status = ref('all')
     const search = ref('')
-    const { data } = usePodList({ cluster, namespace, status, search })
+    const { data } = usePodList({ cluster, namespace, search })
     await nextTick()
     namespace.value = 'other'                // second load wins
     await vi.waitFor(() => expect(data.value.total).toBe(2))
