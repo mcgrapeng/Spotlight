@@ -18,6 +18,17 @@
  *    "staging-pod-a never rendered" — which is the bug it exists to catch, and
  *    which every mocked spec happily sailed past.
  *
+ * 3. **`functional-live.spec.ts`** walks every feature point of the client —
+ *    navigation, filters, sorting, the log panel's key suite, permissions,
+ *    the 404 path — and asserts each one against the **API's own truth**
+ *    (the verdict buckets must select exactly what the API says is broken,
+ *    needs-a-look or healthy). It runs on both stacks: the dev config
+ *    (real cluster, `playwright.dev.config.ts`) and the mocked config in CI
+ *    (real backend + fake apiservers, `playwright.config.ts`). The fake
+ *    cluster carries one sample of every verdict, a noisy pod, events with
+ *    a probe-failure message and a long message, so the assertions have
+ *    something real to bite on.
+ *
  * Local scratch inspectors (`zz-*`) and the live-dev-stack log spec are not
  * tracked; see `playwright.dev.config.ts` for those.
  */

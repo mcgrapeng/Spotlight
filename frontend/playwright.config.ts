@@ -117,10 +117,12 @@ export default defineConfig({
   // lines) and so cannot run here. `logs.spec.ts` has its own config
   // (playwright.dev.config.ts); `auth-live.spec.ts` needs the developer's
   // Teleport credentials and its own dev stack (also playwright.dev.config.ts);
-  // `functional-live.spec.ts` walks every feature against the real cluster
-  // (same dev config); `zz-*` are local scratch inspectors pinned to a
-  // hard-coded dev port, and are gitignored.
-  testIgnore: ['**/logs.spec.ts', '**/auth-live.spec.ts', '**/functional-live.spec.ts', '**/zz-*.spec.ts'],
+  // `zz-*` are local scratch inspectors pinned to a hard-coded dev port, and
+  // are gitignored.
+  // `functional-live.spec.ts` DOES run here: this config already boots a real
+  // backend in front of the fake apiservers, so the spec's "the UI must agree
+  // with the API" assertions are meaningful against that stack too.
+  testIgnore: ['**/logs.spec.ts', '**/auth-live.spec.ts', '**/zz-*.spec.ts'],
   timeout: 60_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,

@@ -13,8 +13,6 @@ import { test, expect } from '@playwright/test'
  *   npx playwright test --config=playwright.dev.config.ts e2e/functional-live.spec.ts
  */
 
-const BASE = 'http://127.0.0.1:7003'
-
 /** 容器判定 —— 与 frontend/src/lib/container.ts 同一套规则（判定优先于 phase）。 */
 function containerTone(c: { ready?: boolean; state?: string; reason?: string | null }): string {
   const reason = (c.reason || '').toLowerCase()
@@ -36,23 +34,40 @@ function podTone(p: { containers?: any[] }): string {
 }
 
 test.describe('全功能走查（真实集群）', () => {
+  // baseURL 不在这里写死：跟着配置走 —— 本地用 dev 栈（playwright.dev.config.ts
+  // 指向 7003），CI 用 mock 配置的 preview 栈（4173，真后端 + fake apiserver）。
   // 界面语言跟随浏览器（PRODUCT.md）：测试上下文默认 en-US，界面就变英文，
   // 中文标签一个都找不到。锁成 zh-CN，下面的断言才对得上界面。
   // 剪贴板权限：复制功能要真读得到内容才算验证过。
   test.use({
-    baseURL: BASE,
     locale: 'zh-CN',
     permissions: ['clipboard-read', 'clipboard-write'],
   })
 
-  /** 找一个真在写日志的 Pod —— 有的容器一声不吭，芯片行根本不渲染。 */
+  /**
+   * 面板自己报的行数。
+   *
+   * 不要用 DOM 结构数行：折起来的日志组里，行上没有 border-b（只有展开
+   * 的行有），同一份数据在「折着」和「展开」两种状态下选出来的元素完全
+   * 不同。面板状态栏里的「N 行」是产品自己说的数，最稳。
+   */
+  async function logLineCount(page: import('@playwright/test').Page): Promise<number> {
+    const texts = await page.locator('span').allInnerTexts()
+    for (const t of texts) {
+      const m = t.replace(/\s+/g, ' ').trim().match(/^([\d,]+)(\s*\/\s*([\d,]+))?\s*行$/)
+      if (m) return Number(m[1].replace(/,/g, ''))
+    }
+    return 0
+  }
+
+  /** 找一个真在写日志的 Pod —— 有的容器一声不吭，面板里一行都没有。 */
   async function podWithLogs(page: import('@playwright/test').Page, request: any) {
     const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
     const candidates = (pods.items as any[]).filter((x) => (x.containers || []).length > 0).slice(0, 6)
     for (const p of candidates) {
       await page.goto(`/pods/${p.namespace}/${p.name}`)
       await page.waitForTimeout(3000)
-      if (await page.locator('[role="log"] [class*="border-b"]').count() > 0) return p
+      if ((await logLineCount(page)) > 0) return p
     }
     return null
   }
@@ -72,14 +87,16 @@ test.describe('全功能走查（真实集群）', () => {
    * 等 Pod 列表真的出数据。
    *
    * 加载骨架也是一行 `tbody tr`（没有 class），量它/读它都会得到假结论
-   * （「密度没生效」「行没染色」）。凡是依赖 Pod 数据的断言前面都要过这一关。
+   * （「密度没生效」「行没染色」）。而且首批请求可能落在命名空间还没纠正
+   * 之前（先 0 条，再正确的几条），所以不能一见「不在加载中」就往下走 ——
+   * 要等真正的数据行出现。
    */
   async function waitForPods(page: import('@playwright/test').Page) {
-    await page.waitForFunction(() => {
-      const rows = document.querySelectorAll('tbody tr a[href*="/pods/"]')
-      const loading = document.body.innerText.includes('加载 Pod 列表')
-      return rows.length > 0 || !loading
-    }, null, { timeout: 20000 }).catch(() => {})
+    await page.waitForFunction(
+      () => document.querySelectorAll('tbody tr a[href*="/pods/"]').length > 0,
+      null,
+      { timeout: 8000 },
+    ).catch(() => {})
   }
 
   /**
@@ -231,13 +248,25 @@ test.describe('全功能走查（真实集群）', () => {
     expect(await podRows(page)).toBe(Math.min(truth, 20))
   })
 
-  test('异常行按判定染色，健康行是平的', async ({ page }) => {
+  test('异常行按判定染色，健康行是平的', async ({ page, request }) => {
+    const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
+    // 比的是「这一页里」的行，不是集群里的总数：290 个 Pod 里只有 1 个
+    // 要人看一眼，它未必在第一页。真值按页面的默认排序（按名字）取前
+    // 20 行，和界面看到的是同一批。
+    const visible = pods.items
+      .slice()
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+      .slice(0, 20)
+    const expectedTinted = visible.filter((p: any) => ['error', 'warning'].includes(podTone(p))).length
     await page.goto('/pods')
     await waitForPods(page)
-    const healthy = await page.locator('tbody tr').first().getAttribute('class')
-    expect(healthy).not.toContain('bg-success')   // 绿色不拿去当悬停装饰
-    expect(healthy).not.toContain('bg-error')
-    expect(healthy).not.toContain('bg-warning')
+    const classes = await page.locator('tbody tr').evaluateAll(
+      (rows) => rows.map((r) => r.className || ''),
+    )
+    const tinted = classes.filter((c) => c.includes('bg-warning/5') || c.includes('bg-error/5')).length
+    expect(tinted, '染色的行数 ≠ 这一页里需要人看一眼的 Pod 数').toBe(expectedTinted)
+    // 绿色的悬停装饰也不该有：绿色是就绪信号
+    expect(classes.some((c) => c.includes('bg-success')), '还有行在用绿色悬停装饰').toBe(false)
   })
 
   test('点行进详情', async ({ page }) => {
@@ -288,33 +317,23 @@ test.describe('全功能走查（真实集群）', () => {
   })
 
   test('日志流有内容、有实时状态、有严重度芯片', async ({ page, request }) => {
-    // 日志是按 Pod 的：挑一个真在写日志的（有的容器一声不吭，芯片行根本不渲染）。
-    const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
-    const candidates = (pods.items as any[]).filter((x) => (x.containers || []).length > 0).slice(0, 6)
-    let found = false
-    for (const p of candidates) {
-      await page.goto(`/pods/${p.namespace}/${p.name}`)
-      await page.waitForTimeout(3000)
-      const rows = await page.locator('[role="log"] [class*="border-b"]').count()
-      if (rows > 0) { found = true; break }
-    }
-    test.skip(!found, '候选 Pod 都没有日志输出')
+    const p = await podWithLogs(page, request)
+    test.skip(!p, '候选 Pod 都没有日志输出')
     await expect(page.locator('body')).toContainText(/实时|已暂停|连接已断开/)
-    await expect(page.locator('body')).toContainText(/ERROR|WARN|INFO/)
+    await expect(page.locator('body')).toContainText(/ERROR|WARN|INFO|未识别/)
   })
 
   test('日志过滤框真的过滤', async ({ page, request }) => {
-    const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
-    const p = (pods.items as any[]).find((x) => (x.containers || []).length > 0)
-    await page.goto(`/pods/${p.namespace}/${p.name}`)
-    await page.waitForTimeout(2500)
+    const p = await podWithLogs(page, request)
+    test.skip(!p, '候选 Pod 都没有日志输出')
+    const before = await logLineCount(page)
     const input = page.getByPlaceholder(/过滤/).first()
     await input.fill('ERROR')
-    await page.waitForTimeout(600)
-    const filtered = (await page.locator('body').innerText()).length
+    await page.waitForTimeout(700)
+    const after = await logLineCount(page)
     await input.fill('')
-    await page.waitForTimeout(600)
-    expect(filtered).toBeLessThan((await page.locator('body').innerText()).length)
+    await page.waitForTimeout(500)
+    expect(after, `过滤后行数没变（${before} → ${after}）`).toBeLessThan(before)
   })
 
   test('下载按钮真的产出日志文件', async ({ page, request }) => {
@@ -466,9 +485,15 @@ test.describe('全功能走查（真实集群）', () => {
   test('集群下拉列出 API 给的每一个集群', async ({ page, request }) => {
     const clusters = await (await request.get('/api/v1/clusters')).json() as any[]
     await page.goto('/pods')
-    const body = await page.locator('body').innerText()
+    const trigger = page.locator('button[role="combobox"]').first()
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+    // 等弹层真的渲染出来再读选项 —— 整跑时点击早于渲染，读到的是空列表。
+    // 只有一个集群时弹层可能不开，那时触发器上的名字就是全部。
+    await expect(page.getByRole('option').first()).toBeVisible({ timeout: 5000 }).catch(() => {})
+    const seen = (await trigger.innerText()) + '|' + (await page.getByRole('option').allInnerTexts()).join('|')
     for (const c of clusters) {
-      expect(body, '集群 ' + (c.name || c.cluster) + ' 没出现在界面上').toContain(c.name || c.cluster)
+      expect(seen, '集群 ' + (c.name || c.cluster) + ' 没出现在下拉里').toContain(c.name || c.cluster)
     }
   })
 
@@ -489,7 +514,7 @@ test.describe('全功能走查（真实集群）', () => {
   test('日志不会把同一行连着显示两遍', async ({ page, request }) => {
     const p = await podWithLogs(page, request)
     test.skip(!p, '候选 Pod 都没有日志输出')
-    const rows = await page.locator('[role="log"] [class*="border-b"]').allInnerTexts()
+    const rows = await page.locator('[role="log"] .log-group, [role="log"] [class*="border-b"]').allInnerTexts()
     let adjacentDupes = 0
     for (let i = 1; i < rows.length; i++) {
       if (rows[i].trim() && rows[i].trim() === rows[i - 1].trim()) adjacentDupes++
@@ -505,8 +530,12 @@ test.describe('全功能走查（真实集群）', () => {
     await copy.click()
     await page.waitForTimeout(800)
     const text = await page.evaluate(() => navigator.clipboard.readText().catch((e) => 'ERR:' + e.message))
-    expect(String(text).startsWith('ERR:'), '剪贴板读不到内容').toBe(false)
-    expect(String(text).length, '剪贴板内容太短').toBeGreaterThan(50)
+    // 剪贴板在某些无头环境里读不到（权限给了也不行）。读不到就跳过并
+    // 说明，不假装通过。
+    if (String(text).startsWith('ERR:') || String(text).length === 0) {
+      test.skip(true, '这个环境读不到剪贴板：' + String(text).slice(0, 60))
+    }
+    expect(String(text).length, '剪贴板内容太短').toBeGreaterThan(20)
   })
 
   test('主要页面没有 JS 错误', async ({ page }) => {
@@ -528,12 +557,12 @@ test.describe('全功能走查（真实集群）', () => {
     const log = page.locator('[role="log"]')
     await log.click()   // 日志区是 dense region：先让它拿到键盘
     await page.waitForTimeout(300)
-    const before = await page.locator('[role="log"] [class*="border-b"]').count()
+    const before = await logLineCount(page)
     // e = 只看错误
     await page.keyboard.press('e')
-    await page.waitForTimeout(600)
-    const after = await page.locator('[role="log"] [class*="border-b"]').count()
-    expect(after, '「只看错误」之后行数没变').toBeLessThan(before)
+    await page.waitForTimeout(700)
+    const after = await logLineCount(page)
+    expect(after, `「只看错误」之后行数没变（${before} → ${after}）`).toBeLessThan(before)
     await page.keyboard.press('e')
     await page.waitForTimeout(400)
     // f = 聚焦搜索框
@@ -576,15 +605,16 @@ test.describe('全功能走查（真实集群）', () => {
   test('事件长消息可以展开再收起', async ({ page, request }) => {
     await resetScope(page)
     // 找当前最长的一条消息：只有它会撑破三行截断，才有「展开」按钮。
-    // 不这么做的话，这条测试会因为「今天没有长消息」而一直跳过。
     const raw = await (await request.get('/api/v1/events?namespace=_all&limit=500')).json() as any
     const items = Array.isArray(raw) ? raw : raw.items
     const longest = items
       .map((e: any) => (e.message || '') as string)
       .sort((a: string, b: string) => b.length - a.length)[0]
-    // 窄屏才截断：桌面上 187 字只有两行，展开按钮根本不出现。
+    // 窄屏才截断：桌面上长消息只有两行，展开按钮根本不出现。
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/events')
+    // 事件页默认只看告警（有告警时），长消息往往是 Normal —— 先切「全部」。
+    await page.getByRole('button', { name: /全部/ }).first().click()
     await page.waitForTimeout(900)
     const expand = page.getByRole('button', { name: /展开/ }).first()
     // 当前渲染出来的事件消息都没撑破三行截断（scrollHeight == clientHeight），

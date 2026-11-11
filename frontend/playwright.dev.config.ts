@@ -21,7 +21,9 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:5173',
+    // 7003 是 dev server 的端口（frontend/.env 的 VITE_PORT）。之前这里写死
+    // 5173，而 dev server 根本不在那个端口上 —— 用这个配置跑规格会连不上。
+    baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:7003',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
