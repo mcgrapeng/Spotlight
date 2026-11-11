@@ -377,9 +377,17 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
       })
 
       const before = state()
-      // The reader nudges the wheel up a little — inside the band where the
-      // follow survives. The panel must not throw that scroll away.
-      el.scrollTop = el.scrollHeight - el.clientHeight - 30
+      // The reader scrolls UP, out of the tail — the gesture a reader makes
+      // to read history, and the one the follow must not swallow.
+      //
+      // It is relative on purpose. An absolute position ("30px above the
+      // bottom") is not a gesture the reader can make, and the tail's last
+      // group is re-measured as it grows, so the bottom moves under the
+      // reader: a position that was inside the content a moment ago can
+      // end up past it, and the browser clamps that away instead of
+      // scrolling. The clamp, not the panel, then swallowed the scroll —
+      // and the test blamed the panel for it.
+      el.scrollTop -= 30
       await new Promise((r) => setTimeout(r, 900))
       const afterNudge = state()
       // And back down a little: the row under the reader follows the scroll
