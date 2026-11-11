@@ -636,7 +636,7 @@ const emptyDescription = computed(() => {
 
       <!-- Pagination footer -->
       <div
-        v-if="data.items.length > 0"
+        v-if="visiblePods.length > 0"
         class="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-muted/20 text-xs text-muted-foreground shrink-0"
       >
         <div class="tabular-nums">

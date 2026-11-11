@@ -199,4 +199,16 @@ describe('PodListView — 状态筛选按判定', () => {
     expect(w.text()).toContain('healthy')
     expect(w.text()).toContain('broken')
   })
+
+  it('筛选清空列表时分页条不显示「第 1–0 条」', async () => {
+    // 行被筛空时表格换成空态 —— 底下不能再挂一条自相矛盾的
+    // 「第 1–0 条 / 共 0 条」。
+    routeState.query = { status: 'error' }
+    const { podsApi } = await import('@/api/endpoints')
+    ;(podsApi.list as any).mockResolvedValue({ total: 1, items: [PODS[0]] })
+    const w = mount(PodListView, { global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] } })
+    await flushPromises()
+    expect(w.text()).toContain('没有「坏了」的 Pod')
+    expect(w.text()).not.toContain('第 1–')
+  })
 })
