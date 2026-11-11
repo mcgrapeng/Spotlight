@@ -95,3 +95,36 @@ describe('PodListView — 权限不足', () => {
     expect(retry).toBeTruthy()
   })
 })
+
+describe('PodListView — 只看待处理', () => {
+  const PODS = [
+    { name: 'healthy', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.1', phase: 'Running', reason: null, message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: true, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'not-ready', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.2', phase: 'Running', reason: 'ContainersNotReady', message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'broken', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.3', phase: 'Running', reason: null, message: null, restart_count: 5, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'waiting', reason: 'CrashLoopBackOff', restart_count: 5 }] },
+  ]
+
+  async function mountWith() {
+    const { podsApi } = await import('@/api/endpoints')
+    ;(podsApi.list as any).mockResolvedValue({ total: 3, items: PODS })
+    const w = mount(PodListView, { global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] } })
+    await flushPromises()
+    return w
+  }
+
+  it('shows every pod by default', async () => {
+    const w = await mountWith()
+    expect(w.text()).toContain('healthy')
+    expect(w.text()).toContain('not-ready')
+    expect(w.text()).toContain('broken')
+  })
+
+  it('keeps only the pods that need a look when the toggle is on', async () => {
+    const w = await mountWith()
+    const toggle = w.findAll('button').find((b) => b.text().includes('只看待处理'))
+    expect(toggle, '找不到开关').toBeTruthy()
+    await toggle!.trigger('click')
+    expect(w.text()).not.toContain('healthy')
+    expect(w.text()).toContain('not-ready')
+    expect(w.text()).toContain('broken')
+  })
+})

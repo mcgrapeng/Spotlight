@@ -9,6 +9,7 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import PermissionDenied from '@/components/common/PermissionDenied.vue'
 import PodStatusPill from '@/components/pod/PodStatusPill.vue'
+import { AlertCircle } from '@lucide/vue'
 import ReasonChip from '@/components/common/ReasonChip.vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -169,6 +170,21 @@ function open(p: PodOut) {
 
 const pageSize = ref(20)
 
+/**
+ * 只看待处理：坏了的 + 要人看一眼的。
+ *
+ * 状态筛选（phase）是服务端的，这个是客户端的 —— 判定（podTone）只在
+ * 前端有。289 个 Pod 里 273 个是 Running，筛「失败」得 0 条，而真正
+ * 该看的那个就在 Running 里：值班的人要按判定筛，不是按字段筛。
+ */
+const attentionOnly = ref(false)
+
+/** 判定是 error 或 warning 的才算「待处理」。 */
+function needsAttention(p: PodOut): boolean {
+  const tone = podTone(p.containers ?? [])
+  return tone === 'error' || tone === 'warning'
+}
+
 const { page, totalPages } = usePagination({
   totalItems: computed(() => data.value.items.length),
   pageSize,
@@ -236,7 +252,8 @@ const densityLabels = computed(() => ({
 
 const pagedPods = computed(() => {
   const start = (page.value - 1) * pageSize.value
-  return sorted.value.slice(start, start + pageSize.value)
+  const source = attentionOnly.value ? sorted.value.filter(needsAttention) : sorted.value
+  return source.slice(start, start + pageSize.value)
 })
 
 const filtered = computed(() => search.value !== '' || statusFilter.value !== 'all')
@@ -288,6 +305,21 @@ const emptyDescription = computed(() => {
           class="w-full"
         />
       </div>
+      <!-- 过滤按钮，不是标签页：aria-pressed（事件页筛选同款模式）。 -->
+      <button
+        type="button"
+        :aria-pressed="attentionOnly"
+        @click="attentionOnly = !attentionOnly"
+        :class="cn(
+          'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
+          attentionOnly
+            ? 'bg-warning-bg text-warning border-warning-border'
+            : 'bg-card text-muted-foreground border-border hover:text-foreground',
+        )"
+      >
+        <AlertCircle :size="12" :stroke-width="2" aria-hidden="true" />
+        {{ t('pods.attentionOnly') }}
+      </button>
       <div class="relative flex-1 min-w-[240px] max-w-md">
         <Search :size="14" class="absolute left-2.5 top-3 text-muted-foreground" :stroke-width="1.75" />
         <Input
@@ -579,7 +611,7 @@ const emptyDescription = computed(() => {
         <div class="tabular-nums">
           {{ t('pods.pageRange', {
             from: (page - 1) * pageSize + 1,
-            to: Math.min(page * pageSize, data.items.length),
+            to: Math.min(page * pageSize, (attentionOnly ? data.items.filter(needsAttention) : data.items).length),
             total: data.items.length.toLocaleString(),
           }) }}
         </div>

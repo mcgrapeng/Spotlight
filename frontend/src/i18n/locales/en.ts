@@ -98,6 +98,7 @@ export default {
     subject: 'the pod list',
     subtitle: '{count} · {namespace}',
     filterAll: 'All',
+    attentionOnly: 'needs attention',
     filtersLabel: 'Pod list filters',
     filterByStatus: 'Filter by status',
     searchPlaceholder: 'Search pod / container / node',

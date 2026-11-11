@@ -116,6 +116,7 @@ export default {
     subject: 'Pod 列表',
     subtitle: '{count} 个 · {namespace}',
     filterAll: '全部',
+    attentionOnly: '只看待处理',
     filtersLabel: 'Pod 列表筛选',
     filterByStatus: '按状态筛选',
     searchPlaceholder: '搜索 pod / container / node',
