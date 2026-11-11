@@ -439,7 +439,11 @@ export default {
       },
     },
   },
-  pod: {    backToPods: '返回 Pod 列表',
+  pod: {
+    backToPods: '返回 Pod 列表',
+    notFoundTitle: 'Pod 不存在或已被删除',
+    notFoundMessage: '它可能已经被删掉，或者被重建了 —— ReplicaSet 滚动会换掉名字里的哈希后缀。',
+    notFoundSearch: '按名字找',
     refresh: '刷新',
     favorite: '收藏',
     unfavorite: '取消收藏',

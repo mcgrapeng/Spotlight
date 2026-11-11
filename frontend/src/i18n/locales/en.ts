@@ -427,6 +427,9 @@ export default {
   },
   pod: {
     backToPods: 'Back to Pods',
+    notFoundTitle: 'This pod does not exist or was deleted',
+    notFoundMessage: 'It may have been removed, or rebuilt — a ReplicaSet rollout changes the hash in the name.',
+    notFoundSearch: 'Find by name',
     refresh: 'Refresh',
     favorite: 'Add to favorites',
     unfavorite: 'Remove from favorites',

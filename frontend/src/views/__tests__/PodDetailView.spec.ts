@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub, flushPromises } from '@vue/test-utils'
 
+const routerMock = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }))
+
 vi.mock('vue-router', async (orig) => {
   const actual = await orig<typeof import('vue-router')>()
   return {
     ...actual,
     useRoute: () => ({ query: {}, path: '/pods/cache-001', params: { name: 'cache-001', namespace: 'default' } }),
-    useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+    useRouter: () => routerMock,
   }
 })
 
@@ -197,5 +199,40 @@ describe('PodDetailView failure reporting', () => {
     })
     expect(wrapper.text()).not.toContain('CrashLoopBackOff')
     expect(wrapper.text()).toContain('1/1')
+  })
+})
+
+describe('PodDetailView — 已删掉的 Pod', () => {
+  // 书签里的 Pod 被重建了（ReplicaSet 滚动会换哈希后缀）—— 404 不是
+  // 「加载失败」，是「它没了」。重试复活不了它，但人得有个去处。
+  async function mountWith404() {
+    const { podsApi } = await import('@/api/endpoints')
+    ;(podsApi.get as any).mockRejectedValue({
+      response: { status: 404, data: { detail: 'Pod 或容器不存在（可能已经被删除）' } },
+    })
+    const wrapper = mount(PodDetailView, {
+      global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n, createPinia()] },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('不给「重试」—— 重试复活不了被删掉的 Pod', async () => {
+    const wrapper = await mountWith404()
+    expect(wrapper.text()).toContain('Pod 不存在或已被删除')
+    const retry = wrapper.findAll('button').find((b) => b.text().includes('重试'))
+    expect(retry, '给了一个永远不会成功的按钮').toBeFalsy()
+  })
+
+  it('给出路：回到列表，或按名字前缀去找重建后的那个', async () => {
+    const wrapper = await mountWith404()
+    const back = wrapper.findAll('button').find((b) => b.text().includes('返回 Pod 列表'))
+    expect(back, '没有回到列表的出口').toBeTruthy()
+    const search = wrapper.findAll('button').find((b) => b.text().includes('按名字找'))
+    expect(search, '没有按名字找的出口').toBeTruthy()
+    await search!.trigger('click')
+    expect(routerMock.push).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.objectContaining({ search: 'cache-001' }) }),
+    )
   })
 })

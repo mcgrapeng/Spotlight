@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, RefreshCw, Bot, AlertCircle, AlertTriangle, Clock, Star } from '@lucide/vue'
+import { ArrowLeft, RefreshCw, Bot, AlertCircle, AlertTriangle, Clock, Star, Search } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { podsApi, eventsApi, favoritesApi } from '@/api/endpoints'
 import { useClusterStore } from '@/stores/cluster'
@@ -21,6 +21,7 @@ import ErrorState from '@/components/common/ErrorState.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusChip from '@/components/common/StatusChip.vue'
 import ReasonChip from '@/components/common/ReasonChip.vue'
+import { workloadPrefix } from '@/lib/podName'
 import { cn } from '@/lib/utils'
 import { containerDotClass, containerTone, podTone } from '@/lib/container'
 import { restartTextClass } from '@/lib/restart'
@@ -220,13 +221,17 @@ async function toggleFavorite() {
 }
 
 // Ponytail: 把 load() + onMounted + name/namespace watch 替换成 useResource。
-const { data: pod, loading, error, reload: load } = useResource<PodOut>(
+const { data: pod, loading, error, errorStatus, reload: load } = useResource<PodOut>(
   () => podsApi.get(cluster.activeCluster!, namespace.value, name.value),
   {
     watch: () => [name.value, namespace.value],
     skip: () => !name.value,
   },
 )
+
+// 404 = 「它没了」，不是「加载失败」。两者的出路不一样：重试对前者
+// 永远不会成功。
+const notFound = computed(() => errorStatus.value === 404)
 
 // The star reflects whether THIS pod is already in the caller's favorites.
 // The previous pod's id has to go first: it belongs to a favourite of a
@@ -258,11 +263,47 @@ watch(tab, (v) => {
   if (v === 'logs') logUnread.value = 0
 })
 function back() { router.push({ name: 'pods' }) }
+
+/**
+ * 已删掉的 Pod：按「工作负载名」回列表搜。
+ *
+ * ReplicaSet 滚动会换掉名字里的哈希后缀（…-85598c7564-fvq7l 变成
+ * …-566b6cf577-d6zhl）。旧书签 404 时，读者要找的是那个服务，不是那个
+ * 已经消失的名字 —— 按前缀搜得到重建后的 Pod。
+ */
+function searchByName() {
+  router.push({ name: 'pods', query: { search: workloadPrefix(name.value) } })
+}
 </script>
 
 <template>
   <LoadingState v-if="loading && !pod" />
-  <ErrorState v-else-if="error" :message="error" @retry="load" />
+  <!--
+    404 是另一种状态：不是「加载失败」，是「它没了」。
+    重试复活不了被删掉或被重建的 Pod，而「只有重试」把读者留在死胡同里
+    —— 凌晨三点拿着旧书签的人，此刻需要的是「回到列表」和「按名字找
+    到重建后的那个」。
+  -->
+  <ErrorState
+    v-else-if="error"
+    :title="notFound ? t('pod.notFoundTitle') : undefined"
+    :message="notFound ? t('pod.notFoundMessage') : error"
+    :retryable="!notFound"
+    @retry="load"
+  >
+    <template v-if="notFound" #actions>
+      <div class="flex flex-wrap items-center justify-center gap-2 mb-4">
+        <Button variant="outline" size="sm" @click="back">
+          <ArrowLeft :size="14" :stroke-width="1.75" class="mr-1" />
+          {{ t('pod.backToPods') }}
+        </Button>
+        <Button variant="outline" size="sm" @click="searchByName">
+          <Search :size="14" :stroke-width="1.75" class="mr-1" />
+          {{ t('pod.notFoundSearch') }}
+        </Button>
+      </div>
+    </template>
+  </ErrorState>
   <!--
     ponytail: log-first 布局。
     之前这个页面是 2 栏 + 日志框 h-[60vh] min-h-[400px]：6 行日志时底下空 400px，
