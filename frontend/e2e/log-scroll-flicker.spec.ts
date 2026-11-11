@@ -68,6 +68,52 @@ async function openLog(page) {
 }
 
 /**
+ * A live tail.
+ *
+ * The panel only misbehaves when the log GROWS: the follow pins the scroll
+ * position to the tail, so a tail that moves under the reader is the only
+ * thing that can move the content on its own. A static fixture cannot show
+ * it — the tail stands still, and the reader is in control.
+ *
+ * The stand-in replaces EventSource, so the panel's own stream handling
+ * (batch, prepend, defer) runs exactly as it does against a real cluster.
+ */
+async function installGrowingTail(page, everyMs = 400, batch = 2) {
+  await page.addInitScript(
+    ([ms, size]) => {
+      let n = 400
+      const mk = (i) => ({
+        timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+        container: '',
+        severity: 'info',
+        content: 'line ' + i + ' ' + 'lorem ipsum dolor sit amet consectetur ',
+      })
+      class FakeEventSource extends EventTarget {
+        readyState = 1
+        constructor() {
+          super()
+          setTimeout(() => {
+            this.timer = setInterval(() => {
+              const lines = []
+              for (let k = 0; k < size; k++) lines.push(mk(n++))
+              const ev = new Event('log')
+              ev.data = JSON.stringify(lines)
+              this.dispatchEvent(ev)
+            }, ms)
+          }, ms)
+        }
+        close() {
+          clearInterval(this.timer)
+          this.readyState = 2
+        }
+      }
+      window.EventSource = FakeEventSource
+    },
+    [everyMs, batch],
+  )
+}
+
+/**
  * Toggle line wrapping.
  *
  * The toggle lives in the toolbar's overflow menu now: the toolbar was nine
@@ -291,5 +337,70 @@ test.describe('Pod logs — the virtual model matches the DOM', () => {
       }
     }
     expect(drift, 'content drifted under the cursor:\n' + drift.join('\n')).toEqual([])
+  })
+
+  /**
+   * The follow must not swallow the reader's own scroll.
+   *
+   * The panel follows the tail: while the follow is on, every settle pins
+   * the scroll position to the bottom of the content. That is right for a
+   * reader who IS at the tail, and wrong for one who is not: their scroll
+   * is thrown away, and the row under the cursor jumps and falls back.
+   *
+   * A live tail is what makes the difference visible. The tail moves under
+   * the reader, so the panel is constantly re-pinning, and the reader's own
+   * scroll is constantly being overridden.
+   */
+  test('the reader keeps the place they scrolled to while the tail grows', async ({ page }) => {
+    await installGrowingTail(page)
+    const log = await openLog(page)
+    // Let the tail grow: the follow carries the reader with it, and from
+    // now on the tail moves under them.
+    await page.waitForTimeout(1500)
+
+    const probe = await log.evaluate(async (el) => {
+      const wrap = el.querySelector('div.relative')!
+      const view = el.getBoundingClientRect()
+      const anchor = [...wrap.querySelectorAll('[data-gkey]')].find((g) => {
+        const b = g.getBoundingClientRect()
+        return b.top >= view.top && b.bottom <= view.bottom
+      })!
+      const key = anchor.getAttribute('data-gkey')!
+      const top = () => {
+        const g = wrap.querySelector('[data-gkey="' + CSS.escape(key) + '"]')
+        return g ? g.getBoundingClientRect().top - el.getBoundingClientRect().top : null
+      }
+      const state = () => ({
+        st: el.scrollTop,
+        max: el.scrollHeight - el.clientHeight,
+        top: top(),
+      })
+
+      const before = state()
+      // The reader nudges the wheel up a little — inside the band where the
+      // follow survives. The panel must not throw that scroll away.
+      el.scrollTop = el.scrollHeight - el.clientHeight - 30
+      await new Promise((r) => setTimeout(r, 900))
+      const afterNudge = state()
+      // And back down a little: the row under the reader follows the scroll
+      // exactly, and does not travel back past them.
+      el.scrollTop = el.scrollTop + 20
+      await new Promise((r) => setTimeout(r, 900))
+      const afterDown = state()
+      return { before, afterNudge, afterDown }
+    })
+
+    expect(
+      probe.afterNudge.max - probe.afterNudge.st,
+      'the panel must not yank the reader back to the tail',
+    ).toBeGreaterThan(20)
+    expect(
+      probe.afterNudge.top! - probe.before.top!,
+      'the row under the cursor must move exactly as far as the reader scrolled',
+    ).toBeGreaterThan(25)
+    expect(
+      probe.afterDown.top! - probe.afterNudge.top!,
+      'the row must not travel back while the reader scrolls forward',
+    ).toBeGreaterThan(-22)
   })
 })

@@ -567,6 +567,25 @@ interface Anchor {
 }
 
 /**
+ * Is the reader AT the tail?
+ *
+ * The follow MODE says "keep following"; this says "they are really there".
+ * The two are not the same thing, and the difference is the reader's own
+ * scroll: the tail-pin moves the scroll position to the bottom of the
+ * content, so pinning a reader who is NOT at the tail throws their scroll
+ * away — the row under the cursor jumps and falls back.
+ *
+ * It cannot be derived from the geometry either: the tail moves under the
+ * reader as new lines arrive, so a reader who was at the tail a moment ago
+ * is suddenly a few pixels above it. That is the tail growing, not the
+ * reader leaving, and the follow has to carry them along with it.
+ *
+ * So it is a state, not a measurement: the reader is at the tail until they
+ * move, and they are somewhere else once they do.
+ */
+let readerAtTail = true
+
+/**
  * Pin the group the reader is looking at.
  *
  * Measuring a group replaces an estimate with its real height, which moves
@@ -581,13 +600,17 @@ function captureAnchor(): Anchor | null {
   if (!el) return null
   const top = el.scrollTop
   if (groups.value.length === 0) return null
-  // A follower is anchored to the tail BY DEFINITION. The geometric test
-  // cannot be used here: the model's end and the DOM's end disagree for a
-  // frame while the tail is being measured (the last group may be a folded
-  // run of forty identical lines, estimated at one row and really forty),
-  // so a follower would look like they had scrolled away and would be
-  // stranded above the newest line.
-  if (autoFollow.value) {
+  // A follower AT THE TAIL is anchored to it BY DEFINITION. The geometric
+  // test cannot be used here: the model's end and the DOM's end disagree
+  // for a frame while the tail is being measured (the last group may be a
+  // folded run of forty identical lines, estimated at one row and really
+  // forty), so a follower would look like they had scrolled away and would
+  // be stranded above the newest line.
+  //
+  // A follower who is NOT at the tail keeps their own position: the
+  // geometric anchor holds their place in the content while the tail grows
+  // under them, instead of the panel dragging them back to it.
+  if (autoFollow.value && readerAtTail) {
     return { idx: groups.value.length - 1, delta: 0, atBottom: true }
   }
   const idx = indexAt(top)
@@ -888,23 +911,32 @@ function onScroll() {
   if (corrected) anchorAppliedAt = -1
   lastScrollTop = top
   if (distFromBottom <= FOLLOW_EPSILON) {
+    // The reader is at the tail. From here on the tail-pin is theirs: the
+    // tail grows under them and the correction carries them along with it.
+    readerAtTail = true
     // User is back at the tail — re-engage auto-follow and clear unread.
     if (!autoFollow.value) {
       autoFollow.value = true
       emit('update:autoFollow', true)
       emit('consume-unread')
     }
-  } else if (movedUp && !corrected && distFromBottom > FOLLOW_BREAK && autoFollow.value) {
-    // User scrolled away from top — disable auto-follow, show unread pill.
-    // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
-    // mirror of the ref PodDetailView shares with usePodLogs, and flush()
-    // reads that shared one to decide prepend-vs-defer. Without this emit the
-    // shared ref stayed `true`, so every incoming batch was spliced into the
-    // top of `lines` while the user was reading history — the content moved
-    // under their cursor on every flush. `deferred` never filled, so the pill
-    // was dead too and returning to the top committed nothing.
-    autoFollow.value = false
-    emit('update:autoFollow', false)
+  } else if (movedUp && !corrected) {
+    // The reader left the tail. A small band keeps the follow on — the tail
+    // still follows them — but the panel must stop pinning them to the
+    // bottom: from here on their own scroll is what moves the content.
+    readerAtTail = false
+    if (distFromBottom > FOLLOW_BREAK && autoFollow.value) {
+      // User scrolled away from top — disable auto-follow, show unread pill.
+      // The emit is mandatory, not just for the pill: `autoFollow` is a LOCAL
+      // mirror of the ref PodDetailView shares with usePodLogs, and flush()
+      // reads that shared one to decide prepend-vs-defer. Without this emit the
+      // shared ref stayed `true`, so every incoming batch was spliced into the
+      // top of `lines` while the user was reading history — the content moved
+      // under their cursor on every flush. `deferred` never filled, so the pill
+      // was dead too and returning to the top committed nothing.
+      autoFollow.value = false
+      emit('update:autoFollow', false)
+    }
   }
   // The anchor's shape depends on the follow state, and the window is
   // chosen from it, so both come after the detection above.
@@ -920,6 +952,8 @@ function toggleAutoFollow() {
   autoFollow.value = !autoFollow.value
   emit('update:autoFollow', autoFollow.value)
   if (autoFollow.value) {
+    // The reader asked for the tail, so the tail-pin is theirs from here.
+    readerAtTail = true
     emit('consume-unread')
     jumpToBottom()
   }
