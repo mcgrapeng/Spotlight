@@ -89,4 +89,51 @@ describe('LogViewer arrival flash', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.html()).not.toContain('animate-log-flash')
   })
+
+  it('under reduced motion, tints the arriving error row statically instead of animating', async () => {
+    // 全局的 `animation-duration: 0.01ms` 把 400ms 的闪光压成看不见 ——
+    // 「新错误行到达」的反馈整个消失。减少动态效果要去掉运动，不能去掉
+    // 状态：换成静态色块，窗口结束同样消失。
+    const orig = window.matchMedia
+    vi.spyOn(window, 'matchMedia').mockImplementation((q: string) =>
+      q.includes('reduced-motion')
+        ? ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() } as any)
+        : orig.call(window, q),
+    )
+    const old = line('info', 'old-1')
+    const wrapper = mountViewer([old])
+    await wrapper.setProps({ lines: [line('error', 'fresh-error'), old] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.html()).not.toContain('animate-log-flash')
+    expect(wrapper.html()).toContain('bg-error/25')
+    vi.restoreAllMocks()
+  })
+
+  it('swaps to the static tint when the preference flips mid-flash', async () => {
+    // v-memo 缓存的是 class —— 偏好在闪光窗口中途翻转时缓存必须失效，
+    // 否则行上留着一个在 0.01ms 里跑完的死动画，反馈又没了。
+    let onChange: ((e: { matches: boolean }) => void) | undefined
+    const orig = window.matchMedia
+    vi.spyOn(window, 'matchMedia').mockImplementation((q: string) =>
+      q.includes('reduced-motion')
+        ? ({
+            matches: false,
+            addEventListener: (_: string, cb: any) => { onChange = cb },
+            removeEventListener: vi.fn(),
+          } as any)
+        : orig.call(window, q),
+    )
+    const old = line('info', 'old-1')
+    const wrapper = mountViewer([old])
+    await wrapper.setProps({ lines: [line('error', 'fresh-error'), old] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.html()).toContain('animate-log-flash')
+
+    expect(onChange, '组件没挂 reduced-motion 的 change 监听').toBeTruthy()
+    onChange!({ matches: true })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.html()).not.toContain('animate-log-flash')
+    expect(wrapper.html()).toContain('bg-error/25')
+    vi.restoreAllMocks()
+  })
 })

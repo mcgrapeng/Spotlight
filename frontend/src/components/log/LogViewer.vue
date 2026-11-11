@@ -1286,6 +1286,18 @@ function groupFlashes(group: Group): boolean {
   return false
 }
 
+/**
+ * 到达闪光：动画，或减少动态效果下的静态色块。
+ *
+ * 全局的 `animation-duration: 0.01ms`（prefers-reduced-motion）把 400ms 的
+ * 闪光压成看不见 ——「新错误行到达」的反馈整个消失。减少动态效果去掉的
+ * 是运动，不是状态：同一扇窗口里换成静态色块，窗口结束同样消失。
+ */
+function arrivalFlashClass(group: Group): string {
+  if (!groupFlashes(group)) return ''
+  return prefersReducedMotion.value ? 'bg-error/25' : 'animate-log-flash'
+}
+
 // === Severity badge (per-row label, replaces single-char icon) ===
 // ponytail: 走 @/lib/chip 的统一外观。之前这里自己写了一套 class：
 // border-error/40 的 alpha 边框（别处用的是 border-error-border token），
@@ -2114,9 +2126,9 @@ const helpRows = computed(() => [
                 'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] relative',
                 'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
-                groupFlashes(group) && 'animate-log-flash',
+                arrivalFlashClass(group),
               )"
-              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale, groupFlashes(group), livePulse]"
+              v-memo="[group.lines[0].raw.content, group.lines[0].raw.severity, jsonExpanded.has(`${group.key}`), group.lines[0].traceId, truncatedExpanded.has(group.lines[0].raw.content), wrapMode, locale, arrivalFlashClass(group), livePulse]"
             >
               <button
                 v-if="group.lines[0].traceId"
@@ -2198,12 +2210,12 @@ const helpRows = computed(() => [
           <template v-else>
             <div
               :class="cn(
-                'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative',
+                'grid grid-cols-[88px_1fr] sm:grid-cols-[88px_72px_1fr] gap-x-3 items-baseline px-3 leading-[22px] min-h-[22px] border-l-[3px] cursor-pointer select-none relative group/fold',
                 'hover:bg-muted/40 transition-colors ease-app dur-fast',
                 severityBorderFor(group.lines[0].raw.severity),
-                groupFlashes(group) && 'animate-log-flash',
+                arrivalFlashClass(group),
               )"
-              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale, groupFlashes(group), livePulse]"
+              v-memo="[group.lines.length, group.expanded, group.lines[0].raw.content, group.lines[0].traceId, wrapMode, locale, arrivalFlashClass(group), livePulse]"
               role="button"
               tabindex="0"
               :aria-expanded="group.expanded"
@@ -2244,14 +2256,14 @@ const helpRows = computed(() => [
                 >{{ group.lines[0].raw.container }}</span>
                 <span
                   v-if="!group.expanded"
-                  class="group/fold relative flex-1 min-w-0 font-mono truncate"
+                  class="relative flex-1 min-w-0 font-mono truncate"
                 >
                   <span v-html="lineHtml(group.lines[0].raw)" class="font-mono text-foreground" :class="wrapClass" :title="wrapMode === 'nowrap' ? group.lines[0].raw.content : undefined" />
                   <!-- ponytail: hover preview — when a user hovers the collapsed
                        content cell, float a tooltip showing up to 3 distinct
                        timestamps. CSS hover is enough; no per-row state needed. -->
                   <span
-                    class="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover/fold:flex flex-col gap-1 p-2 rounded-md border border-border bg-popover text-popover-foreground shadow-md min-w-[320px] max-w-[640px]"
+                    class="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover/fold:flex group-focus-visible/fold:flex flex-col gap-1 p-2 rounded-md border border-border bg-popover text-popover-foreground shadow-md min-w-[320px] max-w-[640px]"
                     role="tooltip"
                   >
                     <span class="text-xs uppercase tracking-wider text-muted-foreground mb-0.5">
