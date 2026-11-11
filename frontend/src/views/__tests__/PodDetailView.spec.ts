@@ -94,6 +94,20 @@ describe('PodDetailView', () => {
       resource_type: 'pod', name: 'cache-001', namespace: 'default',
     }))
   })
+
+  it('gives the pod name a two-line, monospace treatment so it cannot eat the log', async () => {
+    // 390px 下 Pod 名折 5 行，日志只剩 3 行 —— 这个页面是 log-first 的，
+    // 标题区必须让位。名字是字面量（读者要拿去敲 kubectl），按
+    // DESIGN.md 用等宽；两行截断是兜底（超长名字不至于顶掉日志区）。
+    const wrapper = mount(PodDetailView, {
+      global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n, createPinia()] },
+    })
+    await flushPromises()
+    const h1 = wrapper.find('h1')
+    expect(h1.exists()).toBe(true)
+    expect(h1.classes()).toContain('font-mono')
+    expect(h1.classes()).toContain('line-clamp-2')
+  })
 })
 
 describe('PodDetailView failure reporting', () => {

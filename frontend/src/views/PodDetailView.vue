@@ -281,7 +281,17 @@ function back() { router.push({ name: 'pods' }) }
       </Button>
     </div>
 
-    <PageHeader :title="pod.name" :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`" class="shrink-0">
+    <!--
+      标题是身份串：等宽（DESIGN.md —— 字面量用等宽，读者要拿它敲
+      kubectl），窄屏降一档 + 限两行。这个页面是 log-first 的：390px 下
+      标题折 5 行，日志区就只剩 3 行 —— 标题区必须让位。
+    -->
+    <PageHeader
+      :title="pod.name"
+      :subtitle="`${pod.namespace} · ${pod.node || t('pod.unscheduled')}`"
+      title-class="font-mono text-lg sm:text-2xl line-clamp-2"
+      class="shrink-0"
+    >
       <template #actions>
         <!--
           标题区只放一个状态元素，而且坏的时���它不是 phase。
