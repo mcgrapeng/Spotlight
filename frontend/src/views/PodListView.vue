@@ -152,18 +152,27 @@ function restartSeverity(p: PodOut): 'attention' | 'normal' {
 }
 function nodeShort(p: PodOut) { return p.node ? p.node.split('.')[0] : null }
 
-const PHASE_TONE: Record<string, string> = {
-  Running:   'hover:bg-success/5',
-  // ponytail: 琥珀色专供「需要处理」。Pending 是「在等调度」，集群的正常
-  // 状态 —— 把它染成琥珀等于把「没出故障」说成「需要注意」。这一行以前
-  // 是 hover:bg-warning/5。
-  Pending:   'hover:bg-muted/40',
-  Failed:    'bg-error/5 hover:bg-error/10',
-  Succeeded: 'hover:bg-muted/40',
-  Unknown:   'hover:bg-muted/40',
-}
+/**
+ * 要人看一眼的 Pod 有几个 —— 这一屏唯一亮的数字。
+ *
+ * 首屏该回答「现在最该管的是什么」。列表本身平着走，所以答案得由头部
+ * 给：一个需要人看一眼的数量。颜色是信号色，不是装饰（Signal Rule）。
+ */
+const attentionCount = computed(() => data.value.items.filter(needsAttention).length)
+
+// ponytail: 底色跟判定走，不跟 phase 走。
+//
+// 之前是 phase 映射：Failed 行染红，而真正坏掉的那个
+// （CrashLoopBackOff，phase 还是 Running）没有底色 —— 火埋在 292 行里，
+// 凌晨三点扫不出来。判定才是「这个对象现在怎么样」的答案。
+//
+// 健康行是平的，悬停用中性色：绿色是就绪信号，拿去当悬停装饰等于把
+// 信号稀释掉（Signal Rule）。
 function rowClass(p: PodOut) {
-  return PHASE_TONE[p.phase] ?? 'hover:bg-muted/40'
+  const tone = podTone(p.containers ?? [])
+  if (tone === 'error') return 'bg-error/5 hover:bg-error/10'
+  if (tone === 'warning') return 'bg-warning/5 hover:bg-warning/10'
+  return 'hover:bg-muted/40'
 }
 
 const severityMap = computed(() => {
@@ -341,6 +350,7 @@ const emptyDescription = computed(() => {
         type="button"
         :aria-pressed="attentionOnly"
         @click="attentionOnly = !attentionOnly"
+        :aria-label="attentionCount > 0 ? t('pods.attentionOnlyCount', { count: attentionCount }) : undefined"
         :class="cn(
           'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium transition-colors ease-app dur-fast',
           attentionOnly
@@ -350,6 +360,14 @@ const emptyDescription = computed(() => {
       >
         <AlertCircle :size="12" :stroke-width="2" aria-hidden="true" />
         {{ t('pods.attentionOnly') }}
+        <!--
+          数量是这个开关的结果，不是装饰：它告诉值班的人「有 2 个要看」。
+          琥珀色是信号色（这 2 个就是要人看一眼的那些），不是拿来做装饰。
+        -->
+        <span
+          v-if="attentionCount > 0"
+          class="tabular-nums font-semibold text-warning"
+        >{{ attentionCount }}</span>
       </button>
       <div class="relative flex-1 min-w-[240px] max-w-md">
         <Search :size="14" class="absolute left-2.5 top-3 text-muted-foreground" :stroke-width="1.75" />
@@ -470,7 +488,7 @@ const emptyDescription = computed(() => {
                 <div class="flex flex-col gap-0.5 min-w-0">
                   <router-link
                     :to="{ name: 'pod-detail', params: { namespace: row.namespace, name: row.name } }"
-                    class="font-mono text-sm text-foreground truncate rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    class="font-mono text-sm font-medium text-foreground truncate rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     :aria-label="t('pods.viewDetail', { name: row.name })"
                     @click.stop
                   >{{ row.name }}</router-link>

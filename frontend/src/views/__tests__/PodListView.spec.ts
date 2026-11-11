@@ -246,3 +246,54 @@ describe('PodListView — 状态胶囊只说有话可说的', () => {
     expect(pending!.text()).toContain('等待中 Pending')
   })
 })
+
+describe('PodListView — 行底色跟判定走', () => {
+  // 底色之前跟 phase 走：Failed 行染红，而真正坏掉的 CrashLoopBackOff
+  // （phase 还是 Running）没有底色。火埋在 292 行里，凌晨三点扫不出来。
+  // 另外健康行 hover 泛的是绿色 —— 信号色被当装饰用了。
+  const ROWS = [
+    { name: 'healthy', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.1', phase: 'Running', reason: null, message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: true, state: 'running', reason: null, restart_count: 0 }] },
+    { name: 'broken', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.2', phase: 'Running', reason: null, message: null, restart_count: 5, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'waiting', reason: 'CrashLoopBackOff', restart_count: 5 }] },
+    { name: 'not-ready', namespace: 'ns', node: 'n1', pod_ip: '1.1.1.3', phase: 'Running', reason: 'ContainersNotReady', message: null, restart_count: 0, age: '1d', labels: {}, owner_kind: 'Deployment', owner_name: 'd', containers: [{ name: 'c', image: 'i', ready: false, state: 'running', reason: null, restart_count: 0 }] },
+  ]
+
+  async function mountWithRows(rows: any[]) {
+    const { podsApi } = await import('@/api/endpoints')
+    ;(podsApi.list as any).mockResolvedValue({ total: rows.length, items: rows })
+    const w = mount(PodListView, { global: { stubs: { RouterLink: RouterLinkStub }, plugins: [i18n] } })
+    await flushPromises()
+    return w
+  }
+
+  it('坏掉的行自己发光 —— phase 还是 Running 也一样', async () => {
+    const w = await mountWithRows(ROWS)
+    const row = w.findAll('tbody tr').find((r) => r.text().includes('broken'))
+    expect(row!.classes().join(' ')).toContain('bg-error/5')
+  })
+
+  it('起来但没就绪的行是琥珀，不是红', async () => {
+    const w = await mountWithRows(ROWS)
+    const row = w.findAll('tbody tr').find((r) => r.text().includes('not-ready'))
+    expect(row!.classes().join(' ')).toContain('bg-warning/5')
+    expect(row!.classes().join(' ')).not.toContain('bg-error')
+  })
+
+  it('健康行是平的 —— 绿色不拿去当悬停装饰', async () => {
+    const w = await mountWithRows(ROWS)
+    const row = w.findAll('tbody tr').find((r) => r.text().includes('healthy'))
+    const cls = row!.classes().join(' ')
+    expect(cls).not.toContain('bg-success')
+    expect(cls).not.toContain('bg-error')
+    expect(cls).not.toContain('bg-warning')
+  })
+
+  it('「只看待处理」开关带着数量 —— 数字告诉你要看几个', async () => {
+    // 数字不进头部：头部已经有「292 个 · 所有命名空间」，再加一个数就
+    // 是两个数对着打架。开关本身就是入口，给它配数量，位置和语义都唯一。
+    const w = await mountWithRows(ROWS)
+    const toggle = w.findAll('button').find((b) => b.text().includes('只看待处理'))
+    expect(toggle, '找不到开关').toBeTruthy()
+    expect(toggle!.text()).toContain('2')
+    expect(toggle!.attributes('aria-label')).toContain('2 个需要人看一眼')
+  })
+})

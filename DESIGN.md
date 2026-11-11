@@ -154,6 +154,8 @@ components:
 
 **The Signal Rule.** 状态色只用于表达状态。一个装饰性的琥珀色边框、一块为了"有点颜色"而刷上去的底色，都会稀释信号的稀缺性——当琥珀色出现在不该出现的地方，真正的告警就不再刺眼。
 
+**The Row Speaks First.** 列表行的底色跟着**判定**走，不跟 phase 走：坏了的行染红、起来但没就绪的行染琥珀、健康的行是平的。phase 会撒谎（CrashLoopBackOff 的 Pod phase 还是 Running），按 phase 染色的结果是真正坏掉的行没有任何标记。健康行悬停用中性色——绿色是就绪信号，拿去当悬停装饰等于把信号稀释掉。
+
 **The One Bright Thing Rule.** 一屏里只有一个元素可以是最亮的：总览页那个 48px 的数字。其余全部让位。机舱里仪表和标签的亮度比是固定的。
 
 **The Phase Is Not The Verdict Rule.** 颜色跟着"这个对象现在怎么样"走，不跟着 Kubernetes 的字段值走。一个 phase 是 Running 但容器在 CrashLoopBackOff 的 Pod，必须显示成红色——phase 会撒谎，判定不会。
