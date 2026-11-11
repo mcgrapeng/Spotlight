@@ -181,9 +181,10 @@ test('Pods table renders rows and pagination controls respond', async ({ page })
   await expect(page.getByText(/第 1 \/ 1 页/)).toBeVisible()
 
   // Status filter (AppSelect popover) accepts a value without crashing.
+  // 选项是判定桶，不是 phase —— 筛选按判定走（坏了/需要人看一眼/正常），
+  // phase 只当标签。这两个 mock pod 都是健康的，所以「正常」下都在。
   await page.getByRole('combobox', { name: '按状态筛选' }).click()
-  await page.getByRole('option', { name: '运行中 Running' }).click()
-  // Both mocked pods are Running → both still visible.
+  await page.getByRole('option', { name: '正常' }).click()
   await expect(page.getByText('webapp-001').first()).toBeVisible()
 
   // Search input accepts text (backend filtering is verified in the

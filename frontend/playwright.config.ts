@@ -117,9 +117,10 @@ export default defineConfig({
   // lines) and so cannot run here. `logs.spec.ts` has its own config
   // (playwright.dev.config.ts); `auth-live.spec.ts` needs the developer's
   // Teleport credentials and its own dev stack (also playwright.dev.config.ts);
-  // `zz-*` are local scratch inspectors pinned to a hard-coded dev port, and
-  // are gitignored.
-  testIgnore: ['**/logs.spec.ts', '**/auth-live.spec.ts', '**/zz-*.spec.ts'],
+  // `functional-live.spec.ts` walks every feature against the real cluster
+  // (same dev config); `zz-*` are local scratch inspectors pinned to a
+  // hard-coded dev port, and are gitignored.
+  testIgnore: ['**/logs.spec.ts', '**/auth-live.spec.ts', '**/functional-live.spec.ts', '**/zz-*.spec.ts'],
   timeout: 60_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
