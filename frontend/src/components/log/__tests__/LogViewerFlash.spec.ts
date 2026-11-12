@@ -27,20 +27,25 @@ function mountViewer(lines: LogLineOut[]) {
   })
 }
 
-describe('LogViewer severity filter icons', () => {
-  it('draws the severity chips with real icons, not ASCII glyphs', () => {
+describe('LogViewer severity filter chips', () => {
+  it('级别芯片不戴图标 —— 文字与颜色已经说明级别，一排小图标只是噪声', () => {
     const wrapper = mountViewer([line('error', 'boom'), line('warn', 'meh'), line('info', 'ok')])
     const chips = wrapper.findAll('button[aria-pressed]')
     // "全部" + WARN + ERROR + 未识别 — and NOT "≥ INFO": those three lines
     // are exactly the lines "≥ INFO" would show, so the chip would say the
     // same 3 as 全部 and the row would carry two controls for one thing.
     expect(chips.length).toBe(4)
-    // The ASCII stand-ins were `i`, `!` and `▲` rendered as monospace text.
-    // A Lucide icon is an <svg>; a glyph is a text node.
+    // 徽标已经用文字（INFO+/WARN+/ERROR+）和颜色说明级别，图标是同一条事实的
+    // 第二通道 —— 凌晨三点扫这一排时，四枚小图标是纯噪声。
     for (const chip of chips) {
-      expect(chip.find('svg').exists()).toBe(true)
+      expect(chip.find('svg').exists(), '芯片里还留着图标').toBe(false)
     }
+    // 也不许拿 ASCII 字符冒充图标（`▲` 在多数图标字体里是「上三角」的意思）
     expect(chips.map((c) => c.text()).join('|')).not.toContain('▲')
+    // 级别仍然分得出来：WARN/ERROR 是信号色，其余是中性字色
+    // （芯片文本是小写的，uppercase 只是 CSS）
+    expect(chips.find((c) => /warn/i.test(c.text()))!.classes().join(' ')).toContain('text-warning')
+    expect(chips.find((c) => /error/i.test(c.text()))!.classes().join(' ')).toContain('text-error')
   })
 })
 

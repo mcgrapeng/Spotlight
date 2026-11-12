@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch, type Component } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import {
   Search, Pause, Play, ChevronUp, ChevronDown, ChevronRight, ChevronsRight,
-  Copy, X, Terminal, Filter, WrapText, Download, AlertCircle, HelpCircle,
-  MoreHorizontal, Trash2, Info, TriangleAlert, CircleX,
+  Copy, X, Terminal, WrapText, Download, AlertCircle, HelpCircle,
+  MoreHorizontal, Trash2, CircleX,
 } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -1125,13 +1125,6 @@ onUnmounted(() => {
 // === Visual helpers ===
 // ponytail: 过滤器芯片上的图标原来是 ASCII 字符（`i` `!` `▲` `?`）——
 // 那是等宽字体里的裸字形，不是图标：左边「全部」用的是 Lucide 的漏斗，
-// 右边三个是字符，两种视觉语言并排。`▲` 在多数图标字体里是「上三角／
-// 插入」的意思，拿它表示 ERROR 语义是反的。换成 Lucide 图标。
-const SEV_ICON_COMPONENT: Record<string, Component> = {
-  info: Info,
-  warn: TriangleAlert,
-  error: CircleX,
-}
 const SEV_CLASS: Record<string, string> = {
   trace: 'text-muted-foreground', debug: 'text-muted-foreground',
   info: 'text-foreground', notice: 'text-foreground',
@@ -1697,7 +1690,6 @@ const helpRows = computed(() => [
         )"
         @click="setSeverity(0)"
       >
-        <Filter :size="12" :stroke-width="1.75" />
         {{ t('log.filterAll') }}
         <span class="tabular-nums">{{ levelAllCount.toLocaleString() }}</span>
       </button>
@@ -1721,13 +1713,6 @@ const helpRows = computed(() => [
         @click="setSeverity(chip.rank)"
         :title="t('log.severityLines', { bucket: chip.bucket, count: chipCounts[chip.bucket].toLocaleString() })"
       >
-        <component
-          :is="SEV_ICON_COMPONENT[chip.bucket]"
-          :size="12"
-          :stroke-width="2"
-          class="shrink-0"
-          aria-hidden="true"
-        />
         <span class="uppercase tracking-wider">{{ chip.bucket }}+</span>
         <span class="tabular-nums">{{ chipCounts[chip.bucket].toLocaleString() }}</span>
       </button>
@@ -1756,7 +1741,6 @@ const helpRows = computed(() => [
         @click="toggleUnknownOnly()"
         :title="t('log.severityUnknownLines', { count: counts.unknown.toLocaleString() })"
       >
-        <HelpCircle :size="12" :stroke-width="2" class="shrink-0" aria-hidden="true" />
         <span>{{ t('log.severityUnknown') }}</span>
         <span class="tabular-nums">{{ counts.unknown.toLocaleString() }}</span>
       </button>
@@ -1835,41 +1819,59 @@ const helpRows = computed(() => [
           <X :size="14" :stroke-width="1.75" />
         </button>
       </div>
-      <Button
-        variant="outline" size="xs"
-        @click="togglePause"
-        :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
-        :class="cn(!streaming && 'text-warning border-warning/50')"
-      >
-        <Pause v-if="streaming" :size="14" :stroke-width="1.75" />
-        <Play v-else :size="14" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="xs"
-        @click="toggleAutoFollow"
-        :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
-        :class="cn(!autoFollow && (unreadCount ?? 0) > 0 && 'border-warning text-warning')"
-      >
-        <ChevronDown v-if="autoFollow" :size="14" :stroke-width="1.75" />
-        <ChevronUp v-else :size="14" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="xs"
-        :disabled="!displayedLines.length"
-        @click="copyAll"
-        :aria-label="t('log.copyAllLabel')"
-      >
-        <Copy :size="14" :stroke-width="1.75" />
-      </Button>
-      <Button
-        variant="outline" size="xs"
-        :disabled="!filtered.length"
-        @click="downloadLogs"
-        :aria-label="t('log.downloadLabel')"
-        :title="t('log.downloadLabel')"
-      >
-        <Download :size="14" :stroke-width="1.75" />
-      </Button>
+      <!--
+        ponytail: 四个值班时会按的动作收成**一组**（跟密度切换同范式：
+        一个外框 + 中间的分隔线），不再是四个各自描边的孤立方块。
+        之前它们和后面的「⋯」「?」混在一排里，读者分不清哪个是动作、
+        哪个是菜单 —— 现在一组动作是一个控件，两颗独立按钮是另两件事。
+        每个动作也补了 title：悬停能知道是暂停还是跟随（图标本身不说明）。
+      -->
+      <div class="inline-flex items-center rounded-md border border-input overflow-hidden">
+        <Button
+          variant="ghost"
+          size="xs"
+          @click="togglePause"
+          :aria-label="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
+          :title="streaming ? t('log.pauseLabel') : t('log.resumeLabel')"
+          :class="cn('rounded-none border-r border-input/60', !streaming && 'text-warning')"
+        >
+          <Pause v-if="streaming" :size="14" :stroke-width="1.75" />
+          <Play v-else :size="14" :stroke-width="1.75" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          @click="toggleAutoFollow"
+          :aria-label="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
+          :title="autoFollow ? t('log.followOffLabel') : t('log.followOnLabel')"
+          :class="cn('rounded-none border-r border-input/60', !autoFollow && (unreadCount ?? 0) > 0 && 'text-warning')"
+        >
+          <ChevronDown v-if="autoFollow" :size="14" :stroke-width="1.75" />
+          <ChevronUp v-else :size="14" :stroke-width="1.75" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          :disabled="!displayedLines.length"
+          @click="copyAll"
+          :aria-label="t('log.copyAllLabel')"
+          :title="t('log.copyAllLabel')"
+          class="rounded-none border-r border-input/60"
+        >
+          <Copy :size="14" :stroke-width="1.75" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          :disabled="!filtered.length"
+          @click="downloadLogs"
+          :aria-label="t('log.downloadLabel')"
+          :title="t('log.downloadLabel')"
+          class="rounded-none"
+        >
+          <Download :size="14" :stroke-width="1.75" />
+        </Button>
+      </div>
       <!--
         ponytail: 工具栏收成「三个动作 + 一个溢出菜单」。
         之前是九个同权重的图标按钮：凌晨三点没人记得住 ChevronUp 是「跟随」，
@@ -2134,7 +2136,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -2227,7 +2229,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -2313,7 +2315,7 @@ const helpRows = computed(() => [
                     v-if="line.traceId"
                     type="button"
                     @click.stop="toggleTraceFilter(line.traceId)"
-                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 transition-[width] ease-app dur-fast cursor-pointer z-10"
+                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
                     :title="t('log.filterTraceTitle', { traceId: line.traceId })"
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
