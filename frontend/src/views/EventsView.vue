@@ -347,7 +347,7 @@ useEventListener(window, 'resize', () => {
         // （impeccable 的 craft-floor 明令禁止卡片上 >1px 的彩色边框）。
         // 1px 足够在扫视时标出「这条是告警」，剩下的由图标和芯片说话。
         ev.type === 'Warning'
-          ? 'border-border bg-warning/5 hover:bg-warning/10 border-l-warning'
+          ? 'border-border bg-warning/5 hover:bg-warning/10'
           : 'border-border bg-card opacity-90 hover:opacity-100',
       )"
     >

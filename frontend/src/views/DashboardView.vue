@@ -532,9 +532,15 @@ const recentActivity = computed(() => {
             class="flex items-start gap-3 p-2.5 rounded-md border border-border transition-colors ease-app dur-fast hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             :class="item.severity === 'critical' ? 'bg-error/5' : 'bg-warning/5'"
           >
+            <!--
+              ponytail: 原来这里是一根 6px 的琥珀色竖条（w-1.5 self-stretch），
+              贴着一张 12px 圆角的卡片 —— DESIGN.md 管这叫「胶条」：它撞圆角，
+              而且把一行里最重的东西放在了最不起眼的位置。改成一颗小圆点，
+              颜色不变（告警身份交给图标 + 背景色），重量掉下来了。
+            -->
             <span
               :class="cn(
-                'shrink-0 mt-0.5 w-1.5 self-stretch rounded-full',
+                'shrink-0 mt-1.5 size-1.5 rounded-full',
                 item.severity === 'critical' ? 'bg-error' : 'bg-warning'
               )"
               aria-hidden="true"

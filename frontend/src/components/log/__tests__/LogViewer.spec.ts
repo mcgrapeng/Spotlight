@@ -59,6 +59,30 @@ describe('LogViewer', () => {
     expect(pressed().length).toBe(1)
   })
 
+  it('计数为 0 的档位不占位 —— 没有行可筛就不渲染', () => {
+    // 只有 error 和 warn 两行：INFO+ 和「未识别」都是 0。它们各有各的占位，
+    // 读者却点不动（disabled）——一个点不动的档位只是在噪声里占一行。
+    const wrapper = mount(LogViewer, {
+      props: {
+        lines: [
+          { timestamp: '2026-01-01T00:00:00Z', severity: 'error', container: 'main', content: 'boom' },
+          { timestamp: '2026-01-01T00:00:01Z', severity: 'warn', container: 'main', content: 'meh' },
+        ],
+        unreadCount: 0,
+      },
+      global: { plugins: [i18n] },
+    })
+    // v-show 落在元素自己的 style 上（display:none）；isVisible() 在
+    // happy-dom 下不认这个 inline style，所以按 style 判定「看不见」。
+    const visible = wrapper
+      .findAll('button[aria-pressed]')
+      .filter((c) => !(c.attributes('style') || '').includes('display: none'))
+    const labels = visible.map((c) => c.text().toLowerCase()).join('|')
+    expect(labels, '没有 INFO 行，INFO+ 就不该占位').not.toMatch(/info\+/)
+    expect(labels, '没有未识别的行，「未识别」就不该占位').not.toContain(i18n.global.t('log.severityUnknown').toLowerCase())
+    expect(labels, '有 ERROR 行，ERROR+ 必须在').toMatch(/error\+/)
+  })
+
   it('never asks JSON.parse about a line that cannot be JSON', () => {
     // The panel used to ask JSON.parse about EVERY line and catch the
     // SyntaxError — one thrown exception per line. On a full buffer that

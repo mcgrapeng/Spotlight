@@ -100,6 +100,22 @@ test.describe('全功能走查（真实集群）', () => {
   }
 
   /**
+   * 把命名空间切到「所有命名空间」，并等列表稳定。
+   *
+   * UI 启动时先用的是 kubeconfig 上下文里的命名空间（本机是 default），
+   * 随后才切到「所有命名空间」。而这里的真值来自 API 的全集群口径 ——
+   * 不先切齐，两边数的不是同一批 Pod，断言就是拿两把尺子量同一张桌子。
+   */
+  async function selectAllNamespaces(page: import('@playwright/test').Page) {
+    const trigger = page.getByRole('combobox', { name: /命名空间|namespace/i }).first()
+    if (await trigger.count()) await trigger.click()
+    const all = page.getByRole('option', { name: /所有命名空间|All namespaces/ }).first()
+    if (await all.count()) await all.click()
+    await page.waitForTimeout(600)
+    await waitForPods(page)
+  }
+
+  /**
    * 数表格里的数据行。
    *
    * 不能只等 `tbody tr`：加载骨架也是一行 tr（占位行有 200 多 px 高），
@@ -205,6 +221,7 @@ test.describe('全功能走查（真实集群）', () => {
       const pods = await (await request.get('/api/v1/pods?namespace=_all')).json() as any
       const truth = (pods.items as any[]).filter((p) => podTone(p) === tone).length
       await page.goto(`/pods?status=${value}`)
+      await selectAllNamespaces(page)
       expect(await podRows(page)).toBe(Math.min(truth, 20))
     })
   }
@@ -238,12 +255,19 @@ test.describe('全功能走查（真实集群）', () => {
     const truth = (pods.items as any[]).filter((p) => ['error', 'warning'].includes(podTone(p))).length
     await page.goto('/pods')
     // 数量在数据到齐之后才有（attentionCount 是算出来的）
-    await waitForPods(page)
+    await selectAllNamespaces(page)
     const toggle = page.locator('button').filter({ hasText: '只看待处理' }).first()
     const aria = await toggle.getAttribute('aria-label')
-    // WCAG 2.5.3：可见文字必须出现在无障碍名里
-    expect(aria).toContain('只看待处理')
-    if (truth > 0) expect(aria).toContain(String(truth))
+    if (truth > 0) {
+      // WCAG 2.5.3：可见文字必须出现在无障碍名里
+      expect(aria).toContain('只看待处理')
+      expect(aria).toContain(String(truth))
+    } else {
+      // 此刻没有要人看一眼的 Pod：开关不挂数量徽标，可访问名退回可见文字
+      // （它本来就只有这四个字可读）。
+      expect(aria).toBeNull()
+      expect((await toggle.innerText()).trim()).toContain('只看待处理')
+    }
     await toggle.click()
     expect(await podRows(page)).toBe(Math.min(truth, 20))
   })
@@ -259,7 +283,7 @@ test.describe('全功能走查（真实集群）', () => {
       .slice(0, 20)
     const expectedTinted = visible.filter((p: any) => ['error', 'warning'].includes(podTone(p))).length
     await page.goto('/pods')
-    await waitForPods(page)
+    await selectAllNamespaces(page)
     const classes = await page.locator('tbody tr').evaluateAll(
       (rows) => rows.map((r) => r.className || ''),
     )

@@ -1676,7 +1676,12 @@ const helpRows = computed(() => [
 
          事故的时候要按的是 ERROR+。横向滚动的话它在 390px 上完全在屏幕
          外，而且没有滚动提示 —— 读者看到的是「全部 / INFO+ / WARN+」，以
-         为没有错误可筛。换成两行，六枚芯片全在视野里。
+         为没有错误可筛。换成两行，所有芯片全在视野里。
+
+         计数是 0 的档位不渲染：那一档没有行可筛，占着位置只会让人以为
+         「可筛但没筛」。没有错误行这件事，日志正文里本来就看得见。
+         （行的形状会随数据变 —— 这是代价：宁可让行跳一下，也不摆一个
+         点不动的空档位。）
     -->
     <div class="flex flex-wrap sm:flex-nowrap items-center gap-1 px-3 py-1.5 border-b border-border bg-muted overflow-x-auto shrink-0 whitespace-nowrap">
       <button
@@ -1696,13 +1701,12 @@ const helpRows = computed(() => [
       <span class="text-muted-foreground/50 mx-0.5">·</span>
       <button
         v-for="chip in severityChips"
+        v-show="chipCounts[chip.bucket] > 0"
         :key="chip.bucket"
         type="button"
-        :disabled="chipCounts[chip.bucket] === 0"
         :aria-pressed="minSeverity === chip.rank"
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
-          'disabled:opacity-30 disabled:cursor-default',
           minSeverity === chip.rank
             ? 'border-foreground bg-foreground text-background'
             : cn(
@@ -1728,12 +1732,11 @@ const helpRows = computed(() => [
         rank（未识别的行没有 severity 可比），是一个单独的筛选。
       -->
       <button
+        v-show="counts.unknown > 0"
         type="button"
-        :disabled="counts.unknown === 0"
         :aria-pressed="unknownOnly"
         :class="cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ease-app dur-fast text-xs',
-          'disabled:opacity-30 disabled:cursor-default',
           unknownOnly
             ? 'border-foreground bg-foreground text-background'
             : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -2136,7 +2139,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-50 dark:opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -2163,7 +2166,7 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] text-xs font-medium text-muted-foreground uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] text-xs font-mono text-muted-foreground truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <button
@@ -2229,7 +2232,7 @@ const helpRows = computed(() => [
                 v-if="group.lines[0].traceId"
                 type="button"
                 @click.stop="toggleTraceFilter(group.lines[0].traceId)"
-                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
+                class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-50 dark:opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
                 :style="{ background: traceIdColor(group.lines[0].traceId) }"
                 :title="t('log.filterTraceTitle', { traceId: group.lines[0].traceId })"
                 :aria-label="t('log.filterTraceLabel', { traceId: group.lines[0].traceId })"
@@ -2253,7 +2256,7 @@ const helpRows = computed(() => [
               <div class="flex items-baseline gap-2 min-w-0">
                 <span
                   v-if="group.lines[0].raw.container && group.lines[0].raw.container !== '—'"
-                  class="shrink-0 inline-flex items-center max-w-[140px] text-xs font-medium text-muted-foreground uppercase tracking-wider truncate"
+                  class="shrink-0 inline-flex items-center max-w-[140px] text-xs font-mono text-muted-foreground truncate"
                   :title="group.lines[0].raw.container"
                 >{{ group.lines[0].raw.container }}</span>
                 <span
@@ -2315,7 +2318,7 @@ const helpRows = computed(() => [
                     v-if="line.traceId"
                     type="button"
                     @click.stop="toggleTraceFilter(line.traceId)"
-                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
+                    class="absolute left-0 top-0 bottom-0 w-1 hover:w-1.5 opacity-50 dark:opacity-40 hover:opacity-100 transition-[width,opacity] ease-app dur-fast cursor-pointer z-10"
                     :style="{ background: traceIdColor(line.traceId) }"
                     :title="t('log.filterTraceTitle', { traceId: line.traceId })"
                     :aria-label="t('log.filterTraceLabel', { traceId: line.traceId })"
